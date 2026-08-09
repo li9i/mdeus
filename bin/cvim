@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
 #
-# Read a markdown document in your browser with vim beside it. The browser takes
-# the left of the screen and a terminal running vim takes the right. Clicking a
-# block sends vim to the line it came from, centred and lit for a moment, moving
-# the vim cursor marks the block it is in, and writing the file redraws the page.
+# Read a markdown document in your browser with vim beside it, in one window.
+# The browser takes the left of that window and a terminal running vim takes the
+# right. Clicking a block sends vim to the line it came from, centred and lit for
+# a moment, moving the vim cursor marks the block it is in, and writing the file
+# redraws the page.
 #
 #   cvim <document.md>
 #
-# Run from a terminal, vim runs in that terminal. Run from the file manager, a
-# terminal is opened for it. It needs a desktop session, so use bmv where there
-# is none, and only one reading runs at a time.
+# The reading opens a terminal of its own for vim, so the shell this was run from
+# stays yours and waits. It needs a desktop session, so use bmv where there is
+# none, and only one reading runs at a time.
 #
-# The reading ends when vim quits, when the browser window is closed, or when
-# the terminal is killed. However it ends, the server stops, the browser window
-# goes, the terminal is given its window list entry back and the browser profile
-# the reading made is removed.
+# The reading ends when vim quits. Closing the browser pane, pressing the
+# window's close button and interrupting here all ask vim to quit instead, and
+# vim refuses while anything in it is unwritten. Killing the terminal outright
+# ends it the same way quitting vim does. However it ends, the server stops and
+# the browser profile the reading made is removed.
 
 set -euo pipefail
 
@@ -47,21 +49,10 @@ fi
 
 file="$(readlink -f "$1")"
 
-# Before the terminal below, which is another thing there is no desktop session
-# to open.
 if [ -z "${DISPLAY:-}" ]
 then
   echo "cvim: needs a desktop session, so use bmv where there is none" >&2
   exit 1
-fi
-
-# Started from the file manager there is no terminal for vim to run in, so one
-# is opened and the reading starts again inside it. mate-terminal is named
-# rather than left to the desktop, whose own search finds gnome-terminal first
-# on this machine.
-if [ ! -t 0 ]
-then
-  exec mate-terminal -- "$0" "$file"
 fi
 
 # One reading at a time. vim answers to the name or it does not, and if it does
@@ -72,25 +63,15 @@ then
   exit 1
 fi
 
-browser=
 dir="$(mktemp -d)"
-placer=
 server=
-watcher=
-winid=
 
-# However the reading ends, it ends here: vim quitting returns to the line that
-# started it, the browser window closing asks vim to quit, and the terminal
-# being killed outright never reaches either, which is what the trap is for.
-# Nothing in here is allowed to fail loudly or to stop what follows it: by the
-# time it runs, some of what it is putting away has often gone already.
+# However the reading ends, it ends here. Nothing in here is allowed to fail
+# loudly or to stop what follows it: by the time it runs, some of what it is
+# putting away has often gone already.
 cleanup(){
   trap - EXIT HUP INT TERM
-  for child in "$watcher" "$placer" "$browser" "$server"
-  do
-    [ -n "$child" ] && kill "$child" 2>/dev/null || true
-  done
-  python3 "$link" give-back "$winid" 2>/dev/null || true
+  [ -n "$server" ] && kill "$server" 2>/dev/null || true
   rm -rf "$dir"
 }
 trap cleanup EXIT HUP INT TERM
@@ -115,62 +96,6 @@ if [ -z "$url" ]
 then
   echo "cvim: the reading did not start" >&2
   exit 1
-fi
-
-# The terminal is the window the desktop has in front, which the browser takes
-# the moment it appears, so it is settled here and named by number from now on.
-# It is written on and put in its place before either the browser or vim opens,
-# so that vim starts in a terminal that has already finished changing size.
-winid="$(python3 "$link" window)"
-python3 "$link" borrow "$winid" 2>/dev/null || true
-python3 "$link" place-terminal "$winid"
-
-chrome=
-for candidate in google-chrome chromium chromium-browser
-do
-  if command -v "$candidate" > /dev/null
-  then
-    chrome="$candidate"
-    break
-  fi
-done
-
-if [ -n "$chrome" ]
-then
-  # --app gives a window with nothing in it but the page, and a profile of its
-  # own makes that window a process of its own, which is what lets the reading
-  # own it and close it. The profile is thrown away when the reading ends, so
-  # none of this touches your usual browsing. A profile that has never been
-  # used greets you on the way in, and the greeting would arrive over the
-  # document, so it is turned off.
-  # The flags that place the window are unquoted because there are two of them,
-  # or none at all where nothing on the machine can say how big the screen is.
-  # shellcheck disable=SC2086
-  "$chrome" --app="$url" $(python3 "$link" browser-flags) --no-first-run \
-    --user-data-dir="$dir/profile" > /dev/null 2>&1 &
-  browser=$!
-
-  # A browser window is drawn a little larger than the size it was given, so it
-  # is put right once it is up, against where the terminal actually settled.
-  # In the background, since vim should not be kept waiting for a browser.
-  python3 "$link" place-browser "$winid" "$browser" &
-  placer=$!
-
-  # The window being closed ends the reading. vim is asked to quit and refuses
-  # while anything in it is unwritten, and the page stops saying it is open,
-  # which is what stops the server.
-  (
-    while kill -0 "$browser" 2>/dev/null
-    do
-      sleep 0.5
-    done
-    python3 "$link" quit "$SERVERNAME"
-  ) &
-  watcher=$!
-else
-  echo "cvim: no chrome or chromium here, so the page opens in a tab of your"
-  echo "      usual browser, which is neither placed nor closed for you"
-  xdg-open "$url" > /dev/null 2>&1 &
 fi
 
 # What vim does for as long as the reading is up. Kept as a file of its own
@@ -252,9 +177,20 @@ function! CvimJumpTo(first, last) abort
 endfunction
 EOF
 
-# notitle after the vimrc rather than before it, since a vimrc that turns the
-# title on would otherwise win. Left on, vim writes the name of the file on the
-# terminal every time the document changes, and the window list entry the
-# reading has just borrowed would be written over within the second.
-MDVIEW_LINK="$link" MDVIEW_URL="$url" \
-  vim --servername "$SERVERNAME" -c 'set notitle' -S "$dir/cursor.vim" -- "$file"
+chrome=
+for candidate in google-chrome chromium chromium-browser
+do
+  if command -v "$candidate" > /dev/null
+  then
+    chrome="$candidate"
+    break
+  fi
+done
+
+echo "cvim: reading $(basename "$file"), at $url"
+echo "      ctrl-c here asks vim to quit, as the reading's close button does"
+
+# The window the reading is drawn in, and everything inside it. This holds the
+# shell until the reading ends.
+python3 "$share/container.py" \
+  "$chrome" "$url" "$SERVERNAME" "$dir/profile" "$dir/cursor.vim" "$file"

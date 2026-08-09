@@ -1,0 +1,492 @@
+"""
+One window with both halves of a reading inside it.
+
+A reading with vim beside it is two programs, a browser and a terminal, and the
+desktop would ordinarily give each of them a window of its own. This makes one
+window and puts both inside it, so that the reading is one entry on the panel,
+is moved as one, resized as one and closed as one.
+
+Taking a window off the window manager has an order to it. Reparenting a window
+the manager is still managing loses a race: the manager sees its client leave
+the frame it drew, runs the same tidying up it runs for a window that has gone,
+and that tidying up hands the client back to the root window. So each window is
+withdrawn first, in the way the ICCCM asks for, and reparented only once the
+manager has let go of it.
+
+Nothing manages the two windows once they are inside, and the work a window
+manager would have done falls here. The panes are laid out again whenever the
+container is resized, and the keyboard is handed from one pane to the other on a
+click, which is how the desktop is set to hand it between windows.
+
+Without python3-xlib there is no container to be made, so the reading opens in
+two ordinary windows wherever the desktop puts them. It says so and carries on.
+"""
+
+import os
+import select
+import signal
+import subprocess
+import sys
+import time
+
+import vimlink
+
+try:
+    from Xlib import X, Xatom, Xutil, display, error, protocol
+except ImportError:  # python3-xlib is not installed
+    X = Xatom = Xutil = display = error = protocol = None
+
+BROWSER_SHARE = 0.44
+# How long to give the browser to close before it is made to, in seconds.
+BROWSER_STOP = 5
+# What the reading is called, on its title bar and on the panel.
+NAME = b'cvim'
+NO_BROWSER = (
+    'cvim: no chrome or chromium here, so the page opens in a tab of your\n'
+    '      usual browser, which is neither placed nor closed for you'
+)
+# How often the two programs are looked in on, in seconds.
+POLL = 0.25
+SETTLE_TRIES = 20
+SETTLE_WAIT = 0.05
+UNPLACED = 'cvim: the reading is in two windows of its own, wherever the desktop put them'
+# How long to go on waiting for a program to put its window up, in seconds.
+WINDOW_WAIT = 15
+# How long to go on waiting for the window manager to let go of a window.
+WITHDRAW_WAIT = 5
+
+
+def adopt(d, container, window, box):
+    """Take a window off the window manager and put it in the container.
+
+    The click that would ordinarily give a window the keyboard is asked for
+    here as well, since the two panes are one window as far as the desktop is
+    concerned and nothing else is left to hand the keyboard between them.
+    """
+    withdraw(d, window)
+    x, y, width, height = box
+    window.reparent(container, x, y)
+    window.configure(x=x, y=y, width=width, height=height)
+    window.map()
+    for button in (1, 2, 3):
+        for modifiers in locked():
+            # Synchronous, so that the click can be looked at and then let
+            # through to the pane it was meant for. The wheel is left alone,
+            # since a pane scrolled through is a pane already under the pointer.
+            window.grab_button(
+                button, modifiers, False, X.ButtonPressMask,
+                X.GrabModeSync, X.GrabModeAsync, X.NONE, X.NONE,
+            )
+    d.sync()
+
+
+def browser_command(browser, url, profile, box, origin):
+    """Return the command that opens the page in a window of its own.
+
+    --app gives a window with nothing in it but the page, and a profile of its
+    own makes that window a process of its own, which is what lets the reading
+    own it and close it. A profile that has never been used greets you on the
+    way in, and the greeting would arrive over the document, so it is turned
+    off. The window is asked for where it is going to end up, so that the moment
+    before it is taken into the container looks like no moment at all.
+    """
+    command = [browser, f'--app={url}', '--no-first-run', f'--user-data-dir={profile}']
+    if box is not None:
+        x, y, width, height = box
+        command.append(f'--window-position={origin[0] + x},{origin[1] + y}')
+        command.append(f'--window-size={width},{height}')
+    return command
+
+
+def client_list(d):
+    """Return the windows the desktop says it is managing."""
+    listed = d.screen().root.get_full_property(
+        d.intern_atom('_NET_CLIENT_LIST'), Xatom.WINDOW
+    )
+    return list(listed.value) if listed else []
+
+
+def focus(d, window):
+    """Point the keyboard at one of the panes."""
+    if window is None:
+        return
+    window.set_input_focus(X.RevertToParent, X.CurrentTime)
+    d.sync()
+
+
+def ignore_gone(problem, request):
+    """Say nothing when a window a request named has gone in the meantime.
+
+    Everything here is asked of windows belonging to two other programs, either
+    of which may close at any moment, and half of what is asked is asked as a
+    reading is ending. The X server answers late, so the answer arrives here
+    rather than where the request was made and cannot be caught there. Anything
+    that is not a window having gone is still worth hearing about.
+    """
+    if not isinstance(problem, (error.BadWindow, error.BadDrawable, error.BadMatch)):
+        sys.stderr.write(f'cvim: {problem}\n')
+
+
+def keep_focus(d, panes, focused):
+    """Take the keyboard back when it has been left on a window that has gone.
+
+    Either program may put a window of its own up for a moment, and the desktop
+    gives that window the keyboard and then has nowhere to hand it back to when
+    the window goes, since the panes are not the desktop's to know about. A
+    window the desktop is managing is another application, and one the desktop
+    itself holds is the desktop's business, so both are left alone.
+    """
+    where = d.get_input_focus().focus
+    here = where if isinstance(where, int) else where.id
+    if here in (X.NONE, X.PointerRoot, d.screen().root.id):
+        return
+    if any(window.id == here for window in panes.values()) or here in client_list(d):
+        return
+    focus(d, panes.get(focused) or panes.get('terminal'))
+
+
+def layout(d, container, panes):
+    """Give each pane its share of the container.
+
+    The browser takes 44 percent of the width on the left and the terminal the
+    rest, which is how the same document read in a terminal is already split.
+    What the terminal rounds off its width is given back to the browser once the
+    terminal has answered, which is meet()'s work rather than this one's.
+    """
+    here = container.get_geometry()
+    boxes = pane_boxes(here.width, here.height)
+    for name, box in zip(('browser', 'terminal'), boxes):
+        window = panes.get(name)
+        if window is not None:
+            window.configure(x=box[0], y=box[1], width=box[2], height=box[3])
+    d.sync()
+
+
+def locked():
+    """Return the plain click and the same click under each lock key.
+
+    A grab names one set of modifiers, and caps lock or num lock being down
+    makes a different set, so a click has to be asked for under each of them or
+    it is missed while a lock is on. Asking for every modifier at once is the
+    shorter way to say this and cannot be used: it fails outright if any other
+    program holds any button on the window, and on this desktop one does.
+    """
+    return (0, X.LockMask, X.Mod2Mask, X.LockMask | X.Mod2Mask)
+
+
+def main(argv):
+    """Open a reading, hold it up, and put everything away when it ends."""
+    browser, url, servername, profile, script, document = argv
+    if not browser:
+        print(NO_BROWSER, flush=True)
+    d = x_display() if browser else None
+    container = make_container(d) if d is not None else None
+    if browser and container is None:
+        print(UNPLACED, flush=True)
+
+    if container is None:
+        boxes, origin = (None, None), (0, 0)
+    else:
+        here = container.get_geometry()
+        boxes = pane_boxes(here.width, here.height)
+        where = d.screen().root.translate_coords(container, 0, 0)
+        origin = (where.x, where.y)
+
+    if browser:
+        page = subprocess.Popen(
+            browser_command(browser, url, profile, boxes[0], origin),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    else:
+        page = None
+        subprocess.Popen(
+            ['xdg-open', url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+    terminal = subprocess.Popen(
+        terminal_command(servername, script, document, boxes[1], origin),
+        env=dict(
+            os.environ,
+            MDVIEW_LINK=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vimlink.py'),
+            MDVIEW_URL=url,
+        ),
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+
+    panes = {}
+    try:
+        if container is not None:
+            if page is not None:
+                window = window_of(d, page.pid, boxes[0][2] // 2)
+                if window is not None:
+                    adopt(d, container, window, boxes[0])
+                    panes['browser'] = window
+            window = window_of(d, terminal.pid, 0)
+            if window is not None:
+                adopt(d, container, window, boxes[1])
+                panes['terminal'] = window
+            focus(d, panes.get('terminal'))
+        watch(d, container, panes, page, terminal, servername)
+    finally:
+        if page is not None and page.poll() is None:
+            # Waited for rather than left to close in its own time, because the
+            # profile it is still writing to is about to be taken away from it.
+            page.terminate()
+            try:
+                page.wait(timeout=BROWSER_STOP)
+            except subprocess.TimeoutExpired:
+                page.kill()
+        if container is not None:
+            container.destroy()
+            d.sync()
+    return 0
+
+
+def make_container(d):
+    """Put an empty window on the desktop for the reading to live in.
+
+    It asks for the work area, so that nothing in the reading is put under a
+    panel, and the window manager takes what its own border needs out of that.
+    The name is the reading's own, since the container is the only window the
+    desktop can see and there is nothing left to borrow a name from.
+    """
+    root = d.screen().root
+    area = root.get_full_property(d.intern_atom('_NET_WORKAREA'), Xatom.CARDINAL)
+    if area:
+        x, y, width, height = tuple(area.value[:4])
+    else:
+        x, y = 0, 0
+        width, height = d.screen().width_in_pixels, d.screen().height_in_pixels
+    container = root.create_window(
+        x, y, width, height, 0, X.CopyFromParent, X.InputOutput, X.CopyFromParent,
+        background_pixel=d.screen().black_pixel,
+        event_mask=(
+            X.StructureNotifyMask | X.SubstructureNotifyMask | X.FocusChangeMask
+        ),
+    )
+    utf8 = d.intern_atom('UTF8_STRING')
+    container.set_wm_name(NAME.decode())
+    container.set_wm_icon_name(NAME.decode())
+    container.set_wm_class('cvim', 'Cvim')
+    container.change_property(d.intern_atom('_NET_WM_NAME'), utf8, 8, NAME)
+    container.change_property(d.intern_atom('_NET_WM_ICON_NAME'), utf8, 8, NAME)
+    container.change_property(
+        d.intern_atom('_NET_WM_PID'), Xatom.CARDINAL, 32, [os.getpid()]
+    )
+    container.set_wm_hints(flags=Xutil.InputHint, input=1)
+    container.set_wm_protocols([d.intern_atom('WM_DELETE_WINDOW')])
+    container.map()
+    settle(container)
+    return container
+
+
+def meet(d, container, panes):
+    """Put the two panes edge to edge, whatever the terminal rounded off its width.
+
+    A terminal settles on a whole number of character columns however wide it is
+    asked to be. So it is asked for its share, told where to sit once it has
+    answered, and the browser beside it is given what was rounded off, and the
+    two meet exactly however the reading is resized.
+
+    The rows rounded off in the other direction leave a band of the container
+    showing below the terminal, and nothing here can close it. A terminal fills
+    a height it cannot divide only by being maximised against the desktop, and
+    inside a window there is no desktop left to maximise it against.
+    """
+    browser, terminal = panes.get('browser'), panes.get('terminal')
+    if terminal is None:
+        return
+    width = container.get_geometry().width
+    here = terminal.get_geometry()
+    left = width - here.width
+    # Asked for only where it is wrong, since a request answered by no change
+    # still arrives back here and would otherwise go round for ever.
+    if here.x != left:
+        terminal.configure(x=left)
+    if browser is not None and browser.get_geometry().width != left:
+        browser.configure(width=left)
+    d.sync()
+
+
+def pane_boxes(width, height):
+    """Return where each pane goes inside a container of this size."""
+    left = round(width * BROWSER_SHARE)
+    return ((0, 0, left, height), (left, 0, width - left, height))
+
+
+def settle(window):
+    """Wait for a window to stop changing size, since a request is only a request."""
+    was = None
+    for _ in range(SETTLE_TRIES):
+        time.sleep(SETTLE_WAIT)
+        here = window.get_geometry()
+        now = (here.width, here.height)
+        if now == was:
+            return
+        was = now
+
+
+def terminal_command(servername, script, document, box, origin):
+    """Return the command that opens the terminal the reading's vim runs in.
+
+    A terminal of the reading's own rather than the one the command was typed
+    into. Everything inside the container goes when the container does, and a
+    terminal somebody else is using is not the reading's to take that risk with.
+
+    notitle comes after the vimrc rather than before it, since a vimrc that
+    turns the title on would otherwise win, and vim writing the name of the file
+    onto the terminal writes over the name the reading has put on the window.
+    """
+    command = ['mate-terminal', '--disable-factory', '--hide-menubar']
+    if box is not None:
+        command.append(f'--geometry=+{origin[0] + box[0]}+{origin[1] + box[1]}')
+    return command + [
+        '--', 'vim', '--servername', servername, '-c', 'set notitle',
+        '-S', script, '--', document,
+    ]
+
+
+def under_pointer(container, panes):
+    """Return the name of the pane the pointer is over, or None if it is over neither.
+
+    This is how the keyboard is handed from one pane to the other, and it is
+    read at the moment the desktop points the keyboard at the container. The
+    desktop is set to give a window the keyboard when it is clicked, and since
+    the two panes are inside one window every click in either of them is a click
+    on that window, so the desktop asks this question for us and the answer is
+    simply where the pointer was when it asked.
+
+    A click on the title bar or on the entry on the panel is over neither pane
+    and says nothing about which one is wanted, so it leaves the keyboard where
+    it was.
+    """
+    child = container.query_pointer().child
+    inside = child if isinstance(child, int) else child.id
+    for name, window in panes.items():
+        if window.id == inside:
+            return name
+    return None
+
+
+def watch(d, container, panes, page, terminal, servername):
+    """Hold the reading up until it ends.
+
+    It ends when vim quits, which is what the terminal is waiting on, or when
+    the terminal is killed outright, which comes to the same thing here. The
+    browser window being closed asks vim to quit instead, and vim refuses while
+    anything in it is unwritten, so a reading is never taken away from under
+    unsaved work. The container's close button and an interrupt in the terminal
+    the command was typed into both ask the same question.
+
+    The keyboard reaches a pane by two roads, because the desktop only lends
+    the click on the first of them. A reading that has just been clicked into
+    from elsewhere is one the desktop takes the click for, and it says only
+    that the container was clicked, so where the pointer is says which pane was
+    meant. Once the reading has the keyboard the desktop stops taking the
+    clicks, and from then on they arrive here and name their own pane.
+    """
+    signal.signal(signal.SIGINT, lambda number, frame: vimlink.quit_vim(servername))
+    focused = 'terminal'
+    while terminal.poll() is None:
+        if page is not None and page.poll() is not None:
+            vimlink.quit_vim(servername)
+            page = None
+            panes.pop('browser', None)
+        if container is None:
+            time.sleep(POLL)
+            continue
+        keep_focus(d, panes, focused)
+        select.select([d], [], [], POLL)
+        while d.pending_events():
+            event = d.next_event()
+            if event.type == X.ButtonPress:
+                for name, window in panes.items():
+                    if window.id == event.window.id:
+                        focused = name
+                        focus(d, window)
+                # Let the click through to the pane it was meant for, now that
+                # the keyboard has been pointed at that pane.
+                d.allow_events(X.ReplayPointer, event.time)
+            elif event.type == X.ConfigureNotify:
+                if event.window.id == container.id:
+                    layout(d, container, panes)
+                else:
+                    meet(d, container, panes)
+            elif event.type == X.FocusIn and event.window.id == container.id:
+                if event.mode == X.NotifyNormal:
+                    focused = under_pointer(container, panes) or focused
+                    focus(d, panes.get(focused) or panes.get('terminal'))
+            elif event.type == X.ClientMessage:
+                if event.data[1][0] == d.intern_atom('WM_DELETE_WINDOW'):
+                    vimlink.quit_vim(servername)
+
+
+def window_of(d, pid, least_width):
+    """Return the window a program put up, once it has put one up.
+
+    A program may put up a window of its own as well as the one wanted, so the
+    widest is taken and anything too narrow to be a pane is passed over.
+    """
+    deadline = time.monotonic() + WINDOW_WAIT
+    while time.monotonic() < deadline:
+        wide = []
+        for window in windows_of(d, pid):
+            try:
+                if window.get_geometry().width >= least_width:
+                    wide.append(window)
+            except Exception:
+                pass
+        if wide:
+            return max(wide, key=lambda window: window.get_geometry().width)
+        time.sleep(SETTLE_WAIT)
+    return None
+
+
+def windows_of(d, pid):
+    """Return the desktop's own list of the windows belonging to a process."""
+    windows = []
+    for xid in client_list(d):
+        window = d.create_resource_object('window', xid)
+        owner = window.get_full_property(d.intern_atom('_NET_WM_PID'), Xatom.CARDINAL)
+        if owner and owner.value[0] == pid:
+            windows.append(window)
+    return windows
+
+
+def withdraw(d, window):
+    """Ask the window manager to let go of a window without letting go of the window.
+
+    A window reparented while the manager is still managing it is handed
+    straight back to the root, because the manager reads the reparent as the
+    window having gone and its own tidying up is what puts it there. Unmapping
+    the window and telling the root about it is the way the ICCCM gives to say
+    that a window is no longer the manager's, and it is waited on rather than
+    assumed, since everything after it depends on the manager having finished.
+    """
+    root = d.screen().root
+    window.unmap()
+    root.send_event(
+        protocol.event.UnmapNotify(window=window, event=root, from_configure=False),
+        event_mask=X.SubstructureRedirectMask | X.SubstructureNotifyMask,
+    )
+    d.sync()
+    deadline = time.monotonic() + WITHDRAW_WAIT
+    while time.monotonic() < deadline and window.id in client_list(d):
+        time.sleep(SETTLE_WAIT)
+
+
+def x_display():
+    """Return the X display, or None where there is nothing to talk to it with."""
+    if display is None:
+        return None
+    try:
+        d = display.Display()
+        d.set_error_handler(ignore_gone)
+        return d
+    except Exception:
+        # Xlib raises several unrelated errors for a display it cannot reach,
+        # and none of them is worth stopping a reading for.
+        return None
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
