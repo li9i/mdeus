@@ -2,7 +2,8 @@
 "
 " Sourced by the vim a reading opens, and reached from nowhere else. It reports
 " where the cursor is for the page to mark, folds the document a section at a
-" time, and lights the block the page sends it to.
+" time, lights the block the page sends it to, and keeps the whole document
+" drawn when the reading is resized.
 "
 " The two names it needs come from the environment the reading sets: MDVIEW_LINK
 " is the script that carries a line to the server, and MDVIEW_URL is where that
@@ -64,10 +65,29 @@ function! s:MdviewFolds() abort
   nnoremap <buffer> <silent> <space> za
 endfunction
 
+" Name the rows the terminal may scroll within again, every time the reading is
+" resized.
+"
+" vim names those rows once, as it starts, and a terminal holds on to what it
+" was told. The reading resizes the terminal after vim has started in it, so
+" from then on the terminal scrolls within the rows the pane had at first while
+" vim writes as though the whole pane scrolled. A line vim ends at the foot of
+" those first rows takes part of the document out from under vim's own record of
+" what the pane holds, and vim, believing those rows drawn, leaves them as they
+" are: the top of the pane shows lines the reading has moved on from until
+" something makes vim draw the whole pane again.
+"
+" Naming the rows puts the terminal's cursor at the top left, so it is sent back
+" to where vim left it in the same breath.
+function! s:MdviewResized() abort
+  call echoraw(printf("\<Esc>[r\<Esc>[%d;%dH", screenrow(), screencol()))
+endfunction
+
 augroup mdview
   autocmd!
   autocmd CursorMoved,CursorMovedI * call s:MdviewMoved()
   autocmd BufWinEnter * call s:MdviewFolds()
+  autocmd VimResized * call s:MdviewResized()
 augroup END
 
 " The click itself first, so the cursor is where it landed before it is read.
