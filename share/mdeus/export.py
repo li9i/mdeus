@@ -23,13 +23,13 @@ import base64
 import hashlib
 import json
 import mimetypes
-import re
-from html import escape, unescape
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import unquote
 
-from render import is_relative, render_document
-from server import ASSET_DIR, load_state, resolve_inside
+from render import render_document
+from server import ASSET_DIR, page_html, resolve_inside
+from state import load_state
 
 CACHE_DIR = Path.home() / '.cache' / 'mdview'
 # Everything the reading page asks a server for, answered from the document
@@ -73,63 +73,50 @@ def cache_path(source):
     return CACHE_DIR / f'{source.stem}-{digest}.html'
 
 
+@lru_cache(maxsize=None)
 def data_uri(path):
-    """Return a file as the data: URI that stands in for it."""
+    """Return a file as the data: URI that stands in for it.
+
+    Held for as long as one export runs, so a logo used in ten places is read
+    and encoded once rather than ten times.
+    """
     kind = mimetypes.guess_type(path)[0] or 'application/octet-stream'
     payload = base64.b64encode(path.read_bytes()).decode('ascii')
     return f'data:{kind};base64,{payload}'
 
 
-def embed_images(html, root):
-    """Replace each image inside the document's own tree with the bytes of the file.
+def embedded_image(root):
+    """Return what writes every image inside the tree as the bytes of the file.
 
     An image the document reaches for by any other means is left alone. An
     absolute path, an http address or a name resolving outside the tree all
     stay as they are, the same way a link to another document does.
     """
 
-    def embed(match):
-        """Rewrite one src attribute, or hand back the one that was there."""
-        # The value has been escaped for HTML and percent encoded on the way
-        # into the page, so both have to come off before it names a file.
-        target = unquote(unescape(match.group(1)))
-        path = resolve_inside(root, target) if is_relative(target) else None
-        return match.group(0) if path is None else f'src="{escape(data_uri(path))}"'
+    def embed(target):
+        """Return one image as its own bytes, or as the target that was there."""
+        # The value is percent encoded on the way into the document, so that
+        # has to come off before it names a file.
+        path = resolve_inside(root, unquote(target))
+        return target if path is None else data_uri(path)
 
-    return re.sub(r'src="([^"]*)"', embed, html)
+    return embed
 
 
-def page_html(document):
+def printed_page(document):
     """Return the whole file: the reading page, its stylesheet, and the document."""
     # Both go in whole rather than a piece at a time, so a printed copy can
     # never be missing a theme, or name a heading differently from the reading
     # it was printed out of.
     styles = (ASSET_DIR / 'themes.css').read_text(encoding='utf-8')
     page = (ASSET_DIR / 'page.js').read_text(encoding='utf-8')
-    # A printed copy is a page for reading, so it carries the reader marker the
-    # served page does and the themes size it the same way.
-    return f"""<!doctype html>
-<html lang="en" class="{document['state']['theme']} reader">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{escape(document['name'])}</title>
-    <style>
-{styles}
-    </style>
-  </head>
-  <body>
-    <div class="controls"></div>
-    <main class="doc"></main>
-    <script>
-{stub_script(document)}
-    </script>
-    <script>
-{page}
-    </script>
-  </body>
-</html>
-"""
+    return page_html(
+        document['name'],
+        document['state']['theme'],
+        f'    <style>\n{styles}\n    </style>',
+        f'    <script>\n{stub_script(document)}\n    </script>\n'
+        f'    <script>\n{page}\n    </script>\n',
+    )
 
 
 def stub_script(document):
@@ -144,17 +131,20 @@ def stub_script(document):
 def write_export(source):
     """Write a document as one self contained file and return where it went."""
     source = source.resolve()
-    rendered = render_document(source.read_text(encoding='utf-8'))
+    rendered = render_document(
+        source.read_text(encoding='utf-8'), image_src=embedded_image(source.parent)
+    )
     document = {
+        'blocks': rendered['blocks'],
+        # There is no server behind a printed copy to answer for a write, so
+        # the page is told the document never changes.
+        'mtime': 0,
         'name': source.name,
-        'blocks': [
-            dict(block, html=embed_images(block['html'], source.parent))
-            for block in rendered['blocks']
-        ],
         'outline': rendered['outline'],
         'state': load_state(),
     }
     path = cache_path(source)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(page_html(document), encoding='utf-8')
+    path.write_text(printed_page(document), encoding='utf-8')
+    data_uri.cache_clear()
     return path

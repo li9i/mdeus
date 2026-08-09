@@ -29,6 +29,9 @@ const pane = document.querySelector('.doc');
    the first reply has been read, and that reply is not a click. */
 let clicksAt = null;
 let flashTimer = null;
+/* The line the last reply named, so a reply saying the cursor has not moved
+   costs nothing more than reading it. */
+let lineAt = null;
 /* The first source line of the block the rule is on. Held as a line rather
    than as an element because page.js rebuilds the document on every redraw,
    which throws away the element but not the line it came from. */
@@ -121,8 +124,13 @@ function onBlockClick(event) {
     return;
   }
   flash(block);
+  /* Both ends of the block go, since the page is the only half that knows them
+     and vim lights the whole of what was clicked rather than its first line. */
   fetch('/api/jump', {
-    body: JSON.stringify({ line: Number(block.dataset.start) }),
+    body: JSON.stringify({
+      last: Number(block.dataset.end),
+      line: Number(block.dataset.start),
+    }),
     headers: { 'Content-Type': 'application/json' },
     method: 'POST',
   }).catch(() => {});
@@ -152,7 +160,15 @@ async function pollCursor() {
     return; // the server has stopped answering and the reading is over
   }
   if (typeof where.line === 'number') {
-    markCursor(where.line, clicksAt !== null && where.clicks !== clicksAt);
+    /* A cursor sitting still is what a reading looks like most of the time, and
+       the same line arrives five times a second while it does. Nothing is
+       measured or moved for one of those, unless the page has been redrawn
+       underneath it and the rule went with the old document. */
+    const clicked = clicksAt !== null && where.clicks !== clicksAt;
+    if (clicked || where.line !== lineAt || !ruleStands()) {
+      markCursor(where.line, clicked);
+    }
+    lineAt = where.line;
   }
   clicksAt = where.clicks;
 }
@@ -184,6 +200,15 @@ function reveal(block, from) {
     return;
   }
   show(block);
+}
+
+function ruleStands() {
+  /* Whether the rule is still on the block the last report put it on. A redraw
+     builds the document again from scratch and the rule goes with the elements
+     it was on, so this is what tells a report of an unchanged line that there
+     is work to do after all. */
+  const ruled = pane.querySelector('.bmvim-cursor');
+  return ruled === null ? ruleAt === null : Number(ruled.dataset.start) === ruleAt;
 }
 
 function show(block) {

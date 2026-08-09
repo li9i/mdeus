@@ -48,7 +48,7 @@
   background: currentColor;
   bottom: 0;
   content: '';
-  left: var(--bmvim-rule, -13px);
+  left: var(--bmvim-rule);
   position: absolute;
   top: 0;
   width: 3px;

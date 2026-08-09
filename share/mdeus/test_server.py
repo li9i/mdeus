@@ -25,7 +25,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 # The state file and the export cache both hang off the home directory, and
-# where that is gets read once, when the two modules below are imported. So it
+# where that is gets read once, when the modules below are imported. So it
 # is pointed at a temporary directory first, and the run is given a home of its
 # own that nothing else on the machine knows about. A test that forgets to
 # redirect either path then writes here rather than into the real home, and the
@@ -38,6 +38,7 @@ os.environ['HOME'] = TEST_HOME
 import export
 import render
 import server
+import state
 
 
 OTHER_MD = """\
@@ -54,7 +55,7 @@ PIXEL_PNG = b'\x89PNG\r\n\x1a\n\x00\x01\x02\x03'
 # run look at exactly what a leaking test would have written. They sit under
 # the run's own home rather than the real one, see TEST_HOME above.
 HOME_CACHE_DIR = export.CACHE_DIR
-HOME_STATE_PATH = server.STATE_PATH
+HOME_STATE_PATH = state.STATE_PATH
 
 SECRET_MD = """\
 # Outside the tree
@@ -144,6 +145,13 @@ def home_state_snapshot():
         return exists, None
 
 
+def served_blocks(source):
+    """Return the blocks a reading sends: the renderer's, images pointed at /file/."""
+    return render.render_document(
+        source, image_src=lambda target: f'/file/{target}'
+    )['blocks']
+
+
 def start_export():
     """Build a fixture tree for the printed copy and return its root and a stop call.
 
@@ -153,7 +161,7 @@ def start_export():
     """
     base = Path(tempfile.mkdtemp(prefix='mdview-test-')).resolve()
     export.CACHE_DIR = base / 'cache'
-    server.STATE_PATH = base / 'state.json'
+    state.STATE_PATH = base / 'state.json'
     root = base / 'tree'
     (root / 'images').mkdir(parents=True)
     (root / 'start.md').write_text(START_MD, encoding='utf-8')
@@ -177,7 +185,7 @@ def start_reading(servername=None):
     may be asked for under one.
     """
     base = Path(tempfile.mkdtemp(prefix='mdview-test-')).resolve()
-    server.STATE_PATH = base / 'state.json'
+    state.STATE_PATH = base / 'state.json'
     root = base / 'tree'
     (root / 'images').mkdir(parents=True)
     (root / 'notes').mkdir()
@@ -279,8 +287,30 @@ def test_blocks_carry_the_lines_render_gave_them():
         assert ranges == START_BLOCKS, ranges
         assert doc['outline'] == START_OUTLINE, doc['outline']
         # The line ranges above say the numbers are right. This says the server
-        # hands the renderer's work over whole, rather than rebuilding any of it.
-        assert doc['blocks'] == render.render_blocks(START_MD), doc['blocks']
+        # hands the renderer's work over whole, with nothing changed in it but
+        # where an image is fetched from.
+        assert doc['blocks'] == served_blocks(START_MD), doc['blocks']
+    finally:
+        stop()
+
+
+def test_document_image_is_reachable_where_the_page_is_told_to_look():
+    """The address an image carries in the page is one this server answers with the file.
+
+    The page is served at the root, so a document's own relative target would
+    be read against that and reach nothing. What the page is handed has to be an
+    address the reading answers, and the only way to say so is to follow it.
+    """
+    root, port, stop = start_reading()
+    try:
+        status, doc = fetch_json(port, '/doc')
+        found = re.findall(r'src="([^"]*)"', ''.join(
+            block['html'] for block in doc['blocks']))
+        assert len(found) == 1, found
+        status, content_type, data = fetch(port, found[0])
+        assert status == 200, (found[0], status)
+        assert data == PIXEL_PNG, data
+        assert content_type.startswith('image/png'), content_type
     finally:
         stop()
 
@@ -296,12 +326,12 @@ def test_every_theme_is_accepted_and_a_fourth_is_not():
             assert reply == {'contents': False, 'theme': theme}, reply
             status, doc = fetch_json(port, '/doc')
             assert doc['state']['theme'] == theme, (theme, doc['state'])
-        before = server.STATE_PATH.read_text(encoding='utf-8')
+        before = state.STATE_PATH.read_text(encoding='utf-8')
         status, reply = fetch_json(
             port, '/api/state', 'POST', {'theme': 'chartreuse', 'contents': False})
         assert status == 400, status
         assert reply == {'error': 'unknown theme'}, reply
-        after = server.STATE_PATH.read_text(encoding='utf-8')
+        after = state.STATE_PATH.read_text(encoding='utf-8')
         assert after == before, 'a refused theme was written to the state file'
     finally:
         stop()
@@ -393,7 +423,7 @@ def test_linked_document_inside_the_tree_is_rendered():
             port, '/doc?' + urlencode({'path': 'notes/other.md'}))
         assert status == 200, status
         assert doc['name'] == 'notes/other.md', doc['name']
-        assert doc['blocks'] == render.render_blocks(OTHER_MD), doc['blocks']
+        assert doc['blocks'] == served_blocks(OTHER_MD), doc['blocks']
         # The reading is of that document from then on, so a plain /doc must
         # now send it rather than the one the reading started at.
         status, again = fetch_json(port, '/doc')
@@ -407,7 +437,7 @@ def test_missing_or_broken_state_falls_back_to_browser():
     root, port, stop = start_reading()
     try:
         default = {'contents': False, 'theme': 'browser'}
-        assert not server.STATE_PATH.exists(), server.STATE_PATH
+        assert not state.STATE_PATH.exists(), state.STATE_PATH
         status, doc = fetch_json(port, '/doc')
         assert status == 200, status
         assert doc['state'] == default, doc['state']
@@ -417,7 +447,7 @@ def test_missing_or_broken_state_falls_back_to_browser():
             '[]',
         )
         for content in broken:
-            server.STATE_PATH.write_text(content, encoding='utf-8')
+            state.STATE_PATH.write_text(content, encoding='utf-8')
             status, doc = fetch_json(port, '/doc')
             assert status == 200, (content, status)
             assert doc['state'] == default, (content, doc['state'])
@@ -456,16 +486,19 @@ def test_removed_file_gives_the_gone_reply_and_recovers():
         status, doc = fetch_json(port, '/doc')
         assert status == 200, status
         # Equality rather than a lookup, so a reply still carrying stale blocks
-        # or an outline is caught.
-        assert doc == gone, doc
+        # or an outline is caught. A file that is away has no time to report.
+        assert doc == dict(gone, mtime=None), doc
         source.write_text(START_MD, encoding='utf-8')
         status, back = fetch_json(port, '/doc')
         assert 'gone' not in back, back
-        assert back['blocks'] == render.render_blocks(START_MD), back['blocks']
-        # A file that cannot be decoded reads the same way as one that is away.
+        assert back['blocks'] == served_blocks(START_MD), back['blocks']
+        # A file that cannot be decoded reads the same way as one that is away,
+        # except that it is still there and still has a time of its own, which
+        # is what lets the page see it put right again.
         source.write_bytes(b'# Start\n\n\xff\xfe not text at all\n')
         status, invalid = fetch_json(port, '/doc')
         assert status == 200, status
+        assert isinstance(invalid.pop('mtime'), int), invalid
         assert invalid == gone, invalid
     finally:
         stop()
@@ -475,21 +508,21 @@ def test_split_is_kept_beside_the_theme_and_falls_back():
     """The divider's share and the page's theme share a file and neither puts the other out."""
     root, port, stop = start_reading()
     try:
-        assert server.load_split() == server.DEFAULT_SPLIT, server.load_split()
-        server.save_split(0.62)
-        assert server.load_split() == 0.62, server.load_split()
+        assert state.load_split() == state.DEFAULT_SPLIT, state.load_split()
+        state.save_split(0.62)
+        assert state.load_split() == 0.62, state.load_split()
         # The page stores through the route and knows nothing of the split.
         fetch_json(port, '/api/state', 'POST', {'theme': 'github', 'contents': True})
-        stored = json.loads(server.STATE_PATH.read_text(encoding='utf-8'))
+        stored = json.loads(state.STATE_PATH.read_text(encoding='utf-8'))
         assert stored == {'contents': True, 'theme': 'github', 'split': 0.62}, stored
         # And a reading storing the split knows nothing of the theme.
-        server.save_split(0.5)
-        assert server.load_state() == {'contents': True, 'theme': 'github'}, stored
+        state.save_split(0.5)
+        assert state.load_state() == {'contents': True, 'theme': 'github'}, stored
         # A share the divider could not have left behind, whichever way it is
         # wrong, opens the reading at the split the first one opened at.
         for share in ('sideways', None, 0.02, 0.99):
-            server.save_state({'split': share})
-            assert server.load_split() == server.DEFAULT_SPLIT, share
+            state.save_state({'split': share})
+            assert state.load_split() == state.DEFAULT_SPLIT, share
     finally:
         stop()
 
@@ -516,7 +549,7 @@ def test_state_file_is_never_read_half_written():
         deadline = time.monotonic() + TIMEOUT
         while writer.is_alive() and time.monotonic() < deadline:
             try:
-                stored = json.loads(server.STATE_PATH.read_text(encoding='utf-8'))
+                stored = json.loads(state.STATE_PATH.read_text(encoding='utf-8'))
             except (OSError, ValueError) as error:
                 raise AssertionError(f'the state file was not whole: {error}')
             assert stored['theme'] in THEMES, stored
@@ -527,7 +560,7 @@ def test_state_file_is_never_read_half_written():
         assert seen > 10, f'only {seen} reads landed while the file was being written'
         # Proof that every write went through, so the reads above were racing a
         # writer rather than watching a file nobody was touching.
-        final = json.loads(server.STATE_PATH.read_text(encoding='utf-8'))
+        final = json.loads(state.STATE_PATH.read_text(encoding='utf-8'))
         assert final == last, final
     finally:
         stop()
@@ -541,7 +574,7 @@ def test_state_is_stored_and_reported_back():
         status, reply = fetch_json(port, '/api/state', 'POST', wanted)
         assert status == 200, status
         assert reply == wanted, reply
-        stored = json.loads(server.STATE_PATH.read_text(encoding='utf-8'))
+        stored = json.loads(state.STATE_PATH.read_text(encoding='utf-8'))
         assert stored == wanted, stored
         status, doc = fetch_json(port, '/doc')
         assert doc['state'] == wanted, doc['state']

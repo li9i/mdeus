@@ -37,6 +37,9 @@ let contentsOpen = false;
 let doc = null;
 let headingIds = [];
 let mtime = null;
+/* The source lines the top level headings start at, which is to say where every
+   section the page can fold begins. Taken from the outline the server sends. */
+let sectionLines = new Set();
 let theme = null;
 
 function anchor() {
@@ -67,12 +70,12 @@ function applyFolds() {
 }
 
 function applyTheme() {
-  /* The root carries the theme key and, on a page for reading, the reader
-     marker beside it. The marker is what the stylesheet sizes github off, so
-     writing the whole class name in one place keeps a theme change from
-     dropping it and quietly putting the document back to the review tool's
-     size. */
-  document.documentElement.className = `${theme} reader`;
+  /* Only the theme key is swapped. The root carries other classes that are not
+     this page's to write, the reader marker the stylesheet sizes github off
+     being one, so the keys are turned on and off one at a time rather than the
+     whole class name being written over. */
+  const root = document.documentElement;
+  THEMES.forEach(([key]) => root.classList.toggle(key, key === theme));
 }
 
 function blockHtml(block) {
@@ -189,14 +192,34 @@ function documentPath(href) {
 }
 
 function drawContents() {
-  /* The list sits above the document and pushes it down. It never floats. */
+  /* The list and the button that opens it, drawn together. Following a link
+     changes the document and with it the number of headings, so both are put up
+     or taken away again on every draw rather than built once at the start.
+
+     The list sits above the document and pushes it down. It never floats. */
+  const enough = headingIds.length >= CONTENTS_MINIMUM;
   const existing = document.querySelector('.toc');
   if (existing) {
     existing.remove();
   }
-  if (contentsOpen && headingIds.length >= CONTENTS_MINIMUM) {
+  if (contentsOpen && enough) {
     docNode.insertAdjacentHTML('beforebegin', contentsHtml());
   }
+  let button = controlsNode.querySelector('button');
+  if (!enough) {
+    if (button) {
+      button.remove();
+    }
+    return;
+  }
+  if (!button) {
+    button = document.createElement('button');
+    button.addEventListener('click', onContents);
+    button.id = 'contents';
+    button.type = 'button';
+    controlsNode.append(button);
+  }
+  button.textContent = contentsOpen ? 'Hide contents' : 'Contents';
 }
 
 function drawCopyButtons() {
@@ -224,8 +247,12 @@ function drawDocument() {
   if (doc.gone) {
     docNode.innerHTML = `<p class="gone">${esc(doc.name || 'The file')} is gone.</p>`;
     headingIds = [];
+    sectionLines = new Set();
     return;
   }
+  sectionLines = new Set(
+    doc.outline.filter((entry) => entry.level === 1).map((entry) => entry.line)
+  );
   const parts = doc.blocks.map(blockHtml);
   const meta = `<p class="meta">${esc(doc.name)}</p>`;
   if (doc.blocks.length && doc.blocks[0].type === 'heading') {
@@ -286,13 +313,12 @@ async function follow(relative, push) {
      one before it means nothing here, and the lines it was held by would fold
      whatever happens to start at them. */
   foldedAt.clear();
-  mtime = await currentMtime();
+  mtime = doc.mtime;
   if (push) {
     history.pushState({ path: doc.name }, '');
   }
   drawDocument();
   drawContents();
-  syncButton();
   window.scrollTo(0, 0);
 }
 
@@ -304,16 +330,21 @@ function heartbeat() {
 
 function isSection(block) {
   /* Say whether a block is a section of its own, which is to say a top level
-     heading. Nothing under that level folds. */
-  return !!block.querySelector(':scope > .prose > h1');
+     heading. Nothing under that level folds. The outline the server sends
+     already says which lines those begin at, so the rendered markup is not
+     asked the same question a second time. */
+  return sectionLines.has(Number(block.dataset.start));
 }
 
 async function load() {
   /* Draw what the server has. Called again whenever the file changes, so it
-     holds the reading position across a redraw. */
+     holds the reading position across a redraw. The document arrives with the
+     time it was last written, so the poll that follows compares against what
+     is on the screen rather than asking a second question. */
   const mark = anchor();
   const response = await fetch('/doc');
   doc = await response.json();
+  mtime = doc.mtime;
   if (theme === null) {
     theme = doc.state.theme;
     contentsOpen = doc.state.contents;
@@ -322,7 +353,6 @@ async function load() {
   }
   drawDocument();
   drawContents();
-  syncButton();
   restore(mark);
 }
 
@@ -346,7 +376,6 @@ function onContents() {
      written back as it is made and the next reading opens the same way. */
   contentsOpen = !contentsOpen;
   drawContents();
-  syncButton();
   saveState();
 }
 
@@ -443,10 +472,6 @@ function slug(text, used) {
 }
 
 async function start() {
-  /* The modification time is read before the first draw, so the first poll
-     compares against the file that was drawn rather than reporting an edit
-     that never happened. */
-  mtime = await currentMtime();
   await load();
   /* The document the reading opened at is the first history entry, so going
      back to it names a path like every other entry does. */
@@ -457,27 +482,6 @@ async function start() {
   heartbeat();
   window.setInterval(heartbeat, HEARTBEAT_MS);
   window.setInterval(poll, MTIME_MS);
-}
-
-function syncButton() {
-  /* Following a link changes the document and with it the number of headings,
-     so the button has to be put up or taken away again on every draw rather
-     than built once at the start. */
-  let button = controlsNode.querySelector('button');
-  if (headingIds.length < CONTENTS_MINIMUM) {
-    if (button) {
-      button.remove();
-    }
-    return;
-  }
-  if (!button) {
-    button = document.createElement('button');
-    button.addEventListener('click', onContents);
-    button.id = 'contents';
-    button.type = 'button';
-    controlsNode.append(button);
-  }
-  button.textContent = contentsOpen ? 'Hide contents' : 'Contents';
 }
 
 start();

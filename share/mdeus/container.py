@@ -25,19 +25,24 @@ two ordinary windows wherever the desktop puts them. It says so and carries on.
 
 import os
 import select
+import shutil
 import signal
 import subprocess
 import sys
 import time
 
 import vimlink
-from server import MAX_SPLIT, MIN_SPLIT, load_split, save_split
+from state import MAX_SPLIT, MIN_SPLIT, load_split, save_split
 
 try:
     from Xlib import X, Xatom, Xutil, display, error, protocol
 except ImportError:  # python3-xlib is not installed
     X = Xatom = Xutil = display = error = protocol = None
 
+# The browsers a reading can own a window of, in the order they are looked for.
+# Each of them gives a window with nothing in it but the page, and a profile of
+# its own, which is what lets the reading close that window again.
+BROWSERS = ('google-chrome', 'chromium', 'chromium-browser')
 # How long to give the browser to close before it is made to, in seconds.
 BROWSER_STOP = 5
 # How wide a strip of the reading you can take hold of the seam by. It lies
@@ -128,6 +133,15 @@ def browser_command(browser, url, profile, box, origin):
     return command
 
 
+def browser_path():
+    """Return the browser a reading can own a window of, or nothing where there is none."""
+    for candidate in BROWSERS:
+        found = shutil.which(candidate)
+        if found:
+            return found
+    return None
+
+
 def client_list(d):
     """Return the windows the desktop says it is managing."""
     listed = d.screen().root.get_full_property(
@@ -166,6 +180,12 @@ def drag(d, container, panes, divider, press):
         False, X.PointerMotionMask | X.ButtonReleaseMask,
         X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE, press.time,
     )
+    # The window cannot be resized or moved while the pointer is held, so both
+    # are read once rather than on every move. Every move carries where the
+    # pointer is on the screen, and the left edge is what turns that into where
+    # it is across the reading.
+    width = container.get_geometry().width
+    edge = d.screen().root.translate_coords(container, 0, 0).x
     try:
         while True:
             event = d.next_event()
@@ -177,8 +197,7 @@ def drag(d, container, panes, divider, press):
                 # drag, so the seam stays under the pointer as it moves.
                 meet(d, container, panes, divider)
             elif event.type == X.MotionNotify:
-                width = container.get_geometry().width
-                here = container.query_pointer().win_x / width
+                here = (event.root_x - edge) / width
                 wanted = min(MAX_SPLIT, max(MIN_SPLIT, here))
                 # Only where the seam would actually move. A pointer crossing a
                 # pixel that rounds to the column it is already on asks for a
@@ -198,6 +217,11 @@ def focus(d, window):
         return
     window.set_input_focus(X.RevertToParent, X.CurrentTime)
     d.sync()
+
+
+def focus_pane(d, panes, focused):
+    """Point the keyboard at the pane last clicked in, or at vim where that has gone."""
+    focus(d, panes.get(focused) or panes.get('terminal'))
 
 
 def ignore_gone(problem, request):
@@ -241,7 +265,7 @@ def keep_focus(d, container, panes, focused):
         return
     if top_level(d, here) in client_list(d):
         return
-    focus(d, panes.get(focused) or panes.get('terminal'))
+    focus_pane(d, panes, focused)
 
 
 def layout(d, container, panes, divider):
@@ -276,7 +300,8 @@ def locked():
 
 def main(argv):
     """Open a reading, hold it up, and put everything away when it ends."""
-    browser, url, servername, profile, script, document = argv
+    url, servername, profile, script, document = argv
+    browser = browser_path()
     if not browser:
         print(NO_BROWSER, flush=True)
     d = x_display() if browser else None
@@ -467,9 +492,12 @@ def take_in(d, container, wanted):
     waiting = list(wanted)
     deadline = time.monotonic() + WINDOW_WAIT
     while waiting and time.monotonic() < deadline:
+        # The desktop's list is asked for once a turn rather than once a pane,
+        # since both panes are looked for in the same list.
+        listed = client_list(d)
         for pane in list(waiting):
             name, pid, box, least_width = pane
-            window = window_of(d, pid, least_width)
+            window = window_of(d, listed, pid, least_width)
             if window is not None:
                 adopt(d, container, window, box)
                 panes[name] = window
@@ -603,7 +631,7 @@ def watch(d, container, panes, divider, page, terminal, servername):
             elif event.type == X.FocusIn and event.window.id == container.id:
                 if event.mode == X.NotifyNormal:
                     focused = under_pointer(container, panes) or focused
-                    focus(d, panes.get(focused) or panes.get('terminal'))
+                    focus_pane(d, panes, focused)
             elif event.type == X.ClientMessage:
                 if event.data[1][0] == d.intern_atom('WM_DELETE_WINDOW'):
                     vimlink.quit_vim(servername)
@@ -621,28 +649,31 @@ def white(d, window):
     return d.screen().white_pixel
 
 
-def window_of(d, pid, least_width):
+def window_of(d, listed, pid, least_width):
     """Return the window a program has put up, or nothing while it has put up none.
 
     A program may put up a window of its own as well as the one wanted, so the
-    widest is taken and anything too narrow to be a pane is passed over.
+    widest is taken and anything too narrow to be a pane is passed over. Each
+    width is asked for once and carried, since this runs many times a second
+    while a browser starts.
     """
     wide = []
-    for window in windows_of(d, pid):
+    for window in windows_of(d, listed, pid):
         try:
-            if window.get_geometry().width >= least_width:
-                wide.append(window)
+            width = window.get_geometry().width
         except Exception:
-            pass
+            continue
+        if width >= least_width:
+            wide.append((width, window))
     if not wide:
         return None
-    return max(wide, key=lambda window: window.get_geometry().width)
+    return max(wide, key=lambda found: found[0])[1]
 
 
-def windows_of(d, pid):
-    """Return the desktop's own list of the windows belonging to a process."""
+def windows_of(d, listed, pid):
+    """Return the windows belonging to a process, out of the desktop's own list."""
     windows = []
-    for xid in client_list(d):
+    for xid in listed:
         window = d.create_resource_object('window', xid)
         owner = window.get_full_property(d.intern_atom('_NET_WM_PID'), Xatom.CARDINAL)
         if owner and owner.value[0] == pid:

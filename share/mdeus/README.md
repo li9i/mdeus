@@ -16,10 +16,12 @@ The ground a jump lights in vim is the `BmvimJump` highlight group. It is set as
 
 | File | What it is |
 | --- | --- |
-| `render.py` | Markdown in, blocks out, each carrying the source lines it was built from. Also the heading outline, the images the document points at, and its links to other markdown documents. |
-| `server.py` | Serves one reading: the page, the document, assets and links from inside the starting tree, and the routes vim talks to. |
+| `render.py` | Markdown in, blocks out, each carrying the source lines it was built from, plus the heading outline. Where an image beside the document is written as is the caller's to say. |
+| `server.py` | Serves one reading: the page, the document, files from inside the starting tree, and the routes vim talks to. |
+| `state.py` | The one file a reading remembers itself in, read by the server and by the window alike. |
 | `export.py` | The self contained file `bmv --print` writes. |
 | `vimlink.py` | The link to vim: the servername, jumps, following a link on both sides, and the cursor line coming back. |
+| `cursor.vim` | What vim does for as long as a reading is up: the cursor reports, the folds, and the ground a jump lights. |
 | `container.py` | The one window a reading with vim is drawn in, the browser and terminal inside it, and the seam between the two. |
 | `themes.css` | The three themes, the two controls and the copy button on a fence. |
 | `page.js` | The theme dropdown, the contents list, the copy button on every fence, the heading names, the sections a double click folds away, and the redraw. |
@@ -30,7 +32,7 @@ The commands themselves are `bmv` and `bmvim`, and they live in `~/.local/bin`.
 
 `render.py` and `themes.css` are read by the spec review tool in `~/.claude/scripts/spec_review` as well, so that tool will not start unless this package is stowed.
 
-A page for reading carries `reader` on the root element beside the theme name, and the spec review tool does not. That marker is what sizes the `github` theme at 14px for reading while the review tool keeps 16px. So anything writing `document.documentElement.className` has to write the marker with it, and `applyTheme()` in `page.js` is the one place that does. A printed copy carries the marker too, so `bmv --print` reads at the same size as a served reading.
+A page for reading carries `reader` on the root element beside the theme name, and the spec review tool does not. That marker is what sizes the `github` theme at 14px for reading while the review tool keeps 16px. The server writes it once, when it sends the page, and a theme change in `page.js` turns the theme keys on and off one at a time rather than writing the whole class name over, so nothing else on the root is this page's to lose. A printed copy carries the marker too, so `bmv --print` reads at the same size as a served reading.
 
 ## What it needs
 
@@ -129,8 +131,9 @@ Run all of it after touching anything to do with the browser, the windows or vim
 
 49. Several `bmv` readings at once, on different documents. Each prints its own address on its own port and each redraws its own file.
 50. No browser reachable. `env -u DISPLAY -u BROWSER bmv doc.md`. The address is printed anyway and the reading serves, so it can still be opened by hand. Fetch it with `curl` or paste it into a browser started later.
-51. `bmv --print doc.md` on a document with an image in it. Open the file it names, move it somewhere else and open it again. It renders the same, and the theme dropdown works and stores nothing.
-52. Close the page in the browser rather than pressing ctrl-c. Within about ten seconds the command ends by itself and the shell comes back. Nothing else may be speaking to that port while you check: a page left open from an earlier reading goes on saying it is there, and a reading is kept up by any page that does.
+51. `bmv doc.md` on a document with an image in it, one beside the document and one named by an absolute path. The first is drawn, served out of the tree the reading started in. The second is left to the browser, which is right to find nothing for it.
+52. `bmv --print doc.md` on the same document. Open the file it names, move it somewhere else and open it again. The image beside the document is drawn wherever the file has been taken, since it travels inside it, and the theme dropdown works and stores nothing.
+53. Close the page in the browser rather than pressing ctrl-c. Within about ten seconds the command ends by itself and the shell comes back. Nothing else may be speaking to that port while you check: a page left open from an earlier reading goes on saying it is there, and a reading is kept up by any page that does.
 
 ## Three things that look odd and are not
 

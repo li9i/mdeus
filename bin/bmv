@@ -25,7 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'share' / 'mdview'))
 
 from export import write_export  # noqa: E402
-from server import HOST, Reading, build_server, serve  # noqa: E402
+from server import serve, start  # noqa: E402
 
 
 def main(argv=None):
@@ -62,9 +62,7 @@ def parse_args(argv):
 
 def read(document):
     """Serve one reading and open it, until ctrl-c or until the page goes quiet."""
-    reading = Reading(document)
-    bound = build_server(reading)
-    url = f'http://{HOST}:{bound.server_port}'
+    bound, reading, url = start(document)
     print(f'reading {document.name}')
     print(f'  {url}')
     print('  ctrl-c to stop, or close the page', flush=True)

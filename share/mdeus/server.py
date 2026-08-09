@@ -17,54 +17,30 @@ import mimetypes
 import sys
 import threading
 import time
-import uuid
 from functools import partial
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 import vimlink
 from render import render_document
+from state import THEMES, load_state, save_state
 
 ASSET_DIR = Path(__file__).resolve().parent
 # One above the spec review tool's port, so a reading and a review opened at
 # the same time do not push each other onto a fallback port.
 DEFAULT_PORT = 8766
-# The share of the window the browser pane takes in a reading with vim beside
-# it, before the divider between them has ever been dragged. It matches the
-# split the same document read in a terminal already uses.
-DEFAULT_SPLIT = 0.44
+# Where an image beside the document is served from. The page itself is served
+# at the root, so a document's own relative target would resolve against that
+# and name nothing.
+FILE_ROUTE = '/file/'
 # Long enough that a page reloading or a machine pausing for a moment does not
 # end the reading, short enough that a closed window does not leave a server
 # behind.
 HEARTBEAT_TIMEOUT = 10
 HOST = '127.0.0.1'
 MAX_BODY = 256 * 1024
-# How far the divider may be dragged either way. Far enough to read in either
-# pane alone, and never so far that the other one has nothing left to draw in.
-MAX_SPLIT = 0.85
-MIN_SPLIT = 0.15
-STATE_PATH = Path.home() / '.config' / 'mdview' / 'state.json'
-THEMES = ('browser', 'report', 'github')
-
-
-def block_range(document, line):
-    """Return the first and last source lines of the block that begins at this line.
-
-    The page sends only the line it wants vim on, and the block it came from is
-    found again here, so that vim can mark the whole of the block without the
-    page having to say any more than it already does. A line no block begins,
-    or a document that will not be read, gives that one line back on its own.
-    """
-    try:
-        source = document.read_text(encoding='utf-8')
-    except (OSError, UnicodeDecodeError):
-        return (line, line)
-    for block in render_document(source)['blocks']:
-        if block['line_start'] == line:
-            return (line, block['line_end'])
-    return (line, line)
 
 
 def build_server(reading, port=DEFAULT_PORT):
@@ -76,33 +52,6 @@ def build_server(reading, port=DEFAULT_PORT):
         return ThreadingHTTPServer((HOST, 0), handler)
 
 
-def load_split():
-    """Return the share of the window the browser pane takes.
-
-    A share the divider could not have left behind, whether it is missing,
-    unreadable or outside what can be dragged to, means the reading opens at
-    the split the very first one did.
-    """
-    try:
-        share = float(stored_state()['split'])
-    except (KeyError, TypeError, ValueError):
-        return DEFAULT_SPLIT
-    return share if MIN_SPLIT <= share <= MAX_SPLIT else DEFAULT_SPLIT
-
-
-def load_state():
-    """Return the stored theme and contents setting, or the ones a first reading gets.
-
-    A missing, unreadable or malformed file is not an error, and neither is a
-    theme naming something that does not exist. Any of them means the reading
-    opens the way the very first one did.
-    """
-    stored = stored_state()
-    if stored.get('theme') in THEMES:
-        return {'contents': bool(stored.get('contents')), 'theme': stored['theme']}
-    return {'contents': False, 'theme': 'browser'}
-
-
 def main(argv):
     """Serve one reading with vim beside it, saying on its output where it landed.
 
@@ -110,24 +59,18 @@ def main(argv):
     told the port, since a reading already up may hold the preferred one.
     """
     document, servername = argv
-    reading = Reading(Path(document), servername=servername)
-    bound = build_server(reading)
-    print(f'http://{HOST}:{bound.server_port}', flush=True)
+    bound, reading, url = start(Path(document), servername=servername)
+    print(url, flush=True)
     serve(bound, reading)
 
 
-def page_html(name, theme, vim):
-    """Return the empty page. The controls and the document are filled in by page.js."""
-    # The two files behind the sync with vim are linked only by a reading that
-    # has vim beside it. Anyone may ask for them, so the markup is what keeps
-    # them out of a reading that is only a browser. They load after page.js,
-    # which draws the document they mark.
-    sync = (
-        '\n    <link rel="stylesheet" href="/assets/bmvim.css" />'
-        '\n    <script src="/assets/bmvim.js" defer></script>'
-        if vim
-        else ''
-    )
+def page_html(name, theme, head, body_tail=''):
+    """Return the empty page. The controls and the document are filled in by page.js.
+
+    The one skeleton behind both a served reading and a printed copy. What
+    differs between them is how the stylesheet and the script arrive, which is
+    the caller's to hand in: linked from this server, or inlined whole.
+    """
     # The theme is already on the root element here so that the first paint is
     # the theme the reader chose, rather than an unstyled page for a moment.
     # The reader marker beside it says this is a page for reading rather than
@@ -138,13 +81,12 @@ def page_html(name, theme, vim):
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{escape(name)}</title>
-    <link rel="stylesheet" href="/assets/themes.css" />
-    <script src="/assets/page.js" defer></script>{sync}
+{head}
   </head>
   <body>
     <div class="controls"></div>
     <main class="doc"></main>
-  </body>
+{body_tail}  </body>
 </html>
 """
 
@@ -162,30 +104,6 @@ def resolve_inside(root, relative):
     return path
 
 
-def save_split(share):
-    """Store where the divider was left, for the next reading to open at."""
-    save_state({'split': round(share, 4)})
-
-
-def save_state(state):
-    """Write the state file atomically, so a reading never reads half a file.
-
-    What is written is merged into what is already there. Two things store into
-    this file and neither knows the other's field: the page stores the theme
-    and the contents setting, and a reading with vim beside it stores where the
-    divider was left.
-    """
-    STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    # A name of its own for every write, beside the target so the rename stays
-    # on one filesystem. Several readings may run at once, and one fixed
-    # temporary name would let two of them fill the same file and each rename
-    # the other's content into place.
-    temp = STATE_PATH.with_name(f'{STATE_PATH.name}.{uuid.uuid4().hex}.tmp')
-    merged = dict(stored_state(), **state)
-    temp.write_text(json.dumps(merged, indent=2) + '\n', encoding='utf-8')
-    temp.replace(STATE_PATH)
-
-
 def serve(server, reading):
     """Serve until interrupted, or until the page stops answering."""
     threading.Thread(target=watch_heartbeat, args=(server, reading), daemon=True).start()
@@ -196,13 +114,24 @@ def serve(server, reading):
             pass
 
 
-def stored_state():
-    """Return what the state file holds, or nothing where it holds nothing usable."""
+def start(document, servername=None):
+    """Bind a reading and return it, its server, and the address it landed on."""
+    reading = Reading(document, servername=servername)
+    bound = build_server(reading)
+    return bound, reading, f'http://{HOST}:{bound.server_port}'
+
+
+def wanted_block(body):
+    """Return the first and last source lines a request names, or raise ValueError.
+
+    The page knows which lines every block was built from, so a jump carries
+    both ends of them and vim marks the whole of the block without this having
+    to read the document again to find where it ends.
+    """
     try:
-        stored = json.loads(STATE_PATH.read_text(encoding='utf-8'))
-    except (OSError, ValueError):
-        return {}
-    return stored if isinstance(stored, dict) else {}
+        return int(body['line']), int(body['last'])
+    except (KeyError, TypeError) as error:
+        raise ValueError('no block') from error
 
 
 def wanted_line(body):
@@ -278,11 +207,11 @@ class ReadingHandler(BaseHTTPRequestHandler):
         elif path == '/api/cursor' and self.reading.servername:
             self.send_json({'clicks': self.reading.clicks, 'line': self.reading.cursor})
         elif path.startswith('/assets/'):
-            self.send_asset(unquote(path[len('/assets/') :]))
+            self.send_from(ASSET_DIR, unquote(path[len('/assets/') :]))
         elif path == '/doc':
             self.send_doc(parse_qs(parts.query).get('path', [''])[0])
-        elif path.startswith('/file/'):
-            self.send_file(unquote(path[len('/file/') :]))
+        elif path.startswith(FILE_ROUTE):
+            self.send_from(self.reading.root, unquote(path[len(FILE_ROUTE) :]))
         elif path == '/mtime':
             self.send_mtime()
         else:
@@ -301,8 +230,7 @@ class ReadingHandler(BaseHTTPRequestHandler):
                 self.reading.beat = time.monotonic()
                 self.send_json({'ok': True})
             elif self.path == '/api/jump' and self.reading.servername:
-                first, last = block_range(self.reading.current, wanted_line(body))
-                vimlink.jump(self.reading.servername, first, last)
+                vimlink.jump(self.reading.servername, *wanted_block(body))
                 self.send_json({'ok': True})
             elif self.path == '/api/state':
                 state = wanted_state(body)
@@ -313,8 +241,32 @@ class ReadingHandler(BaseHTTPRequestHandler):
         except ValueError as error:
             self.send_json({'error': str(error)}, code=400)
 
+    def image_src(self, target):
+        """Return where this server answers for an image beside the current document.
+
+        The page is served at the root, so a document's own relative target
+        would be read against that and name nothing. The address is built from
+        the root of the tree rather than from the document holding the image,
+        since a document reached by following a link sits further down. An
+        image resolving outside the tree is left as it was written, and the
+        reading serves nothing for it.
+        """
+        path = (self.reading.current.parent / unquote(target)).resolve()
+        try:
+            relative = path.relative_to(self.reading.root)
+        except ValueError:
+            return target
+        return FILE_ROUTE + quote(relative.as_posix())
+
     def log_message(self, fmt, *args):
         """Stay quiet, the terminal is the user's."""
+
+    def mtime(self):
+        """Return when the current document was last written, or nothing once it is gone."""
+        try:
+            return self.reading.current.stat().st_mtime_ns
+        except OSError:
+            return None
 
     def name(self):
         """Return the current document's name, as far down the tree as it sits."""
@@ -329,14 +281,6 @@ class ReadingHandler(BaseHTTPRequestHandler):
             return json.loads(self.rfile.read(length) or b'{}')
         except json.JSONDecodeError as error:
             raise ValueError('malformed JSON') from error
-
-    def send_asset(self, name):
-        """Send the page's own stylesheet or script."""
-        path = (ASSET_DIR / name).resolve()
-        if not path.is_relative_to(ASSET_DIR) or not path.is_file():
-            self.send_json({'error': 'not found'}, code=404)
-            return
-        self.send_bytes(path.read_bytes(), mimetypes.guess_type(path)[0] or 'text/plain')
 
     def send_bytes(self, payload, content_type, code=200):
         """Send one complete response."""
@@ -362,9 +306,14 @@ class ReadingHandler(BaseHTTPRequestHandler):
                 vimlink.edit(self.reading.servername, target)
         self.send_json(self.snapshot())
 
-    def send_file(self, relative):
-        """Send an image or other file the document points at."""
-        path = resolve_inside(self.reading.root, relative)
+    def send_from(self, root, relative):
+        """Send a file from inside one tree, or refuse to look outside it.
+
+        Both the page's own stylesheet and script and the images a document
+        points at come this way, since the only difference between them is
+        which tree they must stay inside.
+        """
+        path = resolve_inside(root, relative)
         if path is None:
             self.send_json({'error': 'not found'}, code=404)
             return
@@ -376,35 +325,39 @@ class ReadingHandler(BaseHTTPRequestHandler):
 
     def send_mtime(self):
         """Send the time the page polls to decide whether to redraw."""
-        try:
-            mtime = self.reading.current.stat().st_mtime_ns
-        except OSError:
-            mtime = None
-        self.send_json({'mtime': mtime})
+        self.send_json({'mtime': self.mtime()})
 
     def send_page(self):
-        """Send the empty page."""
-        page = page_html(
-            self.name(), load_state()['theme'], bool(self.reading.servername)
-        )
+        """Send the empty page, linking the stylesheet and the script it draws with."""
+        head = [
+            '    <link rel="stylesheet" href="/assets/themes.css" />',
+            '    <script src="/assets/page.js" defer></script>',
+        ]
+        # The two files behind the sync with vim are linked only by a reading
+        # that has vim beside it. Anyone may ask for them, so the markup is what
+        # keeps them out of a reading that is only a browser. They load after
+        # page.js, which draws the document they mark.
+        if self.reading.servername:
+            head.append('    <link rel="stylesheet" href="/assets/bmvim.css" />')
+            head.append('    <script src="/assets/bmvim.js" defer></script>')
+        page = page_html(self.name(), load_state()['theme'], '\n'.join(head))
         self.send_bytes(page.encode('utf-8'), 'text/html')
 
     def snapshot(self):
         """Return what the page draws, or the reply that says the file is gone."""
         # The state travels with the document because the page reads its theme
-        # from the first reply it gets, which may well be the gone one.
-        state = load_state()
+        # from the first reply it gets, which may well be the gone one. The
+        # modification time travels with it for the same reason the blocks do:
+        # it is the time of the document the page is about to draw, so the poll
+        # that follows compares against what is on the screen without having to
+        # ask a second question.
+        common = {'mtime': self.mtime(), 'name': self.name(), 'state': load_state()}
         try:
             source = self.reading.current.read_text(encoding='utf-8')
         except (OSError, UnicodeDecodeError):
-            return {'name': self.name(), 'gone': True, 'state': state}
-        rendered = render_document(source)
-        return {
-            'name': self.name(),
-            'blocks': rendered['blocks'],
-            'outline': rendered['outline'],
-            'state': state,
-        }
+            return dict(common, gone=True)
+        rendered = render_document(source, image_src=self.image_src)
+        return dict(common, blocks=rendered['blocks'], outline=rendered['outline'])
 
 
 if __name__ == '__main__':

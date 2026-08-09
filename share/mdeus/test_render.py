@@ -5,6 +5,7 @@ Needs markdown_it, which render.py needs anyway. Nothing else, and no test
 framework.
 """
 
+import re
 import sys
 
 import render
@@ -98,13 +99,22 @@ TWO_HEADING_FIXTURE = """\
 """
 
 
-def test_assets_and_links_find_relative_targets_only():
-    """Only targets beside the document count as assets or markdown links."""
-    document = render.render_document(TARGET_FIXTURE)
-    # The server serves exactly what these two lists name, so an absolute path
-    # or a remote address must never reach them.
-    assert document['assets'] == ['images/diagram.png'], document['assets']
-    assert document['links'] == ['notes/other.md'], document['links']
+def test_only_images_beside_the_document_are_retargeted():
+    """An image beside the document is written as the caller says. Nothing else moves."""
+    document = render.render_document(
+        TARGET_FIXTURE, image_src=lambda target: f'served/{target}'
+    )
+    html = ''.join(block['html'] for block in document['blocks'])
+    sources = re.findall(r'src="([^"]*)"', html)
+    # Only the first names a file the caller can answer for. An absolute path
+    # and a remote address are nobody here's to serve, and a link is not an
+    # image however relative it is.
+    assert sources == [
+        'served/images/diagram.png',
+        '/usr/share/pixmaps/logo.png',
+        'http://example.com/remote.png',
+    ], sources
+    assert 'href="notes/other.md"' in html, html
 
 
 def test_block_lines_name_their_source():
