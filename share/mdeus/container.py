@@ -83,9 +83,18 @@ def adopt(d, container, window, box):
     The click that would ordinarily give a window the keyboard is asked for
     here as well, since the two panes are one window as far as the desktop is
     concerned and nothing else is left to hand the keyboard between them.
+
+    White is put under the pane on the way in, for the moment between the
+    window arriving and the program drawing in it again. A window that has been
+    unmapped and mapped somewhere else holds nothing, and until its program
+    catches up what shows is whatever the X server was left with, which is
+    black. A browser takes seconds to draw its first page, and those are seconds
+    of a black rectangle where the reading is. The container is white for the
+    same reason, so a pane arriving over it looks like no arrival at all.
     """
     withdraw(d, window)
     x, y, width, height = box
+    window.change_attributes(background_pixel=white(d, window))
     window.reparent(container, x, y)
     window.configure(x=x, y=y, width=width, height=height)
     window.map()
@@ -575,6 +584,18 @@ def watch(d, container, panes, divider, page, terminal, servername):
             elif event.type == X.ClientMessage:
                 if event.data[1][0] == d.intern_atom('WM_DELETE_WINDOW'):
                     vimlink.quit_vim(servername)
+
+
+def white(d, window):
+    """Return opaque white for a window, whatever depth it draws at.
+
+    A browser and a terminal both ask for a visual with an alpha channel where
+    the screen itself has none, and the screen's white on such a visual is
+    white with nothing of it left, which is to say nothing at all.
+    """
+    if window.get_geometry().depth == 32:
+        return 0xFFFFFFFF
+    return d.screen().white_pixel
 
 
 def window_of(d, pid, least_width):
