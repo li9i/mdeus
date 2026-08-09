@@ -17,7 +17,7 @@
 
 const CURSOR_MS = 200;
 /* How long the clicked ground stays before it is let go. The fade itself is
-   in cvim.css. */
+   in bmvim.css. */
 const FLASH_MS = 1000;
 
 const pane = document.querySelector('.doc');
@@ -57,13 +57,13 @@ function blockForLine(line) {
 function flash(block) {
   /* The ground on the block that was clicked. One block carries it at a
      time, and clicking again starts the second over. */
-  const lit = pane.querySelector('.cvim-click');
+  const lit = pane.querySelector('.bmvim-click');
   if (lit) {
-    lit.classList.remove('cvim-click');
+    lit.classList.remove('bmvim-click');
   }
   window.clearTimeout(flashTimer);
-  block.classList.add('cvim-click');
-  flashTimer = window.setTimeout(() => block.classList.remove('cvim-click'), FLASH_MS);
+  block.classList.add('bmvim-click');
+  flashTimer = window.setTimeout(() => block.classList.remove('bmvim-click'), FLASH_MS);
 }
 
 function markCursor(line) {
@@ -75,15 +75,15 @@ function markCursor(line) {
      block arrives as a new line in the same block, which is the case that
      must never scroll: someone is typing. */
   const block = blockForLine(line);
-  const ruled = pane.querySelector('.cvim-cursor');
+  const ruled = pane.querySelector('.bmvim-cursor');
   if (ruled && ruled !== block) {
-    ruled.classList.remove('cvim-cursor');
+    ruled.classList.remove('bmvim-cursor');
   }
   if (!block) {
     ruleAt = null;
     return;
   }
-  block.classList.add('cvim-cursor');
+  block.classList.add('bmvim-cursor');
   const begins = Number(block.dataset.start);
   if (begins !== ruleAt) {
     ruleAt = begins;

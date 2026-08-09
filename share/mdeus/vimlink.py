@@ -51,7 +51,7 @@ def jump(servername, first, last):
     remote(
         servername,
         '--remote-send',
-        f'{NORMAL_MODE}:call CvimJumpTo({int(first)}, {int(last)})<CR>',
+        f'{NORMAL_MODE}:call BmvimJumpTo({int(first)}, {int(last)})<CR>',
     )
 
 

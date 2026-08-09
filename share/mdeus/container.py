@@ -15,8 +15,9 @@ manager has let go of it.
 
 Nothing manages the two windows once they are inside, and the work a window
 manager would have done falls here. The panes are laid out again whenever the
-container is resized, and the keyboard is handed from one pane to the other on a
-click, which is how the desktop is set to hand it between windows.
+container is resized, the seam between them is dragged with the pointer, and
+the keyboard is handed from one pane to the other on a click, which is how the
+desktop is set to hand it between windows.
 
 Without python3-xlib there is no container to be made, so the reading opens in
 two ordinary windows wherever the desktop puts them. It says so and carries on.
@@ -30,30 +31,42 @@ import sys
 import time
 
 import vimlink
+from server import MAX_SPLIT, MIN_SPLIT, load_split, save_split
 
 try:
     from Xlib import X, Xatom, Xutil, display, error, protocol
 except ImportError:  # python3-xlib is not installed
     X = Xatom = Xutil = display = error = protocol = None
 
-BROWSER_SHARE = 0.44
 # How long to give the browser to close before it is made to, in seconds.
 BROWSER_STOP = 5
+# How wide a strip of the reading you can take hold of the seam by. It lies
+# over the join rather than between the panes, so the two go on meeting exactly
+# and the reading looks no different for being draggable.
+DIVIDER = 6
+# The glyph in the cursor font that says a thing can be dragged sideways, and
+# the glyph after it, which is its mask.
+DIVIDER_CURSOR = 108
 # What the reading is called, on its title bar and on the panel.
-NAME = b'cvim'
+NAME = b'bmvim'
 NO_BROWSER = (
-    'cvim: no chrome or chromium here, so the page opens in a tab of your\n'
-    '      usual browser, which is neither placed nor closed for you'
+    'bmvim: no chrome or chromium here, so the page opens in a tab of your\n'
+    '       usual browser, which is neither placed nor closed for you'
 )
 # How often the two programs are looked in on, in seconds.
 POLL = 0.25
 SETTLE_TRIES = 20
 SETTLE_WAIT = 0.05
-UNPLACED = 'cvim: the reading is in two windows of its own, wherever the desktop put them'
+UNPLACED = 'bmvim: the reading is in two windows of its own, wherever the desktop put them'
 # How long to go on waiting for a program to put its window up, in seconds.
 WINDOW_WAIT = 15
 # How long to go on waiting for the window manager to let go of a window.
 WITHDRAW_WAIT = 5
+
+# The share of the window the browser pane takes. A reading opens at whatever
+# the last drag of the divider left, and every layout is measured from this, so
+# it is kept here rather than handed down through the events that read it.
+browser_share = load_split()
 
 
 def adopt(d, container, window, box):
@@ -106,6 +119,62 @@ def client_list(d):
     return list(listed.value) if listed else []
 
 
+def divider_at(divider, seam, height):
+    """Lay the strip you drag over the seam between the two panes.
+
+    It is put on top every time, since a pane mapped into the container after
+    it would otherwise sit over it and take the clicks meant for it.
+    """
+    divider.configure(
+        x=seam - DIVIDER // 2, y=0, width=DIVIDER, height=height,
+        stack_mode=X.Above,
+    )
+
+
+def drag(d, container, panes, divider, press):
+    """Move the seam with the pointer until the button goes up.
+
+    The pointer is grabbed for as long as the drag lasts, because the strip is
+    dragged out from under the pointer on the very first move and would stop
+    hearing about it otherwise.
+
+    The panes are laid out again on every move rather than at the end, since a
+    seam that arrives where the pointer left it says nothing about where it
+    will land: a terminal settles on whole character columns, so the reading
+    snaps to the nearest one and dragging is how you see which. Where it was
+    left is stored, so the next reading opens at the same split.
+    """
+    global browser_share
+    divider.grab_pointer(
+        False, X.PointerMotionMask | X.ButtonReleaseMask,
+        X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE, press.time,
+    )
+    try:
+        while True:
+            event = d.next_event()
+            if event.type == X.ButtonRelease:
+                break
+            if event.type == X.ConfigureNotify:
+                # The terminal answering with the width it settled on. The
+                # browser is given the remainder now rather than after the
+                # drag, so the seam stays under the pointer as it moves.
+                meet(d, container, panes, divider)
+            elif event.type == X.MotionNotify:
+                width = container.get_geometry().width
+                here = container.query_pointer().win_x / width
+                wanted = min(MAX_SPLIT, max(MIN_SPLIT, here))
+                # Only where the seam would actually move. A pointer crossing a
+                # pixel that rounds to the column it is already on asks for a
+                # layout that changes nothing and costs both panes a redraw.
+                if round(wanted * width) != round(browser_share * width):
+                    browser_share = wanted
+                    layout(d, container, panes, divider)
+    finally:
+        d.ungrab_pointer(X.CurrentTime)
+        d.sync()
+    save_split(browser_share)
+
+
 def focus(d, window):
     """Point the keyboard at one of the panes."""
     if window is None:
@@ -124,7 +193,7 @@ def ignore_gone(problem, request):
     that is not a window having gone is still worth hearing about.
     """
     if not isinstance(problem, (error.BadWindow, error.BadDrawable, error.BadMatch)):
-        sys.stderr.write(f'cvim: {problem}\n')
+        sys.stderr.write(f'bmvim: {problem}\n')
 
 
 def keep_focus(d, panes, focused):
@@ -145,13 +214,13 @@ def keep_focus(d, panes, focused):
     focus(d, panes.get(focused) or panes.get('terminal'))
 
 
-def layout(d, container, panes):
+def layout(d, container, panes, divider):
     """Give each pane its share of the container.
 
-    The browser takes 44 percent of the width on the left and the terminal the
-    rest, which is how the same document read in a terminal is already split.
-    What the terminal rounds off its width is given back to the browser once the
-    terminal has answered, which is meet()'s work rather than this one's.
+    The browser takes the left of the window and the terminal the rest, in the
+    proportion the divider was last dragged to. What the terminal rounds off its
+    width is given back to the browser once the terminal has answered, which is
+    meet()'s work rather than this one's.
     """
     here = container.get_geometry()
     boxes = pane_boxes(here.width, here.height)
@@ -159,6 +228,7 @@ def layout(d, container, panes):
         window = panes.get(name)
         if window is not None:
             window.configure(x=box[0], y=box[1], width=box[2], height=box[3])
+    divider_at(divider, boxes[1][0], here.height)
     d.sync()
 
 
@@ -185,10 +255,11 @@ def main(argv):
         print(UNPLACED, flush=True)
 
     if container is None:
-        boxes, origin = (None, None), (0, 0)
+        boxes, divider, origin = (None, None), None, (0, 0)
     else:
         here = container.get_geometry()
         boxes = pane_boxes(here.width, here.height)
+        divider = make_divider(d, container)
         where = d.screen().root.translate_coords(container, 0, 0)
         origin = (where.x, where.y)
 
@@ -224,8 +295,11 @@ def main(argv):
             if window is not None:
                 adopt(d, container, window, boxes[1])
                 panes['terminal'] = window
+            # The panes were mapped after the strip and are sitting over it, so
+            # the seam is laid again now that there is something to lay it on.
+            meet(d, container, panes, divider)
             focus(d, panes.get('terminal'))
-        watch(d, container, panes, page, terminal, servername)
+        watch(d, container, panes, divider, page, terminal, servername)
     finally:
         if page is not None and page.poll() is None:
             # Waited for rather than left to close in its own time, because the
@@ -248,6 +322,11 @@ def make_container(d):
     panel, and the window manager takes what its own border needs out of that.
     The name is the reading's own, since the container is the only window the
     desktop can see and there is nothing left to borrow a name from.
+
+    It is white because it is seen before either pane is in it, and again
+    afterwards in the band the terminal rounds off its height. A browser takes
+    a moment to start, and a container of any other colour would open as a
+    rectangle of that colour and then become a reading.
     """
     root = d.screen().root
     area = root.get_full_property(d.intern_atom('_NET_WORKAREA'), Xatom.CARDINAL)
@@ -258,7 +337,7 @@ def make_container(d):
         width, height = d.screen().width_in_pixels, d.screen().height_in_pixels
     container = root.create_window(
         x, y, width, height, 0, X.CopyFromParent, X.InputOutput, X.CopyFromParent,
-        background_pixel=d.screen().black_pixel,
+        background_pixel=d.screen().white_pixel,
         event_mask=(
             X.StructureNotifyMask | X.SubstructureNotifyMask | X.FocusChangeMask
         ),
@@ -266,7 +345,7 @@ def make_container(d):
     utf8 = d.intern_atom('UTF8_STRING')
     container.set_wm_name(NAME.decode())
     container.set_wm_icon_name(NAME.decode())
-    container.set_wm_class('cvim', 'Cvim')
+    container.set_wm_class('bmvim', 'Bmvim')
     container.change_property(d.intern_atom('_NET_WM_NAME'), utf8, 8, NAME)
     container.change_property(d.intern_atom('_NET_WM_ICON_NAME'), utf8, 8, NAME)
     container.change_property(
@@ -279,13 +358,34 @@ def make_container(d):
     return container
 
 
-def meet(d, container, panes):
+def make_divider(d, container):
+    """Put a strip over the seam for the pointer to take hold of.
+
+    It draws nothing at all. The two panes meet exactly and there is no gap
+    between them to grab, so what is dragged is a window of its own laid over
+    the join, there for the pointer and for nothing else. The pointer changes
+    shape over it, which is the whole of what says the seam can be moved.
+    """
+    font = d.open_font('cursor')
+    divider = container.create_window(
+        0, 0, DIVIDER, 1, 0, 0, X.InputOnly, X.CopyFromParent,
+        cursor=font.create_glyph_cursor(
+            font, DIVIDER_CURSOR, DIVIDER_CURSOR + 1,
+            (0, 0, 0), (65535, 65535, 65535),
+        ),
+        event_mask=X.ButtonPressMask,
+    )
+    divider.map()
+    return divider
+
+
+def meet(d, container, panes, divider):
     """Put the two panes edge to edge, whatever the terminal rounded off its width.
 
     A terminal settles on a whole number of character columns however wide it is
     asked to be. So it is asked for its share, told where to sit once it has
     answered, and the browser beside it is given what was rounded off, and the
-    two meet exactly however the reading is resized.
+    two meet exactly however the reading is resized or dragged.
 
     The rows rounded off in the other direction leave a band of the container
     showing below the terminal, and nothing here can close it. A terminal fills
@@ -295,21 +395,22 @@ def meet(d, container, panes):
     browser, terminal = panes.get('browser'), panes.get('terminal')
     if terminal is None:
         return
-    width = container.get_geometry().width
-    here = terminal.get_geometry()
-    left = width - here.width
+    here = container.get_geometry()
+    there = terminal.get_geometry()
+    left = here.width - there.width
     # Asked for only where it is wrong, since a request answered by no change
     # still arrives back here and would otherwise go round for ever.
-    if here.x != left:
+    if there.x != left:
         terminal.configure(x=left)
     if browser is not None and browser.get_geometry().width != left:
         browser.configure(width=left)
+    divider_at(divider, left, here.height)
     d.sync()
 
 
 def pane_boxes(width, height):
     """Return where each pane goes inside a container of this size."""
-    left = round(width * BROWSER_SHARE)
+    left = round(width * browser_share)
     return ((0, 0, left, height), (left, 0, width - left, height))
 
 
@@ -367,7 +468,7 @@ def under_pointer(container, panes):
     return None
 
 
-def watch(d, container, panes, page, terminal, servername):
+def watch(d, container, panes, divider, page, terminal, servername):
     """Hold the reading up until it ends.
 
     It ends when vim quits, which is what the terminal is waiting on, or when
@@ -399,6 +500,12 @@ def watch(d, container, panes, page, terminal, servername):
         while d.pending_events():
             event = d.next_event()
             if event.type == X.ButtonPress:
+                # A press on the strip over the seam is a drag and nothing
+                # else. It reaches the strip rather than the pane under it, so
+                # no click is owed to anybody and none is let through.
+                if event.window.id == divider.id:
+                    drag(d, container, panes, divider, event)
+                    continue
                 for name, window in panes.items():
                     if window.id == event.window.id:
                         focused = name
@@ -408,9 +515,9 @@ def watch(d, container, panes, page, terminal, servername):
                 d.allow_events(X.ReplayPointer, event.time)
             elif event.type == X.ConfigureNotify:
                 if event.window.id == container.id:
-                    layout(d, container, panes)
+                    layout(d, container, panes, divider)
                 else:
-                    meet(d, container, panes)
+                    meet(d, container, panes, divider)
             elif event.type == X.FocusIn and event.window.id == container.id:
                 if event.mode == X.NotifyNormal:
                     focused = under_pointer(container, panes) or focused

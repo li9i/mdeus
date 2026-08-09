@@ -6,7 +6,7 @@
 # a moment, moving the vim cursor marks the block it is in, and writing the file
 # redraws the page.
 #
-#   cvim <document.md>
+#   bmvim <document.md>
 #
 # The reading opens a terminal of its own for vim, so the shell this was run from
 # stays yours and waits. It needs a desktop session, so use bmv where there is
@@ -22,7 +22,7 @@ set -euo pipefail
 
 # One name for the one reading. vim keeps servernames upper cased and so does
 # the check that only one reading is up.
-SERVERNAME=CVIM
+SERVERNAME=BMVIM
 
 # The modules this drives sit beside the script inside the package, so they are
 # found whether the package is stowed or run from a checkout of it.
@@ -31,19 +31,19 @@ link="$share/vimlink.py"
 
 if [ $# -ne 1 ]
 then
-  echo "usage: cvim <document.md>" >&2
+  echo "usage: bmvim <document.md>" >&2
   exit 1
 fi
 
 if [ ! -f "$1" ]
 then
-  echo "cvim: no such file: $1" >&2
+  echo "bmvim: no such file: $1" >&2
   exit 1
 fi
 
 if [ ! -r "$1" ]
 then
-  echo "cvim: cannot read: $1" >&2
+  echo "bmvim: cannot read: $1" >&2
   exit 1
 fi
 
@@ -51,7 +51,7 @@ file="$(readlink -f "$1")"
 
 if [ -z "${DISPLAY:-}" ]
 then
-  echo "cvim: needs a desktop session, so use bmv where there is none" >&2
+  echo "bmvim: needs a desktop session, so use bmv where there is none" >&2
   exit 1
 fi
 
@@ -59,7 +59,7 @@ fi
 # it is asked what it has open, so the refusal says which document is being read.
 if held="$(python3 "$link" holder "$SERVERNAME")"
 then
-  echo "cvim: already reading ${held:-another document}" >&2
+  echo "bmvim: already reading ${held:-another document}" >&2
   exit 1
 fi
 
@@ -94,7 +94,7 @@ done
 
 if [ -z "$url" ]
 then
-  echo "cvim: the reading did not start" >&2
+  echo "bmvim: the reading did not start" >&2
   exit 1
 fi
 
@@ -140,39 +140,39 @@ call s:MdviewReport(0)
 " built from and sends both ends of them, so the whole block is lit rather than
 " the line it starts at. A pale ground for the eye to land on without hunting,
 " and gone again once the eye has had it: long enough to be seen, short enough
-" not to be read against. Set as a default, so that naming CvimJump in .vimrc
+" not to be read against. Set as a default, so that naming BmvimJump in .vimrc
 " overrides it.
 let s:linger = 1500
-highlight default CvimJump ctermfg=black ctermbg=153 guifg=black guibg=#BDDFFF
+highlight default BmvimJump ctermfg=black ctermbg=153 guifg=black guibg=#BDDFFF
 
 " The window and the mark are told to the moment that puts it out, rather than
 " left for it to find, since by the time it comes round the window it was lit in
 " may not be the one in hand. A mark already gone is no matter. The names are
 " plain ones, since a name held to this file cannot be called from the page and
 " cannot be handed to a timer.
-function! CvimFadeMark(window, match, timer) abort
+function! BmvimFadeMark(window, match, timer) abort
   silent! call matchdelete(a:match, a:window)
 endfunction
 
-function! CvimJumpTo(first, last) abort
+function! BmvimJumpTo(first, last) abort
   " Only the block last clicked is ever lit. The mark from the click before
   " goes, and so does the moment still counting down for it, which would
   " otherwise come round and put out the light this click has just lit.
-  if exists('w:cvim_timer')
-    silent! call timer_stop(w:cvim_timer)
-    unlet w:cvim_timer
+  if exists('w:bmvim_timer')
+    silent! call timer_stop(w:bmvim_timer)
+    unlet w:bmvim_timer
   endif
-  if exists('w:cvim_match')
-    silent! call matchdelete(w:cvim_match)
-    unlet w:cvim_match
+  if exists('w:bmvim_match')
+    silent! call matchdelete(w:bmvim_match)
+    unlet w:bmvim_match
   endif
   call cursor(a:first, 1)
   normal! zz
-  let w:cvim_match = matchadd(
-    \ 'CvimJump', '\%>' . (a:first - 1) . 'l\%<' . (a:last + 1) . 'l.\+')
+  let w:bmvim_match = matchadd(
+    \ 'BmvimJump', '\%>' . (a:first - 1) . 'l\%<' . (a:last + 1) . 'l.\+')
   if exists('*timer_start')
-    let w:cvim_timer =
-      \ timer_start(s:linger, function('CvimFadeMark', [win_getid(), w:cvim_match]))
+    let w:bmvim_timer =
+      \ timer_start(s:linger, function('BmvimFadeMark', [win_getid(), w:bmvim_match]))
   endif
 endfunction
 EOF
@@ -187,8 +187,8 @@ do
   fi
 done
 
-echo "cvim: reading $(basename "$file"), at $url"
-echo "      ctrl-c here asks vim to quit, as the reading's close button does"
+echo "bmvim: reading $(basename "$file"), at $url"
+echo "       ctrl-c here asks vim to quit, as the reading's close button does"
 
 # The window the reading is drawn in, and everything inside it. This holds the
 # shell until the reading ends.

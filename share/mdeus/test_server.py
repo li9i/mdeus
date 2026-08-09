@@ -90,9 +90,9 @@ START_OUTLINE = [
     {'text': 'Second heading', 'level': 2, 'line': 7},
 ]
 
-# The five theme names, written out here rather than read from the server, so
+# The three theme names, written out here rather than read from the server, so
 # that a theme quietly added or dropped there is caught instead of followed.
-THEMES = ('browser', 'serif', 'manpage', 'report', 'github')
+THEMES = ('browser', 'report', 'github')
 
 TIMEOUT = 5
 
@@ -254,8 +254,8 @@ def test_blocks_carry_the_lines_render_gave_them():
         stop()
 
 
-def test_every_theme_is_accepted_and_a_sixth_is_not():
-    """All five theme keys are stored and served back, and a name outside them is not."""
+def test_every_theme_is_accepted_and_a_fourth_is_not():
+    """All three theme keys are stored and served back, and a name outside them is not."""
     root, port, stop = start_reading()
     try:
         for theme in THEMES:
@@ -371,11 +371,11 @@ def test_linked_document_inside_the_tree_is_rendered():
         stop()
 
 
-def test_missing_or_broken_state_falls_back_to_serif():
+def test_missing_or_broken_state_falls_back_to_browser():
     """A state file that is absent, malformed or naming no theme is not an error."""
     root, port, stop = start_reading()
     try:
-        default = {'contents': False, 'theme': 'serif'}
+        default = {'contents': False, 'theme': 'browser'}
         assert not server.STATE_PATH.exists(), server.STATE_PATH
         status, doc = fetch_json(port, '/doc')
         assert status == 200, status
@@ -419,7 +419,7 @@ def test_removed_file_gives_the_gone_reply_and_recovers():
     root, port, stop = start_reading()
     try:
         gone = {'name': 'start.md', 'gone': True,
-                'state': {'contents': False, 'theme': 'serif'}}
+                'state': {'contents': False, 'theme': 'browser'}}
         source = root / 'start.md'
         source.unlink()
         status, doc = fetch_json(port, '/doc')
@@ -440,6 +440,29 @@ def test_removed_file_gives_the_gone_reply_and_recovers():
         stop()
 
 
+def test_split_is_kept_beside_the_theme_and_falls_back():
+    """The divider's share and the page's theme share a file and neither puts the other out."""
+    root, port, stop = start_reading()
+    try:
+        assert server.load_split() == server.DEFAULT_SPLIT, server.load_split()
+        server.save_split(0.62)
+        assert server.load_split() == 0.62, server.load_split()
+        # The page stores through the route and knows nothing of the split.
+        fetch_json(port, '/api/state', 'POST', {'theme': 'github', 'contents': True})
+        stored = json.loads(server.STATE_PATH.read_text(encoding='utf-8'))
+        assert stored == {'contents': True, 'theme': 'github', 'split': 0.62}, stored
+        # And a reading storing the split knows nothing of the theme.
+        server.save_split(0.5)
+        assert server.load_state() == {'contents': True, 'theme': 'github'}, stored
+        # A share the divider could not have left behind, whichever way it is
+        # wrong, opens the reading at the split the first one opened at.
+        for share in ('sideways', None, 0.02, 0.99):
+            server.save_state({'split': share})
+            assert server.load_split() == server.DEFAULT_SPLIT, share
+    finally:
+        stop()
+
+
 def test_state_file_is_never_read_half_written():
     """Somebody reading the state file only ever sees a whole and valid one."""
     root, port, stop = start_reading()
@@ -455,7 +478,7 @@ def test_state_file_is_never_read_half_written():
                            {'theme': THEMES[index % len(THEMES)],
                             'contents': bool(index % 2)})
 
-        fetch_json(port, '/api/state', 'POST', {'theme': 'serif', 'contents': False})
+        fetch_json(port, '/api/state', 'POST', {'theme': 'browser', 'contents': False})
         writer = threading.Thread(target=write_many)
         writer.start()
         seen = 0
@@ -483,7 +506,7 @@ def test_state_is_stored_and_reported_back():
     """POST /api/state writes the file, and the next /doc reports what it wrote."""
     root, port, stop = start_reading()
     try:
-        wanted = {'contents': True, 'theme': 'manpage'}
+        wanted = {'contents': True, 'theme': 'report'}
         status, reply = fetch_json(port, '/api/state', 'POST', wanted)
         assert status == 200, status
         assert reply == wanted, reply

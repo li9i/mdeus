@@ -18,8 +18,6 @@ const HEARTBEAT_MS = 3000;
 const MTIME_MS = 500;
 const THEMES = [
   ['browser', 'Browser default'],
-  ['serif', 'Serif document'],
-  ['manpage', 'Man page'],
   ['report', 'Mono headings'],
   ['github', 'GitHub'],
 ];

@@ -8,8 +8,8 @@
    left of it, for as long as the cursor is in it. The block you clicked
    carries a light grey ground, which fades once the click is a second old.
 
-   They are given different shapes rather than different shades. Four of the
-   five themes are black on white with no accent to spend on this, so two
+   They are given different shapes rather than different shades. Two of the
+   three themes are black on white with no accent to spend on this, so two
    marks separated only by colour would read as one mark in two moods. A rule
    beside the text and a ground behind it can never be mistaken for each
    other, and they stay legible together on the same block, which is what
@@ -42,20 +42,20 @@
   transition: background-color 0.4s ease-out;
 }
 
-.doc .block.cvim-cursor::before {
+.doc .block.bmvim-cursor::before {
   /* The theme's own text colour, so no theme gains a colour it did not
      already have. */
   background: currentColor;
   bottom: 0;
   content: '';
-  left: var(--cvim-rule, -13px);
+  left: var(--bmvim-rule, -13px);
   position: absolute;
   top: 0;
   width: 3px;
 }
 
-.doc .block.cvim-click {
-  background-color: var(--cvim-flash, #e6e6e6);
+.doc .block.bmvim-click {
+  background-color: var(--bmvim-flash, #e6e6e6);
   transition: none;
 }
 
@@ -63,30 +63,16 @@
    where each theme leaves room
 
    browser and github hold the document 8px from the window edge and nothing
-   more, so the rule sits close in. The other three give it a padding of over
-   a rem and the rule can stand clear of the text.
-
-   manpage indents the text inside every block by 3ch to imitate a man page,
-   but the blocks themselves stay where they are, and its headings take no
-   indent at all. So the offset here is measured from the block, as in every
-   other theme, and the rule sits in the page padding rather than in the
-   indent, where it would have landed on top of a heading.
+   more, so the rule sits close in. report gives it a padding of over a rem and
+   the rule can stand clear of the text.
    ------------------------------------------------------------------ */
 
 .browser .doc {
-  --cvim-rule: -7px;
-}
-
-.serif .doc {
-  --cvim-rule: -13px;
-}
-
-.manpage .doc {
-  --cvim-rule: -15px;
+  --bmvim-rule: -7px;
 }
 
 .report .doc {
-  --cvim-rule: -13px;
+  --bmvim-rule: -13px;
 }
 
 /* github draws grounds of its own, at #f6f8fa, on inline code, on fenced
@@ -94,6 +80,6 @@
    block that is grey for a second is never read as furniture that is grey
    always. */
 .github .doc {
-  --cvim-flash: #dbe2e9;
-  --cvim-rule: -7px;
+  --bmvim-flash: #dbe2e9;
+  --bmvim-rule: -7px;
 }
