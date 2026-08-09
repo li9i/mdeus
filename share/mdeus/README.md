@@ -55,7 +55,7 @@ Run all of it after touching anything to do with the browser, the windows or vim
 
 ### The one window
 
-1. `bmvim doc.md` from a terminal. One window on the desktop and one entry on the panel, both reading `bmvim`. The browser takes the left of that window and the terminal the right, and the two meet without a gap and without overlapping. The window fills the work area, so nothing in the reading sits under a panel. It comes up white and stays white: a browser takes a moment to start, and nothing black is shown while it does.
+1. `bmvim doc.md` from a terminal. One window on the desktop and one entry on the panel, both reading `bmvim`. The browser takes the left of that window and the terminal the right, and the two meet without a gap and without overlapping. The window fills the work area, so nothing in the reading sits under a panel. It comes up white and stays white: a browser takes a moment to start, and nothing black is shown while it does. Neither half stands on the desktop as a window of its own on the way in, whichever of the two is up first, and the browser is commonly seconds behind the terminal.
 2. The browser pane has no address bar, no tabs and no bookmarks, and the terminal pane has no menu bar. Neither pane has a title bar or a close button of its own. The window has one of each for the pair.
 3. The shell you typed the command into stays yours. It says where the reading is and then waits, and the vim you are reading with is in a terminal the reading opened for itself.
 4. Click the browser pane, then the terminal pane, then the browser again. The pane you clicked last takes the keyboard every time, so typing goes to the pane you are looking at. Click the title bar instead and the keyboard stays where it was.

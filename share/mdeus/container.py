@@ -316,15 +316,13 @@ def main(argv):
     panes = {}
     try:
         if container is not None:
+            # A window narrower than half the pane is one the browser put up for
+            # itself rather than the one the page is in. The terminal is taken
+            # at whatever width it comes up at.
+            wanted = [('terminal', terminal.pid, boxes[1], 0)]
             if page is not None:
-                window = window_of(d, page.pid, boxes[0][2] // 2)
-                if window is not None:
-                    adopt(d, container, window, boxes[0])
-                    panes['browser'] = window
-            window = window_of(d, terminal.pid, 0)
-            if window is not None:
-                adopt(d, container, window, boxes[1])
-                panes['terminal'] = window
+                wanted.append(('browser', page.pid, boxes[0], boxes[0][2] // 2))
+            panes = take_in(d, container, wanted)
             # The panes were mapped after the strip and are sitting over it, so
             # the seam is laid again now that there is something to lay it on.
             meet(d, container, panes, divider)
@@ -454,6 +452,31 @@ def settle(window):
         if now == was:
             return
         was = now
+
+
+def take_in(d, container, wanted):
+    """Take each pane into the container as its window appears.
+
+    Both programs are started together and either may be up first, and a
+    browser is commonly seconds behind a terminal. So both are watched at once
+    and each is taken in the moment it arrives. Waiting for them in turn left
+    whichever came first standing on the desktop as a window of its own, with a
+    title bar of its own, for as long as the other one took to start.
+    """
+    panes = {}
+    waiting = list(wanted)
+    deadline = time.monotonic() + WINDOW_WAIT
+    while waiting and time.monotonic() < deadline:
+        for pane in list(waiting):
+            name, pid, box, least_width = pane
+            window = window_of(d, pid, least_width)
+            if window is not None:
+                adopt(d, container, window, box)
+                panes[name] = window
+                waiting.remove(pane)
+        if waiting:
+            time.sleep(SETTLE_WAIT)
+    return panes
 
 
 def terminal_command(servername, script, document, box, origin):
@@ -599,24 +622,21 @@ def white(d, window):
 
 
 def window_of(d, pid, least_width):
-    """Return the window a program put up, once it has put one up.
+    """Return the window a program has put up, or nothing while it has put up none.
 
     A program may put up a window of its own as well as the one wanted, so the
     widest is taken and anything too narrow to be a pane is passed over.
     """
-    deadline = time.monotonic() + WINDOW_WAIT
-    while time.monotonic() < deadline:
-        wide = []
-        for window in windows_of(d, pid):
-            try:
-                if window.get_geometry().width >= least_width:
-                    wide.append(window)
-            except Exception:
-                pass
-        if wide:
-            return max(wide, key=lambda window: window.get_geometry().width)
-        time.sleep(SETTLE_WAIT)
-    return None
+    wide = []
+    for window in windows_of(d, pid):
+        try:
+            if window.get_geometry().width >= least_width:
+                wide.append(window)
+        except Exception:
+            pass
+    if not wide:
+        return None
+    return max(wide, key=lambda window: window.get_geometry().width)
 
 
 def windows_of(d, pid):
