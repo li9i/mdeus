@@ -242,6 +242,11 @@ class Reading:
 
     def __init__(self, document, servername=None):
         self.beat = None
+        # How many clicks vim has reported. A click there is a jump the page
+        # goes to whatever the distance, and the throttled report of the same
+        # line follows a moment later, so the page is told a running count
+        # rather than a flag the report behind it would take back.
+        self.clicks = 0
         self.current = document.resolve()
         self.cursor = None
         # The tree is fixed by the document the reading started at. Following
@@ -271,7 +276,7 @@ class ReadingHandler(BaseHTTPRequestHandler):
         # The routes that speak to vim are there only while vim is, so a
         # reading that is only a browser has no more of an API than before.
         elif path == '/api/cursor' and self.reading.servername:
-            self.send_json({'line': self.reading.cursor})
+            self.send_json({'clicks': self.reading.clicks, 'line': self.reading.cursor})
         elif path.startswith('/assets/'):
             self.send_asset(unquote(path[len('/assets/') :]))
         elif path == '/doc':
@@ -289,6 +294,8 @@ class ReadingHandler(BaseHTTPRequestHandler):
             body = self.read_json()
             if self.path == '/api/cursor' and self.reading.servername:
                 self.reading.cursor = wanted_line(body)
+                if body.get('clicked'):
+                    self.reading.clicks += 1
                 self.send_json({'ok': True})
             elif self.path == '/api/heartbeat':
                 self.reading.beat = time.monotonic()

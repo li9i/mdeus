@@ -59,7 +59,7 @@ def main(argv):
     """Run one of the small jobs the reading asks for from the command line."""
     what = argv[0]
     if what == 'cursor':
-        report_cursor(argv[1], argv[2])
+        report_cursor(argv[1], argv[2], argv[3:4] == ['click'])
     elif what == 'holder':
         if argv[1].upper() not in servers():
             return 1
@@ -80,15 +80,19 @@ def remote(servername, *args):
         return None
 
 
-def report_cursor(url, line):
+def report_cursor(url, line, clicked=False):
     """Tell the reading where the vim cursor is now.
 
     vim starts this and leaves it to itself, so a server that has stopped
     listening costs a moment of a process nobody is waiting for and no more.
+
+    A line the pointer was clicked on says so, because the page follows a click
+    to wherever it lands and follows an ordinary move only when it is far
+    enough to be worth following.
     """
     request = urllib.request.Request(
         f'{url}/api/cursor',
-        data=json.dumps({'line': int(line)}).encode('utf-8'),
+        data=json.dumps({'clicked': clicked, 'line': int(line)}).encode('utf-8'),
         headers={'Content-Type': 'application/json'},
     )
     try:

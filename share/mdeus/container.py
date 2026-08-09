@@ -69,6 +69,14 @@ WITHDRAW_WAIT = 5
 browser_share = load_split()
 
 
+def active_window(d):
+    """Return the window the desktop has in front, or None where it does not say."""
+    active = d.screen().root.get_full_property(
+        d.intern_atom('_NET_ACTIVE_WINDOW'), Xatom.WINDOW
+    )
+    return active.value[0] if active and len(active.value) else None
+
+
 def adopt(d, container, window, box):
     """Take a window off the window manager and put it in the container.
 
@@ -196,7 +204,7 @@ def ignore_gone(problem, request):
         sys.stderr.write(f'bmvim: {problem}\n')
 
 
-def keep_focus(d, panes, focused):
+def keep_focus(d, container, panes, focused):
     """Take the keyboard back when it has been left on a window that has gone.
 
     Either program may put a window of its own up for a moment, and the desktop
@@ -204,12 +212,25 @@ def keep_focus(d, panes, focused):
     the window goes, since the panes are not the desktop's to know about. A
     window the desktop is managing is another application, and one the desktop
     itself holds is the desktop's business, so both are left alone.
+
+    Only ever while the reading is the window the desktop has in front, and
+    never while another application holds the keyboard. Neither test is enough
+    on its own. The desktop puts a window in front and hands it the keyboard as
+    two steps, so a reading looking only at which window is in front can look
+    between them and take back a keyboard it has already given up. And an
+    application commonly keeps the keyboard on a window inside its own, which
+    the desktop's list of windows does not name, so a reading looking only at
+    that list reads a window it should not touch as one that has gone.
     """
+    if active_window(d) != container.id:
+        return
     where = d.get_input_focus().focus
     here = where if isinstance(where, int) else where.id
     if here in (X.NONE, X.PointerRoot, d.screen().root.id):
         return
-    if any(window.id == here for window in panes.values()) or here in client_list(d):
+    if any(window.id == here for window in panes.values()):
+        return
+    if top_level(d, here) in client_list(d):
         return
     focus(d, panes.get(focused) or panes.get('terminal'))
 
@@ -446,6 +467,35 @@ def terminal_command(servername, script, document, box, origin):
     ]
 
 
+def top_level(d, window_id):
+    """Return the window the desktop lists for the one holding the keyboard.
+
+    An application commonly puts the keyboard on a window inside its own, and
+    the desktop's list of windows names only the outer one. The outer one is
+    the window carrying WM_STATE, which is what the desktop writes on a window
+    it has taken charge of, so the tree is climbed until that is found.
+
+    Nothing is found for a window that has gone in the meantime, which is the
+    same answer as for a window the desktop never took charge of, and both mean
+    the same thing to the one caller: nobody else's keyboard is being taken.
+    """
+    state = d.intern_atom('WM_STATE')
+    window = d.create_resource_object('window', window_id)
+    root = d.screen().root.id
+    try:
+        while window.id != root:
+            if window.get_full_property(state, X.AnyPropertyType):
+                return window.id
+            window = window.query_tree().parent
+            if window is None:
+                return None
+    except Exception:
+        # The window belongs to another program and may go at any moment,
+        # including between two of the questions asked about it here.
+        return None
+    return None
+
+
 def under_pointer(container, panes):
     """Return the name of the pane the pointer is over, or None if it is over neither.
 
@@ -495,7 +545,7 @@ def watch(d, container, panes, divider, page, terminal, servername):
         if container is None:
             time.sleep(POLL)
             continue
-        keep_focus(d, panes, focused)
+        keep_focus(d, container, panes, focused)
         select.select([d], [], [], POLL)
         while d.pending_events():
             event = d.next_event()

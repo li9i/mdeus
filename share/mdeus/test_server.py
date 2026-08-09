@@ -166,11 +166,15 @@ def start_export():
     return root, stop
 
 
-def start_reading():
+def start_reading(servername=None):
     """Serve a fixture tree on a free port and return its root, the port and a stop call.
 
     The state path is redirected here rather than in each test, so that no test
     can reach the real state file however it is written.
+
+    A servername turns on the routes a reading with vim beside it has, and no
+    vim ever answers to it here, so only the routes that do not speak to vim
+    may be asked for under one.
     """
     base = Path(tempfile.mkdtemp(prefix='mdview-test-')).resolve()
     server.STATE_PATH = base / 'state.json'
@@ -187,7 +191,9 @@ def start_reading():
     # comparing the path before resolving it would hand both of these over.
     (root / 'escape.md').symlink_to('../outside/secret.md')
     (root / 'escape.png').symlink_to('../outside/secret.png')
-    bound = server.build_server(server.Reading(root / 'start.md'), port=0)
+    bound = server.build_server(
+        server.Reading(root / 'start.md', servername=servername), port=0
+    )
     thread = threading.Thread(target=bound.serve_forever, daemon=True)
     thread.start()
 
@@ -199,6 +205,31 @@ def start_reading():
         shutil.rmtree(base, ignore_errors=True)
 
     return root, bound.server_address[1], stop
+
+
+def test_a_click_in_vim_is_counted_and_a_move_is_not():
+    """The page is told how many clicks vim has reported, so it can follow every one.
+
+    A click is a jump the page goes to whatever the distance, and the moves
+    around it are not, so the two have to be told apart. They are counted
+    rather than flagged because the throttled report that follows a click
+    carries the same line a moment later, and a flag would be taken back by it
+    before the page had come round to look.
+    """
+    root, port, stop = start_reading(servername='TESTVIM')
+    try:
+        status, state = fetch_json(port, '/api/cursor')
+        assert (status, state) == (200, {'clicks': 0, 'line': None}), state
+        fetch_json(port, '/api/cursor', 'POST', {'line': 12})
+        assert fetch_json(port, '/api/cursor')[1] == {'clicks': 0, 'line': 12}
+        fetch_json(port, '/api/cursor', 'POST', {'clicked': True, 'line': 30})
+        assert fetch_json(port, '/api/cursor')[1] == {'clicks': 1, 'line': 30}
+        fetch_json(port, '/api/cursor', 'POST', {'line': 30})
+        assert fetch_json(port, '/api/cursor')[1] == {'clicks': 1, 'line': 30}
+        fetch_json(port, '/api/cursor', 'POST', {'clicked': True, 'line': 30})
+        assert fetch_json(port, '/api/cursor')[1] == {'clicks': 2, 'line': 30}
+    finally:
+        stop()
 
 
 def test_absolute_and_parent_paths_are_not_served():

@@ -22,6 +22,12 @@ const FLASH_MS = 1000;
 
 const pane = document.querySelector('.doc');
 
+/* How many clicks in vim the page has already followed. A click there is a
+   jump the page goes to whatever the distance, and the throttled report of the
+   same line follows a moment later, so what is watched is a count rather than
+   a flag the report behind it would take back. Nothing has been followed until
+   the first reply has been read, and that reply is not a click. */
+let clicksAt = null;
 let flashTimer = null;
 /* The first source line of the block the rule is on. Held as a line rather
    than as an element because page.js rebuilds the document on every redraw,
@@ -66,14 +72,18 @@ function flash(block) {
   flashTimer = window.setTimeout(() => block.classList.remove('bmvim-click'), FLASH_MS);
 }
 
-function markCursor(line) {
+function markCursor(line, clicked) {
   /* Move the rule to the block holding the cursor, and let the page follow if
      the cursor has gone far enough to be worth following.
 
      A redraw arrives here as the same line in a fresh element, so the rule is
      put back without the page moving. Moving the cursor about inside one
      block arrives as a new line in the same block, which is the case that
-     must never scroll: someone is typing. */
+     must never scroll: someone is typing.
+
+     A cursor put where it is by a click in vim is the one case with no
+     distance to weigh. Somebody has pointed at a block and the page goes to
+     it, near or far and whether or not it was already in front of them. */
   const block = blockForLine(line);
   const ruled = pane.querySelector('.bmvim-cursor');
   if (ruled && ruled !== block) {
@@ -85,7 +95,10 @@ function markCursor(line) {
   }
   block.classList.add('bmvim-cursor');
   const begins = Number(block.dataset.start);
-  if (begins !== ruleAt) {
+  if (clicked) {
+    ruleAt = begins;
+    show(block);
+  } else if (begins !== ruleAt) {
     ruleAt = begins;
     reveal(block, ruled);
   }
@@ -127,21 +140,21 @@ async function pollCursor() {
   /* vim reports its cursor by starting a process rather than by waiting on
      one, so nothing can push the line to the page. The server holds whatever
      vim last sent and the page comes and asks for it. */
-  let line;
+  let where;
   try {
     const response = await fetch('/api/cursor');
-    line = (await response.json()).line;
+    where = await response.json();
   } catch (error) {
     return; // the server has stopped answering and the reading is over
   }
-  if (typeof line === 'number') {
-    markCursor(line);
+  if (typeof where.line === 'number') {
+    markCursor(where.line, clicksAt !== null && where.clicks !== clicksAt);
   }
+  clicksAt = where.clicks;
 }
 
 function reveal(block, from) {
-  /* Bring the block a quarter of the way down the window, so the lines around
-     the cursor are in view rather than the cursor sitting on the last row.
+  /* Bring the block into view, but only where it is worth moving the page for.
 
      Two things have to be true first. The block must be off the screen, since
      one the reader can already see does not need bringing to them. And the
@@ -166,7 +179,13 @@ function reveal(block, from) {
   if (from && Math.abs(box.top - from.getBoundingClientRect().top) <= window.innerHeight) {
     return;
   }
-  window.scrollBy(0, box.top - window.innerHeight / 4);
+  show(block);
+}
+
+function show(block) {
+  /* Put the block a quarter of the way down the window, so the lines around
+     the cursor are in view rather than the cursor sitting on the last row. */
+  window.scrollBy(0, block.getBoundingClientRect().top - window.innerHeight / 4);
 }
 
 begin();

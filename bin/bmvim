@@ -127,10 +127,23 @@ function! s:MdviewMoved() abort
   call timer_start(150, function('s:MdviewReport'))
 endfunction
 
+" A click is a jump rather than a move, so it is reported at once and as a
+" click, and the page comes to the block the pointer landed on wherever the
+" page was left. It is sent straight rather than through the timer, since the
+" throttled report of the same line follows within 150ms and would arrive as an
+" ordinary move that the page is right to sit still for.
+function! s:MdviewClicked() abort
+  call job_start(
+    \ ['python3', $MDVIEW_LINK, 'cursor', $MDVIEW_URL, string(line('.')), 'click'])
+endfunction
+
 augroup mdview
   autocmd!
   autocmd CursorMoved,CursorMovedI * call s:MdviewMoved()
 augroup END
+
+" The click itself first, so the cursor is where it landed before it is read.
+nnoremap <silent> <LeftMouse> <LeftMouse>:call <SID>MdviewClicked()<CR>
 
 " Where the cursor starts, so the page marks a block from the first moment
 " rather than waiting to be moved.
