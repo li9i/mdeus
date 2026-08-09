@@ -6,9 +6,9 @@ Two commands for reading a markdown document in a browser.
 
 `bmv --print <document.md>` writes one self contained HTML file under `~/.cache/mdview/` and prints its path. Images are embedded, every theme is inlined, and nothing is served or opened. The file survives being moved or sent to somebody.
 
-`bmvim <document.md>` is the same reading with vim beside it, in one window. The browser takes the left of that window and a terminal running vim takes the right, 44 percent against 56 until you drag the seam between them somewhere else. Clicking a block sends vim to the line that block came from, centred in the window and lit end to end for a moment, and clicking in vim brings the page the other way, to the block the pointer landed in. Moving the vim cursor marks the block the cursor is in, and writing the file redraws the page. The reading opens a terminal of its own, so the shell `bmvim` was run from stays yours and waits. Only one `bmvim` reading runs at a time, and it needs a desktop session.
+`bmvim <document.md>` is the same reading with vim beside it, in one window. The browser takes the left of that window and a terminal running vim takes the right, 44 percent against 56 until you drag the seam between them somewhere else. Clicking a block sends vim to the line that block came from, centred in the window and lit end to end for a moment, and clicking in vim brings the page the other way, to the block the pointer landed in. Moving the vim cursor marks the block the cursor is in, and writing the file redraws the page. Space in vim folds the section the cursor is in and opens it again, section for section with the page. The two halves fold on their own and neither follows the other. The reading opens a terminal of its own, so the shell `bmvim` was run from stays yours and waits. Only one `bmvim` reading runs at a time, and it needs a desktop session.
 
-The page carries a dropdown of three themes and a `Contents` button, which is there only once the document has three or more headings. Those two, and where the seam between the panes was last dragged to, are kept in `~/.config/mdview/state.json`, so a reading opens the way the last one was left. Every fence carries a `Copy` button in its corner as well, which shows on hover or on focus and puts the fence on the clipboard.
+The page carries a dropdown of three themes and a `Contents` button, which is there only once the document has three or more headings. Those two, and where the seam between the panes was last dragged to, are kept in `~/.config/mdview/state.json`, so a reading opens the way the last one was left. Every fence carries a `Copy` button in its corner as well, which shows on hover or on focus and puts the fence on the clipboard. A double click on a top level heading folds its section away and another brings it back, and a heading with a section behind it carries three dots. Nothing below the top level folds, and a fold lasts as long as the document is on the screen rather than being written down anywhere.
 
 The ground a jump lights in vim is the `BmvimJump` highlight group. It is set as a default, so a `.vimrc` naming it wins.
 
@@ -22,7 +22,7 @@ The ground a jump lights in vim is the `BmvimJump` highlight group. It is set as
 | `vimlink.py` | The link to vim: the servername, jumps, following a link on both sides, and the cursor line coming back. |
 | `container.py` | The one window a reading with vim is drawn in, the browser and terminal inside it, and the seam between the two. |
 | `themes.css` | The three themes, the two controls and the copy button on a fence. |
-| `page.js` | The theme dropdown, the contents list, the copy button on every fence, the heading names, and the redraw. |
+| `page.js` | The theme dropdown, the contents list, the copy button on every fence, the heading names, the sections a double click folds away, and the redraw. |
 | `bmvim.css`, `bmvim.js` | The two marks and the sync. `bmv` never loads either. |
 | `test_render.py`, `test_server.py` | The tests. |
 
@@ -84,45 +84,53 @@ Run all of it after touching anything to do with the browser, the windows or vim
 21. Write the file in vim. The page redraws. Change the file from somewhere else, with `git checkout` or a formatter, and the page redraws the same way.
 22. Click a relative link to another markdown document. The page renders it and vim opens it too, so both halves show the same file. The browser's back button returns. An absolute path, a path leading out of the starting tree, and an `http` link are all left alone.
 
+### The folds
+
+23. Open a document with two or more top level headings and press space in vim, first on a heading and then on a line inside the section under it. Both fold the whole section away, from the heading to the line before the next one, and pressing space again brings it back. A heading below the top level does not fold on its own and goes with the section holding it.
+24. Follow a link to another document in the page, then press space there. It folds the same way, on a file vim opened after the reading started.
+25. Double click a top level heading in the page. Its section goes and the heading is left with three dots after it. Double click again and it comes back. The first of the two clicks is still a click, so in a reading with vim beside it vim goes to that heading on the way.
+26. Fold a section in the page and write the file in vim. The page redraws and the section is still folded, with anything added to it folded away with it. Fold one and follow a link instead, and the document that opens has every section open.
+27. Fold a section in the page and move the vim cursor into it. The rule goes on the heading of the folded section, since that is all the page is showing of it, and the page does not jump. The two halves are otherwise nothing to do with each other: a section folded in vim is open in the page, and one folded in the page is open in vim.
+
 ### Ending a reading
 
-23. Quit vim. The whole window goes and the server stops.
-24. Close the browser pane instead, with `ctrl-w` in it. vim is asked to quit, which it refuses while anything in it is unwritten, and the reading ends as soon as vim goes.
-25. Press the window's close button, and separately press `ctrl-c` in the shell the command was run from. Both ask the same question the browser pane closing asks, and both are refused the same way while anything in vim is unwritten. Nothing is ever taken away from under unsaved work.
-26. Kill the terminal outright, with `pkill -f 'mate-terminal --disable-factory'`. The window goes and the server stops, the same as quitting vim.
-27. After every one of the four: the temporary browser profile is gone, no server is left behind, and no terminal or browser is left running. `pgrep -af mdview/server.py` should say nothing.
+28. Quit vim. The whole window goes and the server stops.
+29. Close the browser pane instead, with `ctrl-w` in it. vim is asked to quit, which it refuses while anything in it is unwritten, and the reading ends as soon as vim goes.
+30. Press the window's close button, and separately press `ctrl-c` in the shell the command was run from. Both ask the same question the browser pane closing asks, and both are refused the same way while anything in vim is unwritten. Nothing is ever taken away from under unsaved work.
+31. Kill the terminal outright, with `pkill -f 'mate-terminal --disable-factory'`. The window goes and the server stops, the same as quitting vim.
+32. After every one of the four: the temporary browser profile is gone, no server is left behind, and no terminal or browser is left running. `pgrep -af mdview/server.py` should say nothing.
 
 ### The three themes
 
-28. Open a document with headings at three levels, a fence, a quote, a list, a table, a link and a rule, and go through the dropdown. `Browser default`, `Mono headings` and `GitHub`.
-29. The first two are black on white, and only `Browser default` has any colour at all, on its links. `GitHub` is the exception and keeps GitHub's own palette.
-30. Every theme caps the measure, so a maximised window does not throw lines across the whole screen. Code blocks scroll inside their own box rather than widening the page.
-31. Changing the theme does not reload the page and does not lose your place in it.
-32. Both `bmvim` marks work in all three. Each theme leaves the margin rule its own offset, so check that the rule stands clear of the text in every one of them.
+33. Open a document with headings at three levels, a fence, a quote, a list, a table, a link and a rule, and go through the dropdown. `Browser default`, `Mono headings` and `GitHub`.
+34. The first two are black on white, and only `Browser default` has any colour at all, on its links. `GitHub` is the exception and keeps GitHub's own palette.
+35. Every theme caps the measure, so a maximised window does not throw lines across the whole screen. Code blocks scroll inside their own box rather than widening the page.
+36. Changing the theme does not reload the page and does not lose your place in it.
+37. Both `bmvim` marks work in all three. Each theme leaves the margin rule its own offset, so check that the rule stands clear of the text in every one of them.
 
 ### The copy button
 
-33. Hover a fence in each of the three themes. A `Copy` button appears in the top right corner of it, in that theme's own face, and goes again when the pointer leaves. Nothing shows until you hover.
-34. Tab to it instead of hovering. It appears on focus and takes the same focus ring the theme's other controls take, and pressing it with the keyboard copies.
-35. Press it and paste somewhere. You get the fence exactly as it reads, trailing newline and all. The button says `Copied` for a second and a half, then says `Copy` again.
-36. Change the theme, then write the file from an editor. The buttons survive both, one per fence and no more.
-37. In a `bmvim` reading, press a copy button. It copies and vim does not move. Click the fence beside it and vim moves as it always did.
-38. `bmv --print doc.md`, then open the file it names over `file://`. The buttons work there too. That is the reading where the browser may refuse the clipboard outright, and the button falls back to the old selection copy without saying so.
+38. Hover a fence in each of the three themes. A `Copy` button appears in the top right corner of it, in that theme's own face, and goes again when the pointer leaves. Nothing shows until you hover.
+39. Tab to it instead of hovering. It appears on focus and takes the same focus ring the theme's other controls take, and pressing it with the keyboard copies.
+40. Press it and paste somewhere. You get the fence exactly as it reads, trailing newline and all. The button says `Copied` for a second and a half, then says `Copy` again.
+41. Change the theme, then write the file from an editor. The buttons survive both, one per fence and no more.
+42. In a `bmvim` reading, press a copy button. It copies and vim does not move. Click the fence beside it and vim moves as it always did.
+43. `bmv --print doc.md`, then open the file it names over `file://`. The buttons work there too. That is the reading where the browser may refuse the clipboard outright, and the button falls back to the old selection copy without saying so.
 
 ### When something is missing
 
-39. `python3-xlib` missing. Put a directory on `PYTHONPATH` holding an `Xlib/__init__.py` that raises `ImportError`, then start a reading. There is no window to make one out of, so the browser and the terminal open as two ordinary windows wherever the desktop puts them. It says so in one line and the reading works, sync and endings and all.
-40. Neither Chrome nor Chromium on the machine. Take both off `PATH` and start a reading. The page opens in a plain tab of the default browser, both lines of the message are printed saying the window is neither placed nor closed for you, and the reading works.
-41. No `DISPLAY`. `env -u DISPLAY bmvim doc.md` says `bmvim` needs a desktop session and suggests `bmv`, and exits 1.
-42. The servername already taken. Start one reading, then start a second. The second names the document the first has open and exits 1.
-43. The server killed mid-reading. `pkill -f mdview/server.py` while a reading is up. vim stays usable. Nothing it sends waits on an answer, so nothing it does can hang on a server that has stopped listening.
+44. `python3-xlib` missing. Put a directory on `PYTHONPATH` holding an `Xlib/__init__.py` that raises `ImportError`, then start a reading. There is no window to make one out of, so the browser and the terminal open as two ordinary windows wherever the desktop puts them. It says so in one line and the reading works, sync and endings and all.
+45. Neither Chrome nor Chromium on the machine. Take both off `PATH` and start a reading. The page opens in a plain tab of the default browser, both lines of the message are printed saying the window is neither placed nor closed for you, and the reading works.
+46. No `DISPLAY`. `env -u DISPLAY bmvim doc.md` says `bmvim` needs a desktop session and suggests `bmv`, and exits 1.
+47. The servername already taken. Start one reading, then start a second. The second names the document the first has open and exits 1.
+48. The server killed mid-reading. `pkill -f mdview/server.py` while a reading is up. vim stays usable. Nothing it sends waits on an answer, so nothing it does can hang on a server that has stopped listening.
 
 ### bmv on its own
 
-44. Several `bmv` readings at once, on different documents. Each prints its own address on its own port and each redraws its own file.
-45. No browser reachable. `env -u DISPLAY -u BROWSER bmv doc.md`. The address is printed anyway and the reading serves, so it can still be opened by hand. Fetch it with `curl` or paste it into a browser started later.
-46. `bmv --print doc.md` on a document with an image in it. Open the file it names, move it somewhere else and open it again. It renders the same, and the theme dropdown works and stores nothing.
-47. Close the page in the browser rather than pressing ctrl-c. Within about ten seconds the command ends by itself and the shell comes back. Nothing else may be speaking to that port while you check: a page left open from an earlier reading goes on saying it is there, and a reading is kept up by any page that does.
+49. Several `bmv` readings at once, on different documents. Each prints its own address on its own port and each redraws its own file.
+50. No browser reachable. `env -u DISPLAY -u BROWSER bmv doc.md`. The address is printed anyway and the reading serves, so it can still be opened by hand. Fetch it with `curl` or paste it into a browser started later.
+51. `bmv --print doc.md` on a document with an image in it. Open the file it names, move it somewhere else and open it again. It renders the same, and the theme dropdown works and stores nothing.
+52. Close the page in the browser rather than pressing ctrl-c. Within about ten seconds the command ends by itself and the shell comes back. Nothing else may be speaking to that port while you check: a page left open from an earlier reading goes on saying it is there, and a reading is kept up by any page that does.
 
 ## Three things that look odd and are not
 

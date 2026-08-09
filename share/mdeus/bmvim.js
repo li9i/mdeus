@@ -83,8 +83,12 @@ function markCursor(line, clicked) {
 
      A cursor put where it is by a click in vim is the one case with no
      distance to weigh. Somebody has pointed at a block and the page goes to
-     it, near or far and whether or not it was already in front of them. */
-  const block = blockForLine(line);
+     it, near or far and whether or not it was already in front of them.
+
+     The two halves fold on their own, so the block the cursor is in may be
+     one the page has folded away. The heading of the folded section stands in
+     for it, since that is all the page is showing of it. */
+  const block = shownFor(blockForLine(line));
   const ruled = pane.querySelector('.bmvim-cursor');
   if (ruled && ruled !== block) {
     ruled.classList.remove('bmvim-cursor');
@@ -186,6 +190,18 @@ function show(block) {
   /* Put the block a quarter of the way down the window, so the lines around
      the cursor are in view rather than the cursor sitting on the last row. */
   window.scrollBy(0, block.getBoundingClientRect().top - window.innerHeight / 4);
+}
+
+function shownFor(block) {
+  /* The block to mark in place of one the page has folded away. A folded
+     section shows nothing but its heading, and the heading is the block
+     before every one that went with it. */
+  for (let shown = block; shown; shown = shown.previousElementSibling) {
+    if (shown.classList.contains('block') && !shown.hidden) {
+      return shown;
+    }
+  }
+  return block;
 }
 
 begin();

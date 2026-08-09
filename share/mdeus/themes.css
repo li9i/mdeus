@@ -99,6 +99,16 @@
   transition: opacity 0.15s;
 }
 
+/* A section folded away by a double click on its heading. Everything under the
+   heading goes and the heading stays, so the mark after it is the whole of
+   what says there is a section behind it to bring back. */
+.browser .doc .folded h1::after,
+.report .doc .folded h1::after,
+:where(.github) .doc .folded h1::after {
+  content: ' ...';
+  opacity: 0.45;
+}
+
 /* The mouse finds it by hovering the fence and the keyboard by tabbing to it,
    so it answers to both rather than to the mouse alone. */
 .browser .code-block:hover .copy,

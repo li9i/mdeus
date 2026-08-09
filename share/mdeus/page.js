@@ -1,5 +1,6 @@
-/* The reading page: the theme dropdown, the contents list, the redraw when
-   the file changes, and the heartbeat that ends a reading with no terminal.
+/* The reading page: the theme dropdown, the contents list, the sections a
+   double click folds away, the redraw when the file changes, and the heartbeat
+   that ends a reading with no terminal.
 
    The page keeps nothing of its own. It draws what GET /doc sends and writes
    every change back through POST /api/state, so one reading and the next
@@ -27,6 +28,10 @@ const TREE = 'file:///tree/';
 
 const controlsNode = document.querySelector('.controls');
 const docNode = document.querySelector('.doc');
+/* The sections a double click has folded away, by the source line the heading
+   of each one starts at. Lines rather than elements, because the document is
+   built again from scratch on every redraw and the elements go with it. */
+const foldedAt = new Set();
 
 let contentsOpen = false;
 let doc = null;
@@ -40,12 +45,25 @@ function anchor() {
      position has to be held by a block rather than by a pixel offset. */
   const blocks = docNode.querySelectorAll('.block');
   for (const block of blocks) {
+    if (block.hidden) {
+      continue; // folded away, so it has no place on the page to hold
+    }
     const top = block.getBoundingClientRect().top;
     if (top >= 0) {
       return { start: block.dataset.start, top };
     }
   }
   return null;
+}
+
+function applyFolds() {
+  /* Put the folds back after a redraw. Every section is drawn open, so the
+     ones that were folded are folded again here. */
+  docNode.querySelectorAll('.block').forEach((block) => {
+    if (isSection(block)) {
+      foldSection(block, foldedAt.has(Number(block.dataset.start)));
+    }
+  });
 }
 
 function applyTheme() {
@@ -226,6 +244,7 @@ function drawDocument() {
     return id;
   });
   drawCopyButtons();
+  applyFolds();
 }
 
 function esc(text) {
@@ -234,6 +253,24 @@ function esc(text) {
      stop reading as one first. */
   const replacements = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
   return String(text).replace(/[&<>"]/g, (character) => replacements[character]);
+}
+
+function foldSection(heading, folded) {
+  /* Put a section away or bring it back. Everything under the heading goes as
+     far as the next top level heading, and the heading itself stays and is
+     marked, so that a folded section still says where it is and can be opened
+     again. The file name above the document is not part of any section and is
+     left where it is. */
+  heading.classList.toggle('folded', folded);
+  for (let next = heading.nextElementSibling; next; next = next.nextElementSibling) {
+    if (!next.classList.contains('block')) {
+      continue;
+    }
+    if (isSection(next)) {
+      return;
+    }
+    next.hidden = folded;
+  }
 }
 
 async function follow(relative, push) {
@@ -245,6 +282,10 @@ async function follow(relative, push) {
     return; // outside the tree, and the reading carries on where it is
   }
   doc = await response.json();
+  /* Another document, whose sections are its own. What was folded away in the
+     one before it means nothing here, and the lines it was held by would fold
+     whatever happens to start at them. */
+  foldedAt.clear();
   mtime = await currentMtime();
   if (push) {
     history.pushState({ path: doc.name }, '');
@@ -259,6 +300,12 @@ function heartbeat() {
   /* A reading opened from the file manager has no terminal to interrupt, so
      the server stops once this stops arriving. */
   fetch('/api/heartbeat', { method: 'POST' }).catch(() => {});
+}
+
+function isSection(block) {
+  /* Say whether a block is a section of its own, which is to say a top level
+     heading. Nothing under that level folds. */
+  return !!block.querySelector(':scope > .prose > h1');
 }
 
 async function load() {
@@ -301,6 +348,27 @@ function onContents() {
   drawContents();
   syncButton();
   saveState();
+}
+
+function onDoubleClick(event) {
+  /* A double click on a top level heading folds its section away, and another
+     brings it back. The single click underneath it is left to do what it does,
+     which in a reading with vim beside it is to send vim to the line. */
+  const block = event.target.closest('.block');
+  if (!block || !isSection(block)) {
+    return;
+  }
+  const line = Number(block.dataset.start);
+  const folded = !foldedAt.has(line);
+  if (folded) {
+    foldedAt.add(line);
+  } else {
+    foldedAt.delete(line);
+  }
+  /* The two clicks have taken the heading's words as a selection on the way
+     through, and a folded section reading as selected text says nothing. */
+  window.getSelection().removeAllRanges();
+  foldSection(block, folded);
 }
 
 function onPop(event) {
@@ -384,6 +452,7 @@ async function start() {
      back to it names a path like every other entry does. */
   history.replaceState({ path: doc.name }, '');
   docNode.addEventListener('click', onClick);
+  docNode.addEventListener('dblclick', onDoubleClick);
   window.addEventListener('popstate', onPop);
   heartbeat();
   window.setInterval(heartbeat, HEARTBEAT_MS);
