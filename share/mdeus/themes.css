@@ -1,0 +1,1121 @@
+/* The document themes, and the control row above the document.
+
+   THE PAGE STRUCTURE
+   ------------------
+
+   <html class="serif reader">       the theme key is the class on the root
+     <body>
+       <div class="controls">        built by page.js, above the document
+         <label for="theme">Theme</label>
+         <select id="theme">…</select>
+         <button id="contents">Contents</button>
+       </div>
+       <nav class="toc">             present only while the list is open
+         <p class="toc-title">Contents</p>
+         <ul>…nested <li><a href="#id">…</ul>
+       </nav>
+       <main class="doc">
+         <p class="meta">docs/cvim.md</p>
+         <div class="block" data-start="1" data-end="1">
+           <div class="prose">         …the rendered block…
+             <div class="code-block">  one of these around every fence
+               <pre>…</pre>
+               <button class="copy">Copy</button>
+             </div>
+           </div>
+         </div>
+         …one .block per source block…
+       </main>
+     </body>
+   </html>
+
+   The theme keys are browser, serif, manpage, report and github. Exactly one
+   of them is on the root element at any time. The reading page also carries
+   reader there, which the spec review tool does not, and github is sized off
+   it. See that theme below.
+
+   .doc > .block > .prose > <content> is the same structure the spec review
+   tool renders, so a rule written as `.doc p` matches in both places. Anything
+   tighter than a descendant selector under .doc will not.
+
+   The contents button is present only when the document has three or more
+   headings, and the .toc node exists only while the list is open. The list is
+   a sibling above .doc, so it pushes the document down rather than floating
+   over it. When the source file is gone the document is replaced by a single
+   <p class="gone">.
+
+   The wrapper and the button around a fence are page.js's, put up again on
+   every redraw. The button carries .copied for as long as it says Copied.
+   Nothing else renders that wrapper, so the rules for it reach this page and
+   no other.
+
+   THE SCOPING RULE
+   ----------------
+
+   Every rule below carries its theme class. Nothing styles a bare element at
+   the top level. Five themes restyle the same handful of elements in this one
+   file, so an unscoped rule would leak into the other four and the leak would
+   be hard to see. Keep each theme's rules in source order as well: several of
+   them override an earlier rule of equal specificity, `pre` under manpage
+   being the clearest case.
+
+   github wraps its class in :where(), so its rules weigh no more than a bare
+   `.doc p` does. The reason is set out where that theme begins.
+*/
+
+/* ------------------------------------------------------------------
+   shared
+   ------------------------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  .browser,
+  .serif,
+  .manpage,
+  .report,
+  .github,
+  .browser *,
+  .serif *,
+  .manpage *,
+  .report *,
+  .github * {
+    animation-duration: 0s !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0s !important;
+  }
+}
+
+/* Where the copy button sits and how it comes and goes is the same in all
+   five themes, so it is written once. What it looks like is each theme's own
+   and is set below with that theme's controls. */
+.browser .code-block,
+.serif .code-block,
+.manpage .code-block,
+.report .code-block,
+:where(.github) .code-block {
+  position: relative;
+}
+
+.browser .copy,
+.serif .copy,
+.manpage .copy,
+.report .copy,
+:where(.github) .copy {
+  opacity: 0;
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  transition: opacity 0.15s;
+}
+
+/* The mouse finds it by hovering the fence and the keyboard by tabbing to it,
+   so it answers to both rather than to the mouse alone. */
+.browser .code-block:hover .copy,
+.browser .copy:focus,
+.serif .code-block:hover .copy,
+.serif .copy:focus,
+.manpage .code-block:hover .copy,
+.manpage .copy:focus,
+.report .code-block:hover .copy,
+.report .copy:focus,
+:where(.github) .code-block:hover .copy,
+:where(.github) .copy:focus {
+  opacity: 1;
+}
+
+/* ------------------------------------------------------------------
+   browser: what the machine did before anyone styled anything
+   ------------------------------------------------------------------ */
+
+.browser body {
+  background: #ffffff;
+  color: #000000;
+  font: 16px/1.2 'Times New Roman', Times, serif;
+  margin: 8px;
+  max-width: 46em;
+}
+
+.browser .controls {
+  align-items: center;
+  border-bottom: 1px solid #000000;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  margin: 0 0 1em;
+  padding-bottom: 0.5em;
+}
+
+.browser .controls label {
+  font-size: 0.85em;
+}
+
+/* The controls are otherwise left to the browser here, but they still take
+   the theme's face. */
+.browser .controls select,
+.browser .controls button,
+.browser .code-block .copy {
+  font-family: inherit;
+}
+
+.browser .controls select:focus-visible,
+.browser .controls button:focus-visible,
+.browser .code-block .copy:focus-visible {
+  outline: 2px solid #000000;
+  outline-offset: 1px;
+}
+
+.browser a {
+  color: #0000ee;
+}
+
+.browser a:visited {
+  color: #551a8b;
+}
+
+.browser .toc {
+  border: 1px solid #000000;
+  margin: 1em 0;
+  padding: 0 1em;
+}
+
+.browser .toc-title {
+  font-weight: 700;
+}
+
+.browser .toc ul {
+  margin: 0.5em 0;
+  padding-left: 2em;
+}
+
+.browser .doc h1 {
+  font-size: 2em;
+  margin: 0.67em 0;
+}
+
+.browser .doc h2 {
+  font-size: 1.5em;
+  margin: 0.83em 0;
+}
+
+.browser .doc h3 {
+  font-size: 1.17em;
+  margin: 1em 0;
+}
+
+.browser .doc p {
+  margin: 1em 0;
+}
+
+.browser .doc ul {
+  margin: 1em 0;
+  padding-left: 40px;
+}
+
+.browser .doc pre {
+  font: 13px/1.2 'Courier New', monospace;
+  margin: 1em 0;
+  overflow-x: auto;
+}
+
+.browser .doc code {
+  font-family: 'Courier New', monospace;
+}
+
+.browser .doc blockquote {
+  margin: 1em 40px;
+}
+
+.browser .doc table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  margin: 1em 0;
+}
+
+.browser .doc th,
+.browser .doc td {
+  border: 1px solid #000000;
+  padding: 2px 6px;
+  text-align: left;
+}
+
+.browser .doc hr {
+  border: 0;
+  border-top: 1px solid #000000;
+}
+
+/* ------------------------------------------------------------------
+   serif: 1993 typography, present day spacing. The default.
+   ------------------------------------------------------------------ */
+
+.serif body {
+  background: #ffffff;
+  color: #111111;
+  font: 18px/1.65 Georgia, 'Times New Roman', serif;
+  margin: 2rem auto 3rem;
+  max-width: 34em;
+  padding: 0 1.25rem;
+}
+
+.serif .controls {
+  align-items: center;
+  border-bottom: 1px solid #d5d5d5;
+  color: #767676;
+  display: flex;
+  flex-wrap: wrap;
+  font: 11px/1 ui-monospace, 'DejaVu Sans Mono', monospace;
+  gap: 0.6em;
+  letter-spacing: 0.1em;
+  margin-bottom: 2.4rem;
+  padding-bottom: 0.9rem;
+  text-transform: uppercase;
+}
+
+.serif .controls select,
+.serif .controls button,
+.serif .code-block .copy {
+  background: #ffffff;
+  border: 1px solid #b4b4b4;
+  color: #111111;
+  font: 11px/1 ui-monospace, 'DejaVu Sans Mono', monospace;
+  letter-spacing: 0.06em;
+  padding: 0.3em 0.5em;
+}
+
+.serif .controls button,
+.serif .code-block .copy {
+  cursor: pointer;
+}
+
+.serif .controls select:focus-visible,
+.serif .controls button:focus-visible,
+.serif .code-block .copy:focus-visible {
+  outline: 2px solid #111111;
+  outline-offset: 2px;
+}
+
+.serif a {
+  color: #111111;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.serif .toc {
+  border-bottom: 1px solid #d5d5d5;
+  border-top: 1px solid #d5d5d5;
+  margin: 0 0 2.4em;
+  padding: 0.9em 0;
+}
+
+.serif .toc-title {
+  color: #767676;
+  font: 11px/1 ui-monospace, 'DejaVu Sans Mono', monospace;
+  letter-spacing: 0.12em;
+  margin: 0 0 0.7em;
+  text-transform: uppercase;
+}
+
+.serif .toc ul {
+  font-size: 0.85em;
+  list-style: none;
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.serif .toc > ul {
+  padding-left: 0;
+}
+
+.serif .toc li {
+  margin: 0.15em 0;
+}
+
+.serif .doc h1 {
+  font-size: 2.1em;
+  font-weight: 400;
+  line-height: 1.15;
+  margin: 0 0 0.25em;
+  text-wrap: balance;
+}
+
+.serif .doc h2 {
+  border-top: 1px solid #111111;
+  font-size: 1.4em;
+  font-weight: 400;
+  line-height: 1.2;
+  margin: 2.6em 0 0.6em;
+  padding-top: 1.3em;
+  text-wrap: balance;
+}
+
+.serif .doc h3 {
+  font-size: 1.05em;
+  font-weight: 700;
+  margin: 2em 0 0.35em;
+}
+
+.serif .doc p,
+.serif .doc ul,
+.serif .doc blockquote,
+.serif .doc table,
+.serif .doc pre {
+  margin: 0 0 1.25em;
+}
+
+.serif .doc .meta {
+  color: #767676;
+  font: 11px/1 ui-monospace, 'DejaVu Sans Mono', monospace;
+  letter-spacing: 0.12em;
+  margin: 0 0 2.6em;
+  text-transform: uppercase;
+}
+
+.serif .doc ul {
+  padding-left: 1.3em;
+}
+
+.serif .doc li {
+  margin: 0.2em 0;
+}
+
+.serif .doc pre {
+  background: #f6f6f6;
+  border: 1px solid #e0e0e0;
+  font: 13px/1.5 ui-monospace, 'DejaVu Sans Mono', monospace;
+  overflow-x: auto;
+  padding: 0.85em 1em;
+}
+
+.serif .doc code {
+  font: 0.84em ui-monospace, 'DejaVu Sans Mono', monospace;
+}
+
+.serif .doc pre code {
+  font-size: 1em;
+}
+
+.serif .doc blockquote {
+  border-left: 3px solid #111111;
+  color: #333333;
+  font-style: italic;
+  margin-left: 0;
+  padding-left: 1em;
+}
+
+.serif .doc blockquote p {
+  margin: 0;
+}
+
+.serif .doc table {
+  border-collapse: collapse;
+  font-size: 0.88em;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+}
+
+.serif .doc th {
+  border-bottom: 2px solid #111111;
+  font-weight: 700;
+  padding: 0.4em 0.6em 0.3em;
+  text-align: left;
+}
+
+.serif .doc td {
+  border-bottom: 1px solid #e0e0e0;
+  padding: 0.4em 0.6em;
+}
+
+.serif .doc hr {
+  border: 0;
+  border-top: 1px solid #d5d5d5;
+  margin: 2.5em 0;
+}
+
+.serif .doc small {
+  color: #767676;
+}
+
+/* ------------------------------------------------------------------
+   manpage: one face, one size, no colour at all
+   ------------------------------------------------------------------ */
+
+.manpage body {
+  background: #ffffff;
+  color: #1a1a1a;
+  font: 14px/1.7 ui-monospace, 'DejaVu Sans Mono', Menlo, monospace;
+  margin: 2rem auto 3rem;
+  max-width: 76ch;
+  padding: 0 1.5rem;
+}
+
+.manpage .controls {
+  align-items: center;
+  border-bottom: 1px solid #c4c4c4;
+  color: #7a7a7a;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.85em;
+  gap: 0.7em;
+  letter-spacing: 0.06em;
+  margin-bottom: 2.4rem;
+  padding-bottom: 0.8rem;
+  text-transform: uppercase;
+}
+
+.manpage .controls select,
+.manpage .controls button,
+.manpage .code-block .copy {
+  background: #ffffff;
+  border: 1px solid #1a1a1a;
+  color: #1a1a1a;
+  font: inherit;
+  letter-spacing: 0;
+  padding: 0.15em 0.4em;
+  text-transform: none;
+}
+
+.manpage .controls button,
+.manpage .code-block .copy {
+  cursor: pointer;
+}
+
+.manpage .controls select:focus-visible,
+.manpage .controls button:focus-visible,
+.manpage .code-block .copy:focus-visible {
+  outline: 2px solid #1a1a1a;
+  outline-offset: 2px;
+}
+
+.manpage a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.manpage .toc {
+  margin: 0 0 2.4em;
+  padding-left: 3ch;
+}
+
+.manpage .toc-title {
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  margin: 0 0 0.5em;
+  text-transform: uppercase;
+}
+
+.manpage .toc ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 3ch;
+}
+
+.manpage .toc > ul {
+  padding-left: 0;
+}
+
+.manpage .toc li::before {
+  color: #7a7a7a;
+  content: '- ';
+}
+
+.manpage .doc h1 {
+  font-size: 1em;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  margin: 0 0 0.3em;
+  text-transform: uppercase;
+}
+
+.manpage .doc h2 {
+  font-size: 1em;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  margin: 2.6em 0 0.9em;
+  text-transform: uppercase;
+}
+
+.manpage .doc h3 {
+  font-size: 1em;
+  font-weight: 700;
+  margin: 2em 0 0.5em;
+  padding-left: 1.5ch;
+}
+
+.manpage .doc p,
+.manpage .doc ul,
+.manpage .doc blockquote,
+.manpage .doc table,
+.manpage .doc pre {
+  margin: 0 0 1.3em;
+  padding-left: 3ch;
+}
+
+.manpage .doc .meta {
+  color: #7a7a7a;
+  margin: 0 0 2.6em;
+}
+
+/* Each block is its own element, so the run on from a heading to the text
+   under it is a block following the block that holds the heading. */
+.manpage .block:has(h3) + .block > .prose > p,
+.manpage .block:has(h3) + .block > .prose > ul,
+.manpage .block:has(h3) + .block > .prose > table {
+  padding-left: 4.5ch;
+}
+
+.manpage .doc ul {
+  list-style: none;
+  padding-left: 3ch;
+}
+
+.manpage .doc li {
+  margin: 0.15em 0;
+}
+
+.manpage .doc li::before {
+  color: #7a7a7a;
+  content: '* ';
+}
+
+.manpage .doc pre {
+  border-left: 2px solid #1a1a1a;
+  margin-left: 3ch;
+  overflow-x: auto;
+  padding: 0.1em 0 0.1em 2ch;
+}
+
+.manpage .doc code {
+  font-family: inherit;
+}
+
+.manpage .doc blockquote {
+  border-left: 2px solid #c4c4c4;
+  color: #5a5a5a;
+  margin-left: 3ch;
+  padding-left: 2ch;
+}
+
+.manpage .doc blockquote p {
+  margin: 0;
+  padding: 0;
+}
+
+.manpage .doc table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.manpage .doc th,
+.manpage .doc td {
+  padding: 0.1em 3ch 0.1em 0;
+  text-align: left;
+  vertical-align: top;
+}
+
+.manpage .doc th {
+  border-bottom: 1px solid #1a1a1a;
+  font-weight: 700;
+}
+
+.manpage .doc hr {
+  border: 0;
+  border-top: 1px dashed #c4c4c4;
+  margin: 2.5em 0 2.5em 3ch;
+}
+
+.manpage .doc small {
+  color: #7a7a7a;
+}
+
+/* ------------------------------------------------------------------
+   report: monospace labels over a Georgia body
+   ------------------------------------------------------------------ */
+
+.report body {
+  background: #ffffff;
+  color: #141414;
+  font: 17px/1.7 Georgia, 'Times New Roman', serif;
+  margin: 2rem auto 3rem;
+  max-width: 38em;
+  padding: 0 1.25rem;
+}
+
+.report .doc h1,
+.report .doc h2,
+.report .doc h3,
+.report .doc .meta,
+.report .toc-title {
+  font-family: ui-monospace, 'DejaVu Sans Mono', Menlo, monospace;
+  font-weight: 700;
+}
+
+.report .controls {
+  align-items: center;
+  border-bottom: 1px solid #141414;
+  color: #787878;
+  display: flex;
+  flex-wrap: wrap;
+  font: 0.68rem/1 ui-monospace, 'DejaVu Sans Mono', monospace;
+  gap: 0.6em;
+  letter-spacing: 0.14em;
+  margin-bottom: 2.6rem;
+  padding-bottom: 0.9rem;
+  text-transform: uppercase;
+}
+
+.report .controls select,
+.report .controls button,
+.report .code-block .copy {
+  background: #ffffff;
+  border: 1px solid #141414;
+  color: #141414;
+  font: 0.68rem/1 ui-monospace, 'DejaVu Sans Mono', monospace;
+  letter-spacing: 0.08em;
+  padding: 0.35em 0.55em;
+}
+
+.report .controls button,
+.report .code-block .copy {
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.report .controls select:focus-visible,
+.report .controls button:focus-visible,
+.report .code-block .copy:focus-visible {
+  outline: 2px solid #141414;
+  outline-offset: 2px;
+}
+
+.report a {
+  color: #141414;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.report .toc {
+  border-bottom: 1px solid #dcdcdc;
+  margin: 0 0 2.6em;
+  padding: 0 0 1.1em;
+}
+
+.report .toc-title {
+  color: #5a5a5a;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  margin: 0 0 0.6em;
+  text-transform: uppercase;
+}
+
+.report .toc ul {
+  font-size: 0.85em;
+  list-style: none;
+  margin: 0;
+  padding-left: 1.4em;
+}
+
+.report .toc > ul {
+  padding-left: 0;
+}
+
+.report .toc li {
+  margin: 0.15em 0;
+}
+
+.report .doc h1 {
+  font-size: 0.95rem;
+  letter-spacing: 0.16em;
+  line-height: 1.4;
+  margin: 0 0 0.6em;
+  text-transform: uppercase;
+}
+
+.report .doc h2 {
+  border-bottom: 1px solid #141414;
+  font-size: 0.78rem;
+  letter-spacing: 0.16em;
+  margin: 3em 0 0.9em;
+  padding-bottom: 0.5em;
+  text-transform: uppercase;
+}
+
+.report .doc h3 {
+  color: #5a5a5a;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  margin: 2.2em 0 0.5em;
+  text-transform: uppercase;
+}
+
+.report .doc p,
+.report .doc ul,
+.report .doc blockquote,
+.report .doc table,
+.report .doc pre {
+  margin: 0 0 1.3em;
+}
+
+.report .doc .meta {
+  color: #787878;
+  font-size: 0.7rem;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  margin: 0 0 2.8em;
+  text-transform: uppercase;
+}
+
+.report .doc ul {
+  padding-left: 1.2em;
+}
+
+.report .doc li {
+  margin: 0.2em 0;
+}
+
+.report .doc pre {
+  background: #fafafa;
+  border: 1px solid #dcdcdc;
+  font: 12.5px/1.55 ui-monospace, 'DejaVu Sans Mono', monospace;
+  overflow-x: auto;
+  padding: 0.8em 1em;
+}
+
+.report .doc code {
+  font: 0.82em ui-monospace, 'DejaVu Sans Mono', monospace;
+}
+
+.report .doc pre code {
+  font-size: 1em;
+}
+
+.report .doc blockquote {
+  border-left: 1px solid #141414;
+  color: #3c3c3c;
+  margin-left: 0;
+  padding: 0.1em 0 0.1em 1.1em;
+}
+
+.report .doc blockquote p {
+  margin: 0;
+}
+
+.report .doc table {
+  border-collapse: collapse;
+  font: 12.5px/1.6 ui-monospace, 'DejaVu Sans Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+}
+
+.report .doc th {
+  border-bottom: 1px solid #141414;
+  font-size: 0.9em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 0.35em 0.7em 0.35em 0;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.report .doc td {
+  border-bottom: 1px solid #ececec;
+  padding: 0.35em 0.7em 0.35em 0;
+}
+
+.report .doc hr {
+  border: 0;
+  border-top: 1px solid #dcdcdc;
+  margin: 2.5em 0;
+}
+
+.report .doc small {
+  color: #787878;
+  font-family: ui-monospace, 'DejaVu Sans Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ------------------------------------------------------------------
+   github: GitHub's rendered markdown, reproduced
+
+   The document rules below came out of the spec review tool's own
+   stylesheet, which was already a careful reproduction of GitHub's rendered
+   markdown. They live here now and that tool loads this file, so there is
+   one copy and the two cannot drift apart.
+
+   THIS THEME IS SCOPED DIFFERENTLY FROM THE FOUR ABOVE, in two ways, and
+   both of them matter.
+
+   It styles .doc, never body. The four above style `.serif body` and so on,
+   because their controls size in units that resolve against the page font.
+   The spec review tool puts its whole application shell in the body: a
+   toolbar, an outline rail and the comment threads. A body rule carrying
+   GitHub's font stack, colour and 1012px measure would land on that shell
+   and change the page. Scoping to .doc gives the typography to the document
+   and to nothing else, which is the document pane in the review tool and
+   the document container here.
+
+   The theme class is wrapped in :where(), which counts for nothing when the
+   browser weighs one rule against another. So `:where(.github) .doc p` is
+   worth exactly what a plain `.doc p` is worth. That is deliberate. These
+   rules used to sit in the review tool's own stylesheet as `.doc p`, above
+   rules like `.comment-body p` and `blockquote.quoted` that are meant to
+   win. Those rules are worth no more than `.doc p` either and were winning
+   on nothing but coming later in the file. Written as `.github .doc p` the
+   theme would outweigh them and quietly restyle every comment body on the
+   page. :where() keeps the weights exactly as they were, and the review
+   tool loads this file before its own, so what came later still comes
+   later.
+
+   Every colour is written as a variable with GitHub's own value as the
+   fallback. The review tool defines those variables, including a dark set
+   it switches to with the system colour scheme, so the rules keep behaving
+   there exactly as they did before they moved. Nothing defines them in this
+   file, so the fallbacks apply and the theme is GitHub's light palette.
+
+   One measurement is borrowed the same way. The heading rules below keep a
+   heading clear of the review tool's sticky toolbar by reading --bar-height,
+   which that tool defines as its own toolbar height. Nothing defines it here,
+   so the fallback of zero applies and the rule adds nothing wherever there is
+   no toolbar to clear.
+   ------------------------------------------------------------------ */
+
+:where(.github) .doc {
+  color: var(--fg, #1f2328);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+  margin: 0 auto;
+  max-width: 1012px;
+}
+
+/* The size above is the review tool's and has to stay at 16px, since that tool
+   is meant to look exactly as it always has. Reading a document is not the same
+   task as reviewing one and wants a smaller size, so the reading page carries
+   reader on the root beside the theme key and the smaller size hangs off that.
+   Nothing else carries it, so nothing else moves.
+
+   The marker goes inside the same :where() as the theme class, for the reason
+   set out above: this rule has to weigh no more than a bare `.doc` does. It
+   beats the size above on source order alone, so it has to stay after it. */
+:where(.github.reader) .doc {
+  font-size: 14px;
+}
+
+:where(.github) .controls {
+  align-items: center;
+  border-bottom: 1px solid var(--border, #d1d9e0);
+  color: var(--fg-muted, #59636e);
+  display: flex;
+  flex-wrap: wrap;
+  font:
+    12px/1 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+  gap: 0.6em;
+  margin: 0 auto 1.5rem;
+  max-width: 1012px;
+  padding-bottom: 0.8rem;
+}
+
+:where(.github) .controls select,
+:where(.github) .controls button,
+:where(.github) .code-block .copy {
+  background: var(--canvas-inset, #f6f8fa);
+  border: 1px solid var(--border, #d1d9e0);
+  border-radius: 6px;
+  color: var(--fg, #1f2328);
+  font: inherit;
+  padding: 0.35em 0.7em;
+}
+
+:where(.github) .controls button,
+:where(.github) .code-block .copy {
+  cursor: pointer;
+}
+
+/* The controls sit in a row that is 12px throughout. The copy button sits in
+   the document, which is 16px, so it is given the row's size to match. */
+:where(.github) .code-block .copy {
+  font-size: 12px;
+}
+
+:where(.github) .controls select:focus-visible,
+:where(.github) .controls button:focus-visible,
+:where(.github) .code-block .copy:focus-visible {
+  outline: 2px solid var(--accent, #0969da);
+  outline-offset: 1px;
+}
+
+:where(.github) .toc {
+  border: 1px solid var(--border, #d1d9e0);
+  border-radius: 6px;
+  margin: 0 auto 1.5rem;
+  max-width: 1012px;
+  padding: 0.8em 1.2em;
+}
+
+:where(.github) .toc-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 0.5em;
+}
+
+:where(.github) .toc ul {
+  font-size: 14px;
+  list-style: none;
+  margin: 0;
+  padding-left: 1.4em;
+}
+
+:where(.github) .toc > ul {
+  padding-left: 0;
+}
+
+:where(.github) .toc li {
+  margin: 0.2em 0;
+}
+
+:where(.github) .toc a {
+  color: var(--accent, #0969da);
+  text-decoration: none;
+}
+
+:where(.github) .toc a:hover {
+  text-decoration: underline;
+}
+
+:where(.github) .doc .meta {
+  color: var(--fg-muted, #59636e);
+  font-size: 14px;
+  margin: 0 0 24px;
+}
+
+:where(.github) .doc h1,
+:where(.github) .doc h2,
+:where(.github) .doc h3,
+:where(.github) .doc h4,
+:where(.github) .doc h5,
+:where(.github) .doc h6 {
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 24px 0 16px;
+  scroll-margin-top: calc(var(--bar-height, 0px) + 16px);
+}
+
+:where(.github) .doc h1 {
+  border-bottom: 1px solid var(--border-soft, #e6eaef);
+  font-size: 30px;
+  padding-bottom: 8px;
+}
+
+:where(.github) .doc h2 {
+  border-bottom: 1px solid var(--border-soft, #e6eaef);
+  font-size: 22px;
+  padding-bottom: 7px;
+}
+
+:where(.github) .doc h3 {
+  font-size: 17px;
+}
+
+:where(.github) .doc h4 {
+  font-size: 15px;
+}
+
+:where(.github) .doc p,
+:where(.github) .doc ul,
+:where(.github) .doc ol,
+:where(.github) .doc table,
+:where(.github) .doc pre,
+:where(.github) .doc blockquote {
+  margin: 0 0 16px;
+}
+
+:where(.github) .doc ul,
+:where(.github) .doc ol {
+  padding-left: 2em;
+}
+
+:where(.github) .doc li + li {
+  margin-top: 4px;
+}
+
+:where(.github) .doc li > ul,
+:where(.github) .doc li > ol {
+  margin-bottom: 0;
+  margin-top: 4px;
+}
+
+:where(.github) .doc code {
+  background: var(--canvas-inset, #f6f8fa);
+  border-radius: 6px;
+  font-family: ui-monospace, 'SFMono-Regular', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+  font-size: 85%;
+  padding: 0.2em 0.4em;
+}
+
+:where(.github) .doc pre {
+  background: var(--canvas-inset, #f6f8fa);
+  border-radius: 6px;
+  font-family: ui-monospace, 'SFMono-Regular', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+  overflow-x: auto;
+  padding: 16px;
+}
+
+:where(.github) .doc pre code {
+  background: none;
+  font-size: 100%;
+  padding: 0;
+}
+
+:where(.github) .doc blockquote {
+  border-left: 4px solid var(--border, #d1d9e0);
+  color: var(--fg-muted, #59636e);
+  padding: 0 1em;
+}
+
+:where(.github) .doc hr {
+  background: var(--border, #d1d9e0);
+  border: 0;
+  height: 1px;
+  margin: 24px 0;
+}
+
+:where(.github) .doc table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+  width: max-content;
+  max-width: 100%;
+}
+
+:where(.github) .doc th,
+:where(.github) .doc td {
+  border: 1px solid var(--border, #d1d9e0);
+  padding: 6px 13px;
+}
+
+:where(.github) .doc th {
+  background: var(--canvas-inset, #f6f8fa);
+  font-weight: 600;
+}
+
+:where(.github) .doc a {
+  color: var(--accent, #0969da);
+}
+
+/* The base size drops on a narrow window, as it did where these rules came
+   from. It has to stay after the rule above, which sets the size it drops
+   from. */
+@media (max-width: 800px) {
+  :where(.github) .doc {
+    font-size: 15px;
+  }
+
+  /* The reading page takes the same one step down, from its own size rather
+     than from the review tool's. Without this it would read the 15px above and
+     come out larger on a narrow window than on a wide one. */
+  :where(.github.reader) .doc {
+    font-size: 13px;
+  }
+}

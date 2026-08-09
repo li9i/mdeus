@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""
+Read a markdown document in your browser.
+
+    bmv <document.md>           serve the document to your default browser
+    bmv --print <document.md>   write one self contained HTML file, print its
+                                path, and open nothing
+
+A reading is served from this machine and nowhere else, redrawn whenever the
+file changes. It ends on ctrl-c, or once the page has stopped saying it is
+still open, which is what ends a reading started from the file manager where
+there is no terminal to interrupt. Several readings may run at once, each on
+its own port. The document is opened read only and is never written to.
+"""
+
+import argparse
+import os
+import sys
+import threading
+import webbrowser
+from pathlib import Path
+
+# The modules this drives sit beside the script inside the package, so they are
+# found whether the package is stowed or run from a checkout of it.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'share' / 'mdview'))
+
+from export import write_export  # noqa: E402
+from server import HOST, Reading, build_server, serve  # noqa: E402
+
+
+def main(argv=None):
+    """Run the command line entry point."""
+    args = parse_args(argv)
+    document = args.document
+    if not document.is_file():
+        print(f'no such file: {document}', file=sys.stderr)
+        return 1
+    if not os.access(document, os.R_OK):
+        print(f'cannot read: {document}', file=sys.stderr)
+        return 1
+    if args.print:
+        print(write_export(document))
+        return 0
+    read(document)
+    return 0
+
+
+def parse_args(argv):
+    """Return the parsed command line."""
+    parser = argparse.ArgumentParser(
+        prog='bmv',
+        description='Read a markdown document in your browser.',
+    )
+    parser.add_argument('document', type=Path, help='markdown file to read')
+    parser.add_argument(
+        '--print',
+        action='store_true',
+        help='write one self contained HTML file and print its path, opening nothing',
+    )
+    return parser.parse_args(argv)
+
+
+def read(document):
+    """Serve one reading and open it, until ctrl-c or until the page goes quiet."""
+    reading = Reading(document)
+    bound = build_server(reading)
+    url = f'http://{HOST}:{bound.server_port}'
+    print(f'reading {document.name}')
+    print(f'  {url}')
+    print('  ctrl-c to stop, or close the page', flush=True)
+    # Off the serving thread: opening a browser can block until it exits. A
+    # desktop with nothing to open it with is not a failure either, since the
+    # address is already printed and the reading stays reachable by hand.
+    threading.Thread(target=webbrowser.open, args=(url, 2), daemon=True).start()
+    serve(bound, reading)
+
+
+if __name__ == '__main__':
+    sys.exit(main())
