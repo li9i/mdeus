@@ -125,12 +125,16 @@
    browser: what the machine did before anyone styled anything
    ------------------------------------------------------------------ */
 
+/* No cap on the measure, unlike the two themes below. A browser with no
+   stylesheet at all runs its lines to the edge of the window, and this theme is
+   what that looks like. It also means the lines rewrap as the pane is resized,
+   at every width rather than only below whatever the cap was. Anyone who wants
+   the measure held is a dropdown away from a theme that holds it. */
 .browser body {
   background: #ffffff;
   color: #000000;
   font: 16px/1.2 'Times New Roman', Times, serif;
   margin: 8px;
-  max-width: 46em;
 }
 
 .browser .controls {
