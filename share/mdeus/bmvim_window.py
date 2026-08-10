@@ -1,7 +1,7 @@
 """
 One window with both halves of a reading inside it.
 
-A reading with vim beside it is two programs, a browser and a terminal, and the
+A reading with vim beside it is two programs, a browser and gvim, and the
 desktop would ordinarily give each of them a window of its own. This makes one
 window and puts both inside it, so that the reading is one entry on the panel,
 is moved as one, resized as one and closed as one.
@@ -203,9 +203,9 @@ def drag(d, container, panes, divider, press):
 
     The panes are laid out again on every move rather than at the end, since a
     seam that arrives where the pointer left it says nothing about where it
-    will land: a terminal settles on whole character columns, so the reading
-    snaps to the nearest one and dragging is how you see which. Where it was
-    left is stored, so the next reading opens at the same split.
+    will land: vim settles on whole character columns, so the reading snaps to
+    the nearest one and dragging is how you see which. Where it was left is
+    stored, so the next reading opens at the same split.
     """
     global browser_share
     divider.grab_pointer(
@@ -224,9 +224,9 @@ def drag(d, container, panes, divider, press):
             if event.type == X.ButtonRelease:
                 break
             if event.type == X.ConfigureNotify:
-                # The terminal answering with the width it settled on. The
-                # browser is given the remainder now rather than after the
-                # drag, so the seam stays under the pointer as it moves.
+                # vim answering with the width it settled on. The browser is
+                # given the remainder now rather than after the drag, so the
+                # seam stays under the pointer as it moves.
                 meet(d, container, panes, divider)
             elif event.type == X.MotionNotify:
                 here = (event.root_x - edge) / width
@@ -253,7 +253,7 @@ def focus(d, window):
 
 def focus_pane(d, panes, focused):
     """Point the keyboard at the pane last clicked in, or at vim where that has gone."""
-    focus(d, panes.get(focused) or panes.get('terminal'))
+    focus(d, panes.get(focused) or panes.get('vim'))
 
 
 def ignore_gone(problem, request):
@@ -303,14 +303,14 @@ def keep_focus(d, container, panes, focused):
 def layout(d, container, panes, divider):
     """Give each pane its share of the container.
 
-    The browser takes the left of the window and the terminal the rest, in the
-    proportion the divider was last dragged to. What the terminal rounds off its
-    width is given back to the browser once the terminal has answered, which is
-    meet()'s work rather than this one's.
+    The browser takes the left of the window and vim the rest, in the
+    proportion the divider was last dragged to. What vim rounds off its width
+    is given back to the browser once vim has answered, which is meet()'s work
+    rather than this one's.
     """
     here = container.get_geometry()
     boxes = pane_boxes(here.width, here.height)
-    for name, box in zip(('browser', 'terminal'), boxes):
+    for name, box in zip(('browser', 'vim'), boxes):
         window = panes.get(name)
         if window is not None:
             window.configure(x=box[0], y=box[1], width=box[2], height=box[3])
@@ -368,8 +368,8 @@ def main(argv):
         subprocess.Popen(
             ['xdg-open', url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
-    terminal = subprocess.Popen(
-        terminal_command(servername, script, document, boxes[1], origin),
+    vim = subprocess.Popen(
+        vim_command(servername, script, document, boxes[1], origin),
         env=dict(
             os.environ,
             MDVIEW_LINK=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vimlink.py'),
@@ -381,20 +381,29 @@ def main(argv):
     panes = {}
     try:
         if container is not None:
-            # The terminal is the reading's own and is known by its process. The
-            # page's window is somebody else's and is known by being new.
+            # vim is the reading's own and is known by its process. The page's
+            # window is somebody else's and is known by being new.
             host = urlsplit(url).hostname
-            wanted = [('terminal', lambda listed: window_of(d, listed, terminal.pid), boxes[1])]
+            wanted = [('vim', lambda listed: window_of(d, listed, vim.pid), boxes[1])]
             if browser:
                 wanted.append(
                     ('browser', lambda listed: page_window(d, listed, before, host), boxes[0])
                 )
             panes = take_in(d, container, wanted)
+            # vim asks for a size of its own as it starts, and whether that
+            # lands before the pane was placed or after it is a matter of a few
+            # hundredths of a second. So the reading waits for vim to have
+            # finished asking and then lays both panes out again, and a reading
+            # opens at the split the last one was left at rather than at
+            # whatever vim happened to settle on.
+            if 'vim' in panes:
+                settle(panes['vim'])
+                layout(d, container, panes, divider)
             # The panes were mapped after the strip and are sitting over it, so
             # the seam is laid again now that there is something to lay it on.
             meet(d, container, panes, divider)
-            focus(d, panes.get('terminal'))
-        watch(d, container, panes, divider, terminal, servername)
+            focus(d, panes.get('vim'))
+        watch(d, container, panes, divider, vim, servername)
     finally:
         if 'browser' in panes:
             # Asked to go before the container it sits in is taken away, so that
@@ -415,9 +424,9 @@ def make_container(d):
     desktop can see and there is nothing left to borrow a name from.
 
     It is white because it is seen before either pane is in it, and again
-    afterwards in the band the terminal rounds off its height. A browser takes
-    a moment to start, and a container of any other colour would open as a
-    rectangle of that colour and then become a reading.
+    afterwards in the band vim rounds off its height. A browser takes a moment
+    to start, and a container of any other colour would open as a rectangle of
+    that colour and then become a reading.
     """
     root = d.screen().root
     area = root.get_full_property(d.intern_atom('_NET_WORKAREA'), Xatom.CARDINAL)
@@ -471,28 +480,28 @@ def make_divider(d, container):
 
 
 def meet(d, container, panes, divider):
-    """Put the two panes edge to edge, whatever the terminal rounded off its width.
+    """Put the two panes edge to edge, whatever vim rounded off its width.
 
-    A terminal settles on a whole number of character columns however wide it is
-    asked to be. So it is asked for its share, told where to sit once it has
+    vim settles on a whole number of character columns however wide it is asked
+    to be. So it is asked for its share, told where to sit once it has
     answered, and the browser beside it is given what was rounded off, and the
     two meet exactly however the reading is resized or dragged.
 
     The rows rounded off in the other direction leave a band of the container
-    showing below the terminal, and nothing here can close it. A terminal fills
-    a height it cannot divide only by being maximised against the desktop, and
-    inside a window there is no desktop left to maximise it against.
+    showing below vim, and nothing here can close it: vim settles on whole rows
+    as it settles on whole columns, and there is no third pane to hand the
+    remainder to.
     """
-    browser, terminal = panes.get('browser'), panes.get('terminal')
-    if terminal is None:
+    browser, vim = panes.get('browser'), panes.get('vim')
+    if vim is None:
         return
     here = container.get_geometry()
-    there = terminal.get_geometry()
+    there = vim.get_geometry()
     left = here.width - there.width
     # Asked for only where it is wrong, since a request answered by no change
     # still arrives back here and would otherwise go round for ever.
     if there.x != left:
-        terminal.configure(x=left)
+        vim.configure(x=left)
     if browser is not None and browser.get_geometry().width != left:
         browser.configure(width=left)
     divider_at(divider, left, here.height)
@@ -549,8 +558,8 @@ def take_in(d, container, wanted):
     own, with a title bar of its own, for as long as the other one took.
 
     Each pane says how its own window is to be picked out of the desktop's list,
-    since the two are found in quite different ways: the terminal is a process
-    of the reading's and the page's window is not.
+    since the two are found in quite different ways: vim is a process of the
+    reading's and the page's window is not.
     """
     panes = {}
     waiting = list(wanted)
@@ -569,26 +578,6 @@ def take_in(d, container, wanted):
         if waiting:
             time.sleep(SETTLE_WAIT)
     return panes
-
-
-def terminal_command(servername, script, document, box, origin):
-    """Return the command that opens the terminal the reading's vim runs in.
-
-    A terminal of the reading's own rather than the one the command was typed
-    into. Everything inside the container goes when the container does, and a
-    terminal somebody else is using is not the reading's to take that risk with.
-
-    notitle comes after the vimrc rather than before it, since a vimrc that
-    turns the title on would otherwise win, and vim writing the name of the file
-    onto the terminal writes over the name the reading has put on the window.
-    """
-    command = ['mate-terminal', '--disable-factory', '--hide-menubar']
-    if box is not None:
-        command.append(f'--geometry=+{origin[0] + box[0]}+{origin[1] + box[1]}')
-    return command + [
-        '--', 'vim', '--servername', servername, '-c', 'set notitle',
-        '-S', script, '--', document,
-    ]
 
 
 def top_level(d, window_id):
@@ -642,15 +631,55 @@ def under_pointer(container, panes):
     return None
 
 
-def watch(d, container, panes, divider, terminal, servername):
+def vim_command(servername, script, document, box, origin):
+    """Return the command that opens the vim the reading is read with.
+
+    gvim rather than vim in a terminal of the reading's own. A terminal is a
+    third program standing between the reading and vim, and what it does to the
+    pane it draws in has to be undone again: it holds on to the rows vim named
+    when it started, whatever the pane is resized to afterwards, and it passes
+    the title vim writes on to the window the reading has already named.
+
+    In the foreground, since gvim otherwise forks and leaves nothing to hold.
+    The process started here is the whole of how the reading knows vim is still
+    up, and its ending is how the reading ends.
+
+    The headroom gvim keeps goes before the vimrc, since it is read once as the
+    window is made and not again. It is fifty pixels by default, kept clear so
+    that a window and the border a window manager draws round it both fit the
+    screen, and it costs the pane two rows it could have filled: the pane is
+    inside the reading's window and nothing is drawn round it.
+
+    The menu bar and the scrollbar go after the vimrc rather than before it, so
+    that a vimrc asking for either does not win. The reading's own window
+    carries a title bar and a close button for the pair of panes, and neither
+    pane carries anything of the kind itself. Keeping the window is asked for
+    first and the two are dropped after it, because gvim otherwise takes the
+    room they were using out of its own window rather than giving it to the
+    document. That resize lands after the reading has placed the pane as often
+    as it lands before, and the reading gives the page whatever width vim
+    settles on, so without this the seam sits somewhere else every second or
+    third reading.
+    """
+    command = ['gvim', '-f', '--servername', servername]
+    if box is not None:
+        command += ['-geometry', f'+{origin[0] + box[0]}+{origin[1] + box[1]}']
+    return command + [
+        '--cmd', 'set guiheadroom=0',
+        '-c', 'set guioptions+=k guioptions-=m guioptions-=r',
+        '-S', script, '--', document,
+    ]
+
+
+def watch(d, container, panes, divider, vim, servername):
     """Hold the reading up until it ends.
 
-    It ends when vim quits, which is what the terminal is waiting on, or when
-    the terminal is killed outright, which comes to the same thing here. The
-    browser window being closed asks vim to quit instead, and vim refuses while
-    anything in it is unwritten, so a reading is never taken away from under
-    unsaved work. The container's close button and an interrupt in the terminal
-    the command was typed into both ask the same question.
+    It ends when vim quits, or when vim is killed outright, which comes to the
+    same thing here. The browser window being closed asks vim to quit instead,
+    and vim refuses while anything in it is unwritten, so a reading is never
+    taken away from under unsaved work. The container's close button and an
+    interrupt in the terminal the command was typed into both ask the same
+    question.
 
     That window belongs to a browser the reading borrowed, so its closing is
     heard as the window being destroyed rather than as a process ending. Where
@@ -665,8 +694,8 @@ def watch(d, container, panes, divider, terminal, servername):
     clicks, and from then on they arrive here and name their own pane.
     """
     signal.signal(signal.SIGINT, lambda number, frame: vimlink.quit_vim(servername))
-    focused = 'terminal'
-    while terminal.poll() is None:
+    focused = 'vim'
+    while vim.poll() is None:
         if container is None:
             time.sleep(POLL)
             continue
@@ -712,9 +741,9 @@ def watch(d, container, panes, divider, terminal, servername):
 def white(d, window):
     """Return opaque white for a window, whatever depth it draws at.
 
-    A browser and a terminal both ask for a visual with an alpha channel where
-    the screen itself has none, and the screen's white on such a visual is
-    white with nothing of it left, which is to say nothing at all.
+    A browser and gvim both ask for a visual with an alpha channel where the
+    screen itself has none, and the screen's white on such a visual is white
+    with nothing of it left, which is to say nothing at all.
     """
     if window.get_geometry().depth == 32:
         return 0xFFFFFFFF

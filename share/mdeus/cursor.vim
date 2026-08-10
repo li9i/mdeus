@@ -1,8 +1,8 @@
 " What vim does for as long as a reading is up.
 "
 " Sourced by the vim a reading opens, and reached from nowhere else. It reports
-" where the cursor is for the page to mark, lights the block the page sends it
-" to, and keeps the whole document drawn when the reading is resized.
+" where the cursor is for the page to mark, and lights the block the page sends
+" it to.
 "
 " The two names it needs come from the environment the reading sets: MDVIEW_LINK
 " is the script that carries a line to the server, and MDVIEW_URL is where that
@@ -43,38 +43,22 @@ function! s:MdviewClicked() abort
     \ ['python3', $MDVIEW_LINK, 'cursor', $MDVIEW_URL, string(line('.')), 'click'])
 endfunction
 
-" Name the rows the terminal may scroll within again, every time the reading is
-" resized.
-"
-" vim names those rows once, as it starts, and a terminal holds on to what it
-" was told. The reading resizes the terminal after vim has started in it, so
-" from then on the terminal scrolls within the rows the pane had at first while
-" vim writes as though the whole pane scrolled. A line vim ends at the foot of
-" those first rows takes part of the document out from under vim's own record of
-" what the pane holds, and vim, believing those rows drawn, leaves them as they
-" are: the top of the pane shows lines the reading has moved on from until
-" something makes vim draw the whole pane again.
-"
-" Naming the rows puts the terminal's cursor at the top left, so it is sent back
-" to where vim left it in the same breath.
-function! s:MdviewResized() abort
-  call echoraw(printf("\<Esc>[r\<Esc>[%d;%dH", screenrow(), screencol()))
-endfunction
-
 augroup mdview
   autocmd!
   autocmd CursorMoved,CursorMovedI * call s:MdviewMoved()
-  autocmd VimResized * call s:MdviewResized()
 augroup END
 
 " The same gesture as the page's, so one hand does the same thing in either
 " half: double click a line and the other half comes to it. A single click is
 " left alone and puts the cursor where you pointed, as it does in any vim.
 "
-" The cursor is moved to the pointer first, so it is where the second click
-" landed before it is read. That takes the place of the word a double click
-" would otherwise select, which is nothing this reading wants.
-nnoremap <silent> <2-LeftMouse> <LeftMouse>:call <SID>MdviewClicked()<CR>
+" Nothing is done about the cursor first, since the first click of the pair has
+" already put it where you pointed, and the mapping is what keeps the second
+" click from selecting the word under it. Handing vim a click of its own here
+" instead would be counted as another click of the same gesture: vim would take
+" the word after all, and the colon that follows would open a command line with
+" the selection's range in it and the report would never be sent.
+nnoremap <silent> <2-LeftMouse> :call <SID>MdviewClicked()<CR>
 
 " Where the cursor starts, so the page marks a block from the first moment
 " rather than waiting to be moved.
@@ -87,7 +71,7 @@ call s:MdviewReport(0)
 " not to be read against. Set as a default, so that naming BmvimJump in .vimrc
 " overrides it.
 let s:linger = 1500
-highlight default BmvimJump ctermfg=black ctermbg=153 guifg=black guibg=#BDDFFF
+highlight default BmvimJump guifg=black guibg=#BDDFFF
 
 " The window and the mark are told to the moment that puts it out, rather than
 " left for it to find, since by the time it comes round the window it was lit in

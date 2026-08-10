@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 #
 # Read a markdown document in your browser with vim beside it, in one window.
-# The browser takes the left of that window and a terminal running vim takes the
-# right. Clicking a block sends vim to the line it came from, centred and lit for
-# a moment, moving the vim cursor marks the block it is in, and writing the file
-# redraws the page.
+# The browser takes the left of that window and gvim takes the right. Clicking a
+# block sends vim to the line it came from, centred and lit for a moment, moving
+# the vim cursor marks the block it is in, and writing the file redraws the page.
 #
 #   bmvim <document.md>
 #
-# The reading opens a terminal of its own for vim, so the shell this was run from
-# stays yours and waits. It needs a desktop session, so use bmv where there is
-# none, and only one reading runs at a time.
+# The reading opens a gvim of its own, so the shell this was run from stays yours
+# and waits. It needs a desktop session, so use bmv where there is none, and only
+# one reading runs at a time.
 #
 # The page opens in the browser you already have running, which is why it opens
 # as quickly as it does, and the reading holds it by that one window: it is taken
@@ -19,9 +18,9 @@
 #
 # The reading ends when vim quits. Closing the browser pane, pressing the
 # window's close button and interrupting here all ask vim to quit instead, and
-# vim refuses while anything in it is unwritten. Killing the terminal outright
-# ends it the same way quitting vim does. However it ends, the server stops and
-# the page's window goes.
+# vim refuses while anything in it is unwritten. Killing vim outright ends it
+# the same way quitting vim does. However it ends, the server stops and the
+# page's window goes.
 
 set -euo pipefail
 
