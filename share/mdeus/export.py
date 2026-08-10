@@ -112,7 +112,7 @@ def printed_page(document):
     page = (ASSET_DIR / 'page.js').read_text(encoding='utf-8')
     return page_html(
         document['name'],
-        document['state']['theme'],
+        document['state'],
         f'    <style>\n{styles}\n    </style>',
         f'    <script>\n{stub_script(document)}\n    </script>\n'
         f'    <script>\n{page}\n    </script>\n',

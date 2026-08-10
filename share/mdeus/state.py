@@ -1,10 +1,11 @@
 """
 The little a reading remembers between one opening and the next.
 
-The theme, whether the contents list was open, and where the divider between
-the browser and vim was left. One file holds all three, and each thing that
-stores into it writes only its own field, since a reading in a browser and a
-reading with vim beside it know nothing of each other's settings.
+The theme, whether the contents list was open, whether a theme that will run its
+lines the full width of the pane is left to, and where the divider between the
+browser and vim was left. One file holds all four, and each thing that stores
+into it writes only its own field, since a reading in a browser and a reading
+with vim beside it know nothing of each other's settings.
 
 This is kept apart from the server that serves a reading and from the window
 that holds one, because both of them read it and neither is the other's
@@ -42,16 +43,23 @@ def load_split():
 
 
 def load_state():
-    """Return the stored theme and contents setting, or the ones a first reading gets.
+    """Return the stored page settings, or the ones a first reading gets.
 
     A missing, unreadable or malformed file is not an error, and neither is a
     theme naming something that does not exist. Any of them means the reading
     opens the way the very first one did.
+
+    A file written before the full width setting existed has no field for it,
+    and reads as the setting being on, since that is how a first reading opens.
     """
     stored = stored_state()
     if stored.get('theme') in THEMES:
-        return {'contents': bool(stored.get('contents')), 'theme': stored['theme']}
-    return {'contents': False, 'theme': 'browser'}
+        return {
+            'contents': bool(stored.get('contents')),
+            'theme': stored['theme'],
+            'wide': bool(stored.get('wide', True)),
+        }
+    return {'contents': False, 'theme': 'browser', 'wide': True}
 
 
 def save_split(share):
@@ -63,9 +71,9 @@ def save_state(state):
     """Write the state file atomically, so a reading never reads half a file.
 
     What is written is merged into what is already there. Two things store into
-    this file and neither knows the other's field: the page stores the theme
-    and the contents setting, and a reading with vim beside it stores where the
-    divider was left.
+    this file and neither knows the other's field: the page stores the theme,
+    the contents setting and the full width setting, and a reading with vim
+    beside it stores where the divider was left.
     """
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     # A name of its own for every write, beside the target so the rename stays

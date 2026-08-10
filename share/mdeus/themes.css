@@ -3,11 +3,13 @@
    THE PAGE STRUCTURE
    ------------------
 
-   <html class="browser reader">     the theme key is the class on the root
+   <html class="browser reader wide">  the theme key is the class on the root
      <body>
        <div class="controls">        built by page.js, above the document
          <label for="theme">Theme</label>
          <select id="theme">…</select>
+         <input type="checkbox" id="wide" />
+         <label for="wide">Full width</label>
          <button id="contents">Contents</button>
        </div>
        <nav class="toc">             present only while the list is open
@@ -33,6 +35,12 @@
    root element at any time. The reading page also carries reader there, which
    the spec review tool does not, and github is sized off it. See that theme
    below.
+
+   wide sits on the root beside the theme key while the Full width box is
+   ticked, which it is until someone unticks it. browser and report read it, and
+   only to drop the cap on their measure. github holds its own measure whether
+   it is there or not, since that measure is github.com's rather than this
+   theme's to choose.
 
    .doc > .block > .prose > <content> is the same structure the spec review
    tool renders, so a rule written as `.doc p` matches in both places. Anything
@@ -142,16 +150,21 @@
    browser: what the machine did before anyone styled anything
    ------------------------------------------------------------------ */
 
-/* No cap on the measure, unlike the two themes below. A browser with no
-   stylesheet at all runs its lines to the edge of the window, and this theme is
-   what that looks like. It also means the lines rewrap as the pane is resized,
-   at every width rather than only below whatever the cap was. Anyone who wants
-   the measure held is a dropdown away from a theme that holds it. */
 .browser body {
   background: #ffffff;
   color: #000000;
   font: 16px/1.2 'Times New Roman', Times, serif;
   margin: 8px;
+  max-width: 46em;
+}
+
+/* The Full width box, ticked. A browser with no stylesheet at all runs its
+   lines to the edge of the window, and this theme is what that looks like, so
+   this is how it opens. It also means the lines rewrap as the pane is resized,
+   at every width rather than only below the cap above. Untick the box and the
+   cap comes back, here and in report. */
+.browser.wide body {
+  max-width: none;
 }
 
 .browser .controls {
@@ -302,6 +315,13 @@
   margin: 2rem auto 3rem;
   max-width: 38em;
   padding: 0 1.25rem;
+}
+
+/* The Full width box, ticked. The padding above is what keeps the lines off the
+   edge of the pane once the cap has gone, so this theme runs wide without ever
+   running right up against it. */
+.report.wide body {
+  max-width: none;
 }
 
 .report .doc h1,

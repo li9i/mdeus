@@ -51,19 +51,21 @@ def build_server(reading, port=DEFAULT_PORT):
         return ThreadingHTTPServer((HOST, 0), handler)
 
 
-def page_html(name, theme, head, body_tail=''):
+def page_html(name, state, head, body_tail=''):
     """Return the empty page. The controls and the document are filled in by page.js.
 
     The one skeleton behind both a served reading and a printed copy. What
     differs between them is how the stylesheet and the script arrive, which is
     the caller's to hand in: linked from this server, or inlined whole.
     """
-    # The theme is already on the root element here so that the first paint is
-    # the theme the reader chose, rather than an unstyled page for a moment.
-    # The reader marker beside it says this is a page for reading rather than
+    # Both settings the stylesheet reads are already on the root element here,
+    # so that the first paint is the page the reader left rather than an
+    # unstyled one for a moment, or one that rewraps as the script catches up.
+    # The reader marker beside them says this is a page for reading rather than
     # the spec review tool, which shares the stylesheet and sizes github larger.
+    classes = f"{state['theme']} reader" + (' wide' if state['wide'] else '')
     return f"""<!doctype html>
-<html lang="en" class="{theme} reader">
+<html lang="en" class="{classes}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -130,11 +132,19 @@ def wanted_line(body):
 
 
 def wanted_state(body):
-    """Return the state a request asks to store, or raise ValueError."""
+    """Return the state a request asks to store, or raise ValueError.
+
+    A body naming no full width setting reads as the setting being on, which is
+    the same reading the stored state gets when its file has no field for it.
+    """
     theme = body.get('theme')
     if theme not in THEMES:
         raise ValueError('unknown theme')
-    return {'contents': bool(body.get('contents')), 'theme': theme}
+    return {
+        'contents': bool(body.get('contents')),
+        'theme': theme,
+        'wide': bool(body.get('wide', True)),
+    }
 
 
 def watch_heartbeat(server, reading):
@@ -327,7 +337,7 @@ class ReadingHandler(BaseHTTPRequestHandler):
         if self.reading.servername:
             head.append('    <link rel="stylesheet" href="/assets/bmvim.css" />')
             head.append('    <script src="/assets/bmvim.js" defer></script>')
-        page = page_html(self.name(), load_state()['theme'], '\n'.join(head))
+        page = page_html(self.name(), load_state(), '\n'.join(head))
         self.send_bytes(page.encode('utf-8'), 'text/html')
 
     def snapshot(self):

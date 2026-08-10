@@ -1,6 +1,6 @@
-/* The reading page: the theme dropdown, the contents list, the sections a
-   double click folds away, the redraw when the file changes, and the heartbeat
-   that ends a reading with no terminal.
+/* The reading page: the theme dropdown, the full width box beside it, the
+   contents list, the sections a double click folds away, the redraw when the
+   file changes, and the heartbeat that ends a reading with no terminal.
 
    The page keeps nothing of its own. It draws what GET /doc sends and writes
    every change back through POST /api/state, so one reading and the next
@@ -41,6 +41,9 @@ let mtime = null;
    section the page can fold begins. Taken from the outline the server sends. */
 let sectionLines = new Set();
 let theme = null;
+/* Whether the Full width box is ticked. Two of the three themes are drawn any
+   differently for it. Null until the server has said. */
+let wide = null;
 
 function anchor() {
   /* The first block still on screen, and how far down the window it sits. A
@@ -78,6 +81,12 @@ function applyTheme() {
   THEMES.forEach(([key]) => root.classList.toggle(key, key === theme));
 }
 
+function applyWide() {
+  /* One class on the root, on while the box is ticked, off while it is not. The
+     stylesheet is what decides which themes are drawn any differently for it. */
+  document.documentElement.classList.toggle('wide', wide);
+}
+
 function blockHtml(block) {
   /* One block of the document, carrying the source lines it was built from. */
   return (
@@ -88,7 +97,9 @@ function blockHtml(block) {
 }
 
 function buildControls() {
-  /* Two native controls and nothing else. */
+  /* Native controls and nothing else. The contents button is not built here,
+     since whether the document has headings enough for one is a question every
+     redraw asks again. */
   const label = document.createElement('label');
   label.htmlFor = 'theme';
   label.textContent = 'Theme';
@@ -102,7 +113,15 @@ function buildControls() {
   });
   select.value = theme;
   select.addEventListener('change', onTheme);
-  controlsNode.append(label, select);
+  const box = document.createElement('input');
+  box.checked = wide;
+  box.id = 'wide';
+  box.type = 'checkbox';
+  box.addEventListener('change', onWide);
+  const boxLabel = document.createElement('label');
+  boxLabel.htmlFor = 'wide';
+  boxLabel.textContent = 'Full width';
+  controlsNode.append(label, select, box, boxLabel);
 }
 
 function contentsHtml() {
@@ -348,7 +367,9 @@ async function load() {
   if (theme === null) {
     theme = doc.state.theme;
     contentsOpen = doc.state.contents;
+    wide = doc.state.wide;
     applyTheme();
+    applyWide();
     buildControls();
   }
   drawDocument();
@@ -398,6 +419,16 @@ function onTheme(event) {
   saveState();
 }
 
+function onWide(event) {
+  /* Same as a theme change: a class swap, the reading position held across it,
+     and the choice written back so the next reading opens the same way. */
+  const mark = anchor();
+  wide = event.target.checked;
+  applyWide();
+  restore(mark);
+  saveState();
+}
+
 async function poll() {
   /* Nothing tells the page the file was written, so it asks. The modification
      time is the small question, and the document is fetched again only once
@@ -428,7 +459,7 @@ function restore(mark) {
 function saveState() {
   /* The store is the server's. Nothing is kept in the browser. */
   fetch('/api/state', {
-    body: JSON.stringify({ contents: contentsOpen, theme }),
+    body: JSON.stringify({ contents: contentsOpen, theme, wide }),
     headers: { 'Content-Type': 'application/json' },
     method: 'POST',
   }).catch(() => {});

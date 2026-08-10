@@ -323,7 +323,7 @@ def test_every_theme_is_accepted_and_a_fourth_is_not():
             status, reply = fetch_json(
                 port, '/api/state', 'POST', {'theme': theme, 'contents': False})
             assert status == 200, (theme, status)
-            assert reply == {'contents': False, 'theme': theme}, reply
+            assert reply == {'contents': False, 'theme': theme, 'wide': True}, reply
             status, doc = fetch_json(port, '/doc')
             assert doc['state']['theme'] == theme, (theme, doc['state'])
         before = state.STATE_PATH.read_text(encoding='utf-8')
@@ -432,11 +432,47 @@ def test_linked_document_inside_the_tree_is_rendered():
         stop()
 
 
+def test_full_width_is_on_until_it_is_unticked_and_lands_on_the_first_paint():
+    """The full width setting is stored, reported back, and already on the root element.
+
+    The page could turn the class on itself once it has the document, but the
+    lines would be drawn one way and rewrap the moment it did, so the setting
+    has to arrive with the markup rather than after it.
+    """
+    root, port, stop = start_reading()
+    try:
+        # Nothing stored yet, so the reading opens the way the very first one
+        # did, which is with the box ticked.
+        status, doc = fetch_json(port, '/doc')
+        assert doc['state']['wide'] is True, doc['state']
+        status, _, page = fetch(port, '/')
+        assert b'class="browser reader wide"' in page, page[:200]
+
+        status, reply = fetch_json(
+            port, '/api/state', 'POST', {'theme': 'browser', 'contents': False,
+                                         'wide': False})
+        assert status == 200, status
+        assert reply['wide'] is False, reply
+        status, doc = fetch_json(port, '/doc')
+        assert doc['state']['wide'] is False, doc['state']
+        status, _, page = fetch(port, '/')
+        assert b'class="browser reader"' in page, page[:200]
+
+        # A state file written before the setting existed names no field for it,
+        # and reads as the setting being on rather than as a broken file.
+        state.STATE_PATH.write_text(
+            '{"theme": "browser", "contents": false}', encoding='utf-8')
+        status, doc = fetch_json(port, '/doc')
+        assert doc['state']['wide'] is True, doc['state']
+    finally:
+        stop()
+
+
 def test_missing_or_broken_state_falls_back_to_browser():
     """A state file that is absent, malformed or naming no theme is not an error."""
     root, port, stop = start_reading()
     try:
-        default = {'contents': False, 'theme': 'browser'}
+        default = {'contents': False, 'theme': 'browser', 'wide': True}
         assert not state.STATE_PATH.exists(), state.STATE_PATH
         status, doc = fetch_json(port, '/doc')
         assert status == 200, status
@@ -480,7 +516,7 @@ def test_removed_file_gives_the_gone_reply_and_recovers():
     root, port, stop = start_reading()
     try:
         gone = {'name': 'start.md', 'gone': True,
-                'state': {'contents': False, 'theme': 'browser'}}
+                'state': {'contents': False, 'theme': 'browser', 'wide': True}}
         source = root / 'start.md'
         source.unlink()
         status, doc = fetch_json(port, '/doc')
@@ -512,12 +548,15 @@ def test_split_is_kept_beside_the_theme_and_falls_back():
         state.save_split(0.62)
         assert state.load_split() == 0.62, state.load_split()
         # The page stores through the route and knows nothing of the split.
-        fetch_json(port, '/api/state', 'POST', {'theme': 'github', 'contents': True})
+        fetch_json(port, '/api/state', 'POST',
+                   {'theme': 'github', 'contents': True, 'wide': False})
         stored = json.loads(state.STATE_PATH.read_text(encoding='utf-8'))
-        assert stored == {'contents': True, 'theme': 'github', 'split': 0.62}, stored
-        # And a reading storing the split knows nothing of the theme.
+        assert stored == {'contents': True, 'theme': 'github', 'wide': False,
+                          'split': 0.62}, stored
+        # And a reading storing the split knows nothing of the page's settings.
         state.save_split(0.5)
-        assert state.load_state() == {'contents': True, 'theme': 'github'}, stored
+        assert state.load_state() == {'contents': True, 'theme': 'github',
+                                      'wide': False}, stored
         # A share the divider could not have left behind, whichever way it is
         # wrong, opens the reading at the split the first one opened at.
         for share in ('sideways', None, 0.02, 0.99):
@@ -533,16 +572,19 @@ def test_state_file_is_never_read_half_written():
     try:
         writes = 120
         last = {'contents': bool((writes - 1) % 2),
-                'theme': THEMES[(writes - 1) % len(THEMES)]}
+                'theme': THEMES[(writes - 1) % len(THEMES)],
+                'wide': not (writes - 1) % 2}
 
         def write_many():
-            """Store a different state over and over, as the two controls would."""
+            """Store a different state over and over, as the three controls would."""
             for index in range(writes):
                 fetch_json(port, '/api/state', 'POST',
                            {'theme': THEMES[index % len(THEMES)],
-                            'contents': bool(index % 2)})
+                            'contents': bool(index % 2),
+                            'wide': not index % 2})
 
-        fetch_json(port, '/api/state', 'POST', {'theme': 'browser', 'contents': False})
+        fetch_json(port, '/api/state', 'POST',
+                   {'theme': 'browser', 'contents': False, 'wide': True})
         writer = threading.Thread(target=write_many)
         writer.start()
         seen = 0
@@ -554,6 +596,7 @@ def test_state_file_is_never_read_half_written():
                 raise AssertionError(f'the state file was not whole: {error}')
             assert stored['theme'] in THEMES, stored
             assert isinstance(stored['contents'], bool), stored
+            assert isinstance(stored['wide'], bool), stored
             seen += 1
         writer.join(timeout=TIMEOUT)
         assert not writer.is_alive(), 'the writer never finished'
@@ -570,7 +613,7 @@ def test_state_is_stored_and_reported_back():
     """POST /api/state writes the file, and the next /doc reports what it wrote."""
     root, port, stop = start_reading()
     try:
-        wanted = {'contents': True, 'theme': 'report'}
+        wanted = {'contents': True, 'theme': 'report', 'wide': False}
         status, reply = fetch_json(port, '/api/state', 'POST', wanted)
         assert status == 200, status
         assert reply == wanted, reply
