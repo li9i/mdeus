@@ -1,14 +1,21 @@
 /* The browser half of the sync between the page and vim. Only a reading with
    vim beside it loads this file.
 
-   Clicking a block sends vim to the first source line that block was built
-   from. In the other direction the page asks the server where the vim cursor
-   is and marks the block whose lines contain it.
+   Double clicking a block sends vim to the first source line that block was
+   built from, and double clicking in vim brings the page over the same way.
+   One gesture, the same in both halves. Single click is left to whichever
+   half it happened in, so selecting a paragraph, following a link and putting
+   the vim cursor somewhere all cost nothing.
 
-   The page moves as little as it can. The rule is put on the marked block
-   wherever that block happens to be, and the page follows the cursor only on
-   a far jump. Anything more eager drags the document about under someone who
-   is reading or typing in the other window.
+   In the other direction the page asks the server where the vim cursor is and
+   marks the block whose lines contain it.
+
+   The page stays where it is put. The rule is moved onto the marked block
+   wherever that block happens to be, and one thing alone scrolls the page: a
+   click in vim, which is how you ask for the page to be brought over. Cursors
+   arriving any other way move the rule and nothing else, since vim moves its
+   cursor as its window scrolls and a page that followed would be dragged
+   about by the wheel and by ctrl-d and ctrl-f.
 
    It runs beside page.js, which draws the document and owns everything else
    on the page. Every name here is its own. */
@@ -16,16 +23,16 @@
 'use strict';
 
 const CURSOR_MS = 200;
-/* How long the clicked ground stays before it is let go. The fade itself is
-   in bmvim.css. */
+/* How long the ground on the block stays before it is let go. The fade itself
+   is in bmvim.css. */
 const FLASH_MS = 1000;
 
 const pane = document.querySelector('.doc');
 
-/* How many clicks in vim the page has already followed. A click there is a
-   jump the page goes to whatever the distance, and the throttled report of the
-   same line follows a moment later, so what is watched is a count rather than
-   a flag the report behind it would take back. Nothing has been followed until
+/* How many clicks in vim the page has already followed. A click there is the
+   one thing that brings the page along, and the throttled report of the same
+   line follows a moment later, so what is watched is a count rather than a
+   flag the report behind it would take back. Nothing has been followed until
    the first reply has been read, and that reply is not a click. */
 let clicksAt = null;
 let flashTimer = null;
@@ -38,10 +45,10 @@ let lineAt = null;
 let ruleAt = null;
 
 function begin() {
-  /* Both directions of the sync, started together. The click is listened for
-     on the pane rather than on each block, because page.js builds the blocks
-     afresh on every redraw and a handler on one would go with it. */
-  pane.addEventListener('click', onBlockClick);
+  /* Both directions of the sync, started together. The double click is
+     listened for on the pane rather than on each block, because page.js builds
+     the blocks afresh on every redraw and a handler on one would go with it. */
+  pane.addEventListener('dblclick', onBlockDouble);
   window.setInterval(pollCursor, CURSOR_MS);
 }
 
@@ -64,8 +71,8 @@ function blockForLine(line) {
 }
 
 function flash(block) {
-  /* The ground on the block that was clicked. One block carries it at a
-     time, and clicking again starts the second over. */
+  /* The ground on the block that was pointed at. One block carries it at a
+     time, and pointing at another starts the second over. */
   const lit = pane.querySelector('.bmvim-click');
   if (lit) {
     lit.classList.remove('bmvim-click');
@@ -76,17 +83,16 @@ function flash(block) {
 }
 
 function markCursor(line, clicked) {
-  /* Move the rule to the block holding the cursor, and let the page follow if
-     the cursor has gone far enough to be worth following.
+  /* Move the rule to the block holding the cursor.
+
+     A cursor put where it is by a double click in vim is the one that brings
+     the page with it. Somebody has pointed at a block, and the page goes to it
+     however near or far it is and whether or not it was already in front of
+     them. Every other cursor moves the rule and nothing else, so a document
+     being scrolled through or typed in stays where its reader left it.
 
      A redraw arrives here as the same line in a fresh element, so the rule is
-     put back without the page moving. Moving the cursor about inside one
-     block arrives as a new line in the same block, which is the case that
-     must never scroll: someone is typing.
-
-     A cursor put where it is by a click in vim is the one case with no
-     distance to weigh. Somebody has pointed at a block and the page goes to
-     it, near or far and whether or not it was already in front of them.
+     put back without the page moving.
 
      The two halves fold on their own, so the block the cursor is in may be
      one the page has folded away. The heading of the folded section stands in
@@ -101,31 +107,31 @@ function markCursor(line, clicked) {
     return;
   }
   block.classList.add('bmvim-cursor');
-  const begins = Number(block.dataset.start);
+  ruleAt = Number(block.dataset.start);
   if (clicked) {
-    ruleAt = begins;
     show(block);
-  } else if (begins !== ruleAt) {
-    ruleAt = begins;
-    reveal(block, ruled);
   }
 }
 
-function onBlockClick(event) {
-  /* A link is a link and a copy button copies. Anything else in a block is a
-     jump to the line that block starts at. The name keeps clear of the click
-     handler the reader page installs on this same element, since the two
-     scripts share a scope. */
-  if (event.target.closest('a, .copy')) {
-    return;
-  }
+function onBlockDouble(event) {
+  /* Two clicks on a block send vim to the line that block starts at. Both ends
+     of the block go with the message, since the page is the only half that
+     knows them and vim lights the whole of what was pointed at rather than its
+     first line.
+
+     A link is followed by the first of the two clicks and a copy button copies
+     on it, so neither of those ever reaches this. A block with a link in it is
+     pointed at by double clicking the words around the link.
+
+     The two clicks take a word as a selection on the way through, and a
+     document that highlights a word wherever you point at it reads as though
+     something were being chosen. */
   const block = event.target.closest('.block');
   if (!block) {
     return;
   }
+  window.getSelection().removeAllRanges();
   flash(block);
-  /* Both ends of the block go, since the page is the only half that knows them
-     and vim lights the whole of what was clicked rather than its first line. */
   fetch('/api/jump', {
     body: JSON.stringify({
       last: Number(block.dataset.end),
@@ -134,18 +140,6 @@ function onBlockClick(event) {
     headers: { 'Content-Type': 'application/json' },
     method: 'POST',
   }).catch(() => {});
-}
-
-function onScreen(box) {
-  /* A block is on the screen when the whole of it is in the window. A block
-     taller than the window can never be, so it counts as on the screen while
-     it fills the window instead. Without that it would be reported off the
-     screen even with the cursor in the middle of it. */
-  const height = window.innerHeight;
-  if (box.height >= height) {
-    return box.top <= 0 && box.bottom >= height;
-  }
-  return box.top >= 0 && box.bottom <= height;
 }
 
 async function pollCursor() {
@@ -161,9 +155,9 @@ async function pollCursor() {
   }
   if (typeof where.line === 'number') {
     /* A cursor sitting still is what a reading looks like most of the time, and
-       the same line arrives five times a second while it does. Nothing is
-       measured or moved for one of those, unless the page has been redrawn
-       underneath it and the rule went with the old document. */
+       the same line arrives five times a second while it does. Nothing is done
+       for one of those, unless the page has been redrawn underneath it and the
+       rule went with the old document. */
     const clicked = clicksAt !== null && where.clicks !== clicksAt;
     if (clicked || where.line !== lineAt || !ruleStands()) {
       markCursor(where.line, clicked);
@@ -171,35 +165,6 @@ async function pollCursor() {
     lineAt = where.line;
   }
   clicksAt = where.clicks;
-}
-
-function reveal(block, from) {
-  /* Bring the block into view, but only where it is worth moving the page for.
-
-     Two things have to be true first. The block must be off the screen, since
-     one the reader can already see does not need bringing to them. And the
-     cursor must have come more than a window height to reach it.
-
-     That second test is what keeps the page still. vim moves its cursor when
-     you scroll its window, once the cursor would be scrolled out of it, so
-     the wheel and ctrl-d and ctrl-f all report a moving cursor and a page
-     that followed every report would be dragged along by them. A search, a G
-     or a :42 lands somewhere else entirely, and that is the move worth
-     following. One window height of this page is the line between the two.
-
-     `from` is the block the rule was on. Both boxes are measured at the same
-     scroll position, so the difference between their tops is the distance
-     through the document. There is no `from` on the first report of a
-     reading, or on the first after a link has been followed, and the page
-     goes to the cursor: the reader has not put the page anywhere yet. */
-  const box = block.getBoundingClientRect();
-  if (onScreen(box)) {
-    return;
-  }
-  if (from && Math.abs(box.top - from.getBoundingClientRect().top) <= window.innerHeight) {
-    return;
-  }
-  show(block);
 }
 
 function ruleStands() {

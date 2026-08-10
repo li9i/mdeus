@@ -1,9 +1,8 @@
 " What vim does for as long as a reading is up.
 "
 " Sourced by the vim a reading opens, and reached from nowhere else. It reports
-" where the cursor is for the page to mark, folds the document a section at a
-" time, lights the block the page sends it to, and keeps the whole document
-" drawn when the reading is resized.
+" where the cursor is for the page to mark, lights the block the page sends it
+" to, and keeps the whole document drawn when the reading is resized.
 "
 " The two names it needs come from the environment the reading sets: MDVIEW_LINK
 " is the script that carries a line to the server, and MDVIEW_URL is where that
@@ -34,35 +33,14 @@ function! s:MdviewMoved() abort
   call timer_start(150, function('s:MdviewReport'))
 endfunction
 
-" A click is a jump rather than a move, so it is reported at once and as a
-" click, and the page comes to the block the pointer landed on wherever the
+" A double click is a jump rather than a move, so it is reported at once and as
+" a click, and the page comes to the block the pointer landed on wherever the
 " page was left. It is sent straight rather than through the timer, since the
 " throttled report of the same line follows within 150ms and would arrive as an
 " ordinary move that the page is right to sit still for.
 function! s:MdviewClicked() abort
   call job_start(
     \ ['python3', $MDVIEW_LINK, 'cursor', $MDVIEW_URL, string(line('.')), 'click'])
-endfunction
-
-" Where a section begins and ends, for folding one away. A fold runs from a
-" top level heading to the line before the next one, and nothing under that
-" level folds at all: a section is the unit a long document is read in. The
-" name is a plain one, since a name held to this file cannot be called from a
-" fold expression.
-function! BmvimFoldLevel(lnum) abort
-  return getline(a:lnum) =~# '^# ' ? '>1' : '='
-endfunction
-
-" Folding by section, and the space that opens and closes one. Set on every
-" document the reading shows rather than once at the start, since following a
-" link in the page opens another file in the same window and a fresh buffer
-" arrives with the vimrc's own settings on it. A reading opens with every
-" section open.
-function! s:MdviewFolds() abort
-  setlocal foldmethod=expr
-  setlocal foldexpr=BmvimFoldLevel(v:lnum)
-  setlocal foldlevel=99
-  nnoremap <buffer> <silent> <space> za
 endfunction
 
 " Name the rows the terminal may scroll within again, every time the reading is
@@ -86,18 +64,20 @@ endfunction
 augroup mdview
   autocmd!
   autocmd CursorMoved,CursorMovedI * call s:MdviewMoved()
-  autocmd BufWinEnter * call s:MdviewFolds()
   autocmd VimResized * call s:MdviewResized()
 augroup END
 
-" The click itself first, so the cursor is where it landed before it is read.
-nnoremap <silent> <LeftMouse> <LeftMouse>:call <SID>MdviewClicked()<CR>
+" The same gesture as the page's, so one hand does the same thing in either
+" half: double click a line and the other half comes to it. A single click is
+" left alone and puts the cursor where you pointed, as it does in any vim.
+"
+" The cursor is moved to the pointer first, so it is where the second click
+" landed before it is read. That takes the place of the word a double click
+" would otherwise select, which is nothing this reading wants.
+nnoremap <silent> <2-LeftMouse> <LeftMouse>:call <SID>MdviewClicked()<CR>
 
 " Where the cursor starts, so the page marks a block from the first moment
-" rather than waiting to be moved. The document is open by the time this is
-" sourced, so it is given its folds here as a later one is given them on
-" arrival.
-call s:MdviewFolds()
+" rather than waiting to be moved.
 call s:MdviewReport(0)
 
 " Where a clicked block lands. The page knows the source lines every block was

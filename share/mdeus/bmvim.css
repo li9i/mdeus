@@ -5,16 +5,16 @@
    -------------
 
    The block holding the vim cursor carries a solid rule in the margin to the
-   left of it, for as long as the cursor is in it. The block you clicked
-   carries a light grey ground, which fades once the click is a second old.
+   left of it, for as long as the cursor is in it. The block you sent vim to
+   carries a light grey ground, which fades once the jump is a second old.
 
    They are given different shapes rather than different shades. Two of the
    three themes are black on white with no accent to spend on this, so two
    marks separated only by colour would read as one mark in two moods. A rule
    beside the text and a ground behind it can never be mistaken for each
    other, and they stay legible together on the same block, which is what
-   happens the moment you click: vim reports back a beat later and the cursor
-   lands where you clicked.
+   happens the moment you jump: vim reports back a beat later and the cursor
+   lands where you pointed.
 
    The rule is drawn outside the block, in the margin the theme already leaves
    to the left of the document, so it cannot land on the text and the text

@@ -158,10 +158,10 @@ class Reading:
 
     def __init__(self, document, servername=None):
         self.beat = None
-        # How many clicks vim has reported. A click there is a jump the page
-        # goes to whatever the distance, and the throttled report of the same
-        # line follows a moment later, so the page is told a running count
-        # rather than a flag the report behind it would take back.
+        # How many clicks vim has reported. A click there is the one thing that
+        # brings the page along, and the throttled report of the same line
+        # follows a moment later, so the page is told a running count rather
+        # than a flag the report behind it would take back.
         self.clicks = 0
         self.current = document.resolve()
         self.cursor = None

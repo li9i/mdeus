@@ -379,27 +379,6 @@ function onContents() {
   saveState();
 }
 
-function onDoubleClick(event) {
-  /* A double click on a top level heading folds its section away, and another
-     brings it back. The single click underneath it is left to do what it does,
-     which in a reading with vim beside it is to send vim to the line. */
-  const block = event.target.closest('.block');
-  if (!block || !isSection(block)) {
-    return;
-  }
-  const line = Number(block.dataset.start);
-  const folded = !foldedAt.has(line);
-  if (folded) {
-    foldedAt.add(line);
-  } else {
-    foldedAt.delete(line);
-  }
-  /* The two clicks have taken the heading's words as a selection on the way
-     through, and a folded section reading as selected text says nothing. */
-  window.getSelection().removeAllRanges();
-  foldSection(block, folded);
-}
-
 function onPop(event) {
   /* A jump to an anchor makes a history entry of its own. Going back over one
      must leave the reading where it is, or the browser's own jump back would
@@ -477,7 +456,6 @@ async function start() {
      back to it names a path like every other entry does. */
   history.replaceState({ path: doc.name }, '');
   docNode.addEventListener('click', onClick);
-  docNode.addEventListener('dblclick', onDoubleClick);
   window.addEventListener('popstate', onPop);
   heartbeat();
   window.setInterval(heartbeat, HEARTBEAT_MS);
