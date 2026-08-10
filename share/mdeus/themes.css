@@ -208,10 +208,15 @@
   padding-left: 40px;
 }
 
+/* The hairline is the same one the contents list, the tables and the rules
+   carry, so a fence is framed in the theme's own vocabulary rather than a
+   second one. The padding is what keeps the copy button off the first line. */
 .browser .doc pre {
+  border: 1px solid #000000;
   font: 13px/1.2 'Courier New', monospace;
   margin: 1em 0;
   overflow-x: auto;
+  padding: 8px;
 }
 
 .browser .doc code {

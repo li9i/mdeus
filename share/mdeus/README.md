@@ -108,7 +108,7 @@ Run all of it after touching anything to do with the browser, the windows or vim
 
 34. Open a document with headings at three levels, a fence, a quote, a list, a table, a link and a rule, and go through the dropdown. `Browser default`, `Mono headings` and `GitHub`.
 35. The first two are black on white, and only `Browser default` has any colour at all, on its links. `GitHub` is the exception and keeps GitHub's own palette.
-36. Every theme caps the measure, so a maximised window does not throw lines across the whole screen. Code blocks scroll inside their own box rather than widening the page.
+36. Every theme caps the measure, so a maximised window does not throw lines across the whole screen. Code blocks scroll inside their own box rather than widening the page. In `Browser default` that box is a hairline of the same weight as the contents list and the tables, and the copy button sits inside it without covering the first line of the fence.
 37. Changing the theme does not reload the page and does not lose your place in it.
 38. Both `bmvim` marks work in all three. Each theme leaves the margin rule its own offset, so check that the rule stands clear of the text in every one of them.
 
