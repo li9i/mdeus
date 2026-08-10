@@ -36,6 +36,11 @@ import vimlink
 from state import MAX_SPLIT, MIN_SPLIT, load_split, save_split
 
 try:
+    from PIL import Image
+except ImportError:  # python3-pil is not installed
+    Image = None
+
+try:
     from Xlib import X, Xatom, Xutil, display, error, protocol
 except ImportError:  # python3-xlib is not installed
     X = Xatom = Xutil = display = error = protocol = None
@@ -54,6 +59,17 @@ DIVIDER = 6
 # The glyph in the cursor font that says a thing can be dragged sideways, and
 # the glyph after it, which is its mask.
 DIVIDER_CURSOR = 108
+# The image the reading wears on the panel and on its title bar, in the two
+# sizes it ships in. It is the same image the desktop entry names, and it sits
+# beside this file inside the package, so a stowed package and a checkout of it
+# both find it.
+ICONS = tuple(
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        '..', 'icons', 'hicolor', f'{size}x{size}', 'apps', 'bmvim.png',
+    )
+    for size in (24, 128)
+)
 # What the reading is called, on its title bar and on the panel.
 NAME = b'bmvim'
 NO_BROWSER = (
@@ -446,6 +462,7 @@ def make_container(d):
     container.set_wm_name(NAME.decode())
     container.set_wm_icon_name(NAME.decode())
     container.set_wm_class('bmvim', 'Bmvim')
+    set_icon(d, container)
     container.change_property(d.intern_atom('_NET_WM_NAME'), utf8, 8, NAME)
     container.change_property(d.intern_atom('_NET_WM_ICON_NAME'), utf8, 8, NAME)
     container.change_property(
@@ -535,6 +552,26 @@ def pane_boxes(width, height):
     """Return where each pane goes inside a container of this size."""
     left = round(width * browser_share)
     return ((0, 0, left, height), (left, 0, width - left, height))
+
+
+def set_icon(d, container):
+    """Give the reading its own image on the panel and on its title bar.
+
+    The desktop asks for the icon as pixels rather than as a file, so the files
+    are decoded here, and Pillow is what decodes them. Without Pillow the window
+    goes without, and the desktop draws it with whatever it gives a window that
+    carries no icon of its own. Every size the reading ships is handed over at
+    once, and the desktop takes whichever fits where it is drawing.
+    """
+    if Image is None:
+        return
+    data = []
+    for path in ICONS:
+        with Image.open(path) as image:
+            pixels = image.convert('RGBA')
+        data += [pixels.width, pixels.height]
+        data += [a << 24 | r << 16 | g << 8 | b for r, g, b, a in pixels.getdata()]
+    container.change_property(d.intern_atom('_NET_WM_ICON'), Xatom.CARDINAL, 32, data)
 
 
 def settle(window):

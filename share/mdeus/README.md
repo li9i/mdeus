@@ -36,8 +36,11 @@ The three themes draw all of it. `GitHub` reproduces GitHub's own colours, icons
 | `page.js` | The theme dropdown, the full width box, the contents list, the copy button on every fence, the heading names, the folding of a section, which nothing calls for the moment, and the redraw. |
 | `bmvim.css`, `bmvim.js` | The two marks and the sync. `bmv` never loads either. |
 | `test_render.py`, `test_server.py` | The tests. |
+| `../icons/hicolor/*/apps/bmvim.png` | What a `bmvim` reading looks like on the panel and in the "Open With" menu. |
 
 The commands themselves are `bmv` and `bmvim`, and they live in `~/.local/bin`.
+
+The desktop entry of each is in the `caja` package, and the two are drawn differently. `bmv` opens a page and nothing else, so its entry names `google-chrome` and takes whatever the icon theme of the moment draws for the browser. `bmvim` opens a browser and a terminal, and an entry carries one icon, so its icon is one image of the two: the terminal behind at the top left and the browser in front at the bottom right, the pair overlapping inside one square. No theme has such an image, so it ships here, and the window a reading opens wears it as well. It was cut from Buuf 3.46 at 128 pixels, `gnome/128x128/apps/utilities-terminal.png` behind `miscellaneous/128x128/apps/google-chrome.png`, each trimmed to what it draws and scaled to seven tenths of the square. The square is what matters more than the pair: everything else on the panel is square, and an icon wider than it is tall stands out for the wrong reason. Change the icon theme and `bmv` follows it while `bmvim` keeps this image, so cut it again from the new theme if the pair stops matching.
 
 `render.py` and `themes.css` are read by the spec review tool in `~/.claude/scripts/spec_review` as well, so that tool will not start unless this package is stowed.
 
@@ -47,7 +50,7 @@ A page for reading carries `reader` on the root element beside the theme name, a
 
 ## What it needs
 
-`python3-markdown-it` for the parser, `python3-mdit-py-plugins` for the task lists and the footnotes, `python3-linkify-it` for the bare addresses, `python3-emoji` for the shortcodes, and `python3-xlib` for the one window a `bmvim` reading is drawn in. Nothing else beyond the standard library. Nothing is fetched at runtime, no page loads an external font, script or stylesheet, and both commands serve on `127.0.0.1` and nowhere else.
+`python3-markdown-it` for the parser, `python3-mdit-py-plugins` for the task lists and the footnotes, `python3-linkify-it` for the bare addresses, `python3-emoji` for the shortcodes, `python3-xlib` for the one window a `bmvim` reading is drawn in, and `python3-pil` to read that window's icon off the disk. Nothing else beyond the standard library. Nothing is fetched at runtime, no page loads an external font, script or stylesheet, and both commands serve on `127.0.0.1` and nowhere else.
 
 `bmvim` also wants Chrome or Chromium, and a vim built with `+clientserver` and a GUI. The vim half of `bmvim` is a `gvim --servername`, reached by `vim --servername` from the outside, and Ubuntu's plain `vim` package has neither the GUI nor `+clientserver`. `vim-gtk3` has both, and that is what `install.sh` installs. `vim --version | grep clientserver` says which one is on the machine.
 
@@ -68,7 +71,7 @@ Run all of it after touching anything to do with the browser, the windows or vim
 
 ### The one window
 
-1. `bmvim doc.md` from a terminal. One window on the desktop and one entry on the panel, both reading `bmvim`. The browser takes the left of that window and vim the right, and the two meet without a gap and without overlapping. The window fills the work area, so nothing in the reading sits under a panel. It comes up white and stays white: nothing black is shown while either half is on its way. Neither half stands on the desktop as a window of its own on the way in, whichever of the two is up first. Both are up within about two thirds of a second of the command, close enough together that the reading arrives whole rather than a half at a time. A reading opened where no browser was running is the one exception, and there the page follows the vim pane by a second or two. The vim pane fills its half from the first moment, top row to bottom, and the seam sits where the last reading left it rather than wherever vim first asked to be. Open several readings in a row and check that the seam lands in the same place every time.
+1. `bmvim doc.md` from a terminal. One window on the desktop and one entry on the panel, both reading `bmvim`, and both carrying the reading's own icon, a terminal with a browser in front of it. The browser takes the left of that window and vim the right, and the two meet without a gap and without overlapping. The window fills the work area, so nothing in the reading sits under a panel. It comes up white and stays white: nothing black is shown while either half is on its way. Neither half stands on the desktop as a window of its own on the way in, whichever of the two is up first. Both are up within about two thirds of a second of the command, close enough together that the reading arrives whole rather than a half at a time. A reading opened where no browser was running is the one exception, and there the page follows the vim pane by a second or two. The vim pane fills its half from the first moment, top row to bottom, and the seam sits where the last reading left it rather than wherever vim first asked to be. Open several readings in a row and check that the seam lands in the same place every time.
 2. The browser pane has no address bar, no tabs and no bookmarks, and the vim pane has no menu bar and no scrollbar. Neither pane has a title bar or a close button of its own. The window has one of each for the pair.
 3. The shell you typed the command into stays yours. It says where the reading is and then waits, and the vim you are reading with is a gvim the reading opened for itself.
 4. Click the browser pane, then the vim pane, then the browser again. The pane you clicked last takes the keyboard every time, so typing goes to the pane you are looking at. Click the title bar instead and the keyboard stays where it was.
@@ -133,24 +136,25 @@ Run all of it after touching anything to do with the browser, the windows or vim
 45. No `DISPLAY`. `env -u DISPLAY bmvim doc.md` says `bmvim` needs a desktop session and suggests `bmv`, and exits 1.
 46. The servername already taken. Start one reading, then start a second. The second names the document the first has open and exits 1.
 47. The server killed mid-reading. `pkill -f mdview/bmvim_serve.py` while a reading is up. vim stays usable. Nothing it sends waits on an answer, so nothing it does can hang on a server that has stopped listening.
+48. `python3-pil` missing. Put a directory on `PYTHONPATH` holding a `PIL/__init__.py` that raises `ImportError`, then start a reading. The window opens and the reading works as ever. The one thing lost is the reading's own image on the panel and on the title bar, and the desktop draws whatever it gives a window carrying no image of its own.
 
 ### bmv on its own
 
-48. Several `bmv` readings at once, on different documents. Each prints its own address on its own port and each redraws its own file.
-49. No browser reachable. `env -u DISPLAY -u BROWSER bmv doc.md`. The address is printed anyway and the reading serves, so it can still be opened by hand. Fetch it with `curl` or paste it into a browser started later.
-50. `bmv doc.md` on a document with an image in it, one beside the document and one named by an absolute path. The first is drawn, served out of the tree the reading started in. The second is left to the browser, which is right to find nothing for it.
-51. `bmv --print doc.md` on the same document. Open the file it names, move it somewhere else and open it again. The image beside the document is drawn wherever the file has been taken, since it travels inside it, and the theme dropdown and the `Full width` box both work and store nothing.
-52. Close the page in the browser rather than pressing ctrl-c. Within about ten seconds the command ends by itself and the shell comes back. Nothing else may be speaking to that port while you check: a page left open from an earlier reading goes on saying it is there, and a reading is kept up by any page that does.
+49. Several `bmv` readings at once, on different documents. Each prints its own address on its own port and each redraws its own file.
+50. No browser reachable. `env -u DISPLAY -u BROWSER bmv doc.md`. The address is printed anyway and the reading serves, so it can still be opened by hand. Fetch it with `curl` or paste it into a browser started later.
+51. `bmv doc.md` on a document with an image in it, one beside the document and one named by an absolute path. The first is drawn, served out of the tree the reading started in. The second is left to the browser, which is right to find nothing for it.
+52. `bmv --print doc.md` on the same document. Open the file it names, move it somewhere else and open it again. The image beside the document is drawn wherever the file has been taken, since it travels inside it, and the theme dropdown and the `Full width` box both work and store nothing.
+53. Close the page in the browser rather than pressing ctrl-c. Within about ten seconds the command ends by itself and the shell comes back. Nothing else may be speaking to that port while you check: a page left open from an earlier reading goes on saying it is there, and a reading is kept up by any page that does.
 
 ### Everything the markdown carries
 
-53. Open a document holding a task list, the five callouts, two footnotes, a bare address and a shortcode, and put it beside the same file on github.com under the `GitHub` theme. The two should agree throughout.
-54. The task list carries a box per item and no bullet or number beside it, ticked where the source says `[x]` and empty where it says `[ ]`. A box cannot be clicked. An ordinary item in the same list keeps its bullet. Brackets in a paragraph stay brackets.
-55. Each of the five callouts carries GitHub's colour, GitHub's icon and its name at the top, and the marker line itself is nowhere in the body. `> [!NOTHING]` stays an ordinary quote and so does `> [!NOTE] with words after it`, marker and all. Under the other two themes a callout is framed in that theme's own hairline and its name is what tells one from another.
-56. The notes sit at the foot of the document under a hairline, numbered, each ending in an arrow back to where it was cited. Click a number and the page goes to the note, click the arrow and it comes back.
-57. The notes are the one block drawn somewhere other than where it was written, so check the `bmvim` sync around them. Double click the notes and vim goes to the first definition. Put the vim cursor on a definition and the notes are marked. Put it on the last paragraph of the document, below the definitions, and that paragraph is marked and not the notes.
-58. A bare `https://` address, a `www.` address and a mail address are all links, and `:tada:` is drawn as the character. Neither happens inside a code span or a fence, and a shortcode nothing answers to stays as the words it was.
-59. `bmv --print` on the same document. All of it survives into the one file, icons included, since the icons are drawings in the stylesheet rather than anything fetched.
+54. Open a document holding a task list, the five callouts, two footnotes, a bare address and a shortcode, and put it beside the same file on github.com under the `GitHub` theme. The two should agree throughout.
+55. The task list carries a box per item and no bullet or number beside it, ticked where the source says `[x]` and empty where it says `[ ]`. A box cannot be clicked. An ordinary item in the same list keeps its bullet. Brackets in a paragraph stay brackets.
+56. Each of the five callouts carries GitHub's colour, GitHub's icon and its name at the top, and the marker line itself is nowhere in the body. `> [!NOTHING]` stays an ordinary quote and so does `> [!NOTE] with words after it`, marker and all. Under the other two themes a callout is framed in that theme's own hairline and its name is what tells one from another.
+57. The notes sit at the foot of the document under a hairline, numbered, each ending in an arrow back to where it was cited. Click a number and the page goes to the note, click the arrow and it comes back.
+58. The notes are the one block drawn somewhere other than where it was written, so check the `bmvim` sync around them. Double click the notes and vim goes to the first definition. Put the vim cursor on a definition and the notes are marked. Put it on the last paragraph of the document, below the definitions, and that paragraph is marked and not the notes.
+59. A bare `https://` address, a `www.` address and a mail address are all links, and `:tada:` is drawn as the character. Neither happens inside a code span or a fence, and a shortcode nothing answers to stays as the words it was.
+60. `bmv --print` on the same document. All of it survives into the one file, icons included, since the icons are drawings in the stylesheet rather than anything fetched.
 
 ## Four things that look odd and are not
 
