@@ -11,6 +11,50 @@ import sys
 import render
 
 
+ALERT_FIXTURE = """\
+> [!NOTE]
+> Something worth knowing.
+
+> [!warning]
+> The marker is read whatever case it is written in.
+
+> [!CAUTION]
+
+> [!NOTHING]
+> Not one of the five, so this stays a quote.
+
+> [!NOTE] on the same line as the words.
+
+> An ordinary quote.
+"""
+
+AUTOLINK_FIXTURE = """\
+Bare https://example.com/a?b=1 and www.example.org and mail@example.com.
+
+A written [link](http://example.com/page) and `https://example.com/code`.
+
+Not addresses: run install.sh, read notes/other.md, on the example.com host.
+"""
+
+EMOJI_FIXTURE = """\
+Shipped :tada: with a :+1: and an unknown :nonesuch: left alone.
+
+In code: `:tada:`, and in a link [:tada:](notes/other.md).
+
+Not an emoji: 10:30:45.
+"""
+
+FOOTNOTE_FIXTURE = """\
+A paragraph with a note[^one] in it.
+
+Another paragraph with a second[^two].
+
+[^one]: The first note.
+
+[^two]: The second note, which runs
+    onto another line.
+"""
+
 LINE_FIXTURE = """\
 # A heading
 
@@ -84,6 +128,16 @@ An absolute link to [a file](/usr/share/doc/README).
 A link over http to [example](http://example.com/page.md).
 """
 
+TASK_FIXTURE = """\
+- [x] a finished thing
+- [ ] an unfinished thing
+- an ordinary item
+
+1. [ ] numbered and unfinished
+
+A paragraph holding a literal [x] and [ ] that are not a list.
+"""
+
 THREE_HEADING_FIXTURE = """\
 # One
 
@@ -117,6 +171,49 @@ def test_only_images_beside_the_document_are_retargeted():
     assert 'href="notes/other.md"' in html, html
 
 
+def test_alert_markers_become_callouts():
+    """A quote opening on one of GitHub's five markers is drawn as a callout."""
+    blocks = render.render_blocks(ALERT_FIXTURE)
+    note, warning, caution, unknown, inline, plain = blocks
+    assert 'class="markdown-alert markdown-alert-note"' in note['html'], note
+    assert '<p class="markdown-alert-title">Note</p>' in note['html'], note
+    # The marker line is the name of the callout and is not prose, so it does
+    # not survive into the body.
+    assert '[!NOTE]' not in note['html'], note
+    assert '<p>Something worth knowing.</p>' in note['html'], note
+    # Written in any case, and titled the way GitHub titles it either way.
+    assert 'markdown-alert-warning' in warning['html'], warning
+    assert '<p class="markdown-alert-title">Warning</p>' in warning['html'], warning
+    # A marker on its own is still a callout, with nothing under the title.
+    assert 'markdown-alert-caution' in caution['html'], caution
+    assert '<p class="markdown-alert-title">Caution</p>' in caution['html'], caution
+    # Everything else is left as the quote it was written as.
+    for block in (unknown, inline, plain):
+        assert '<blockquote>' in block['html'], block
+        assert 'markdown-alert' not in block['html'], block
+    assert '[!NOTHING]' in unknown['html'], unknown
+    assert '[!NOTE] on the same line' in inline['html'], inline
+
+
+def test_bare_addresses_become_links():
+    """A bare web or mail address is a link, as it is on GitHub."""
+    html = ''.join(
+        block['html'] for block in render.render_blocks(AUTOLINK_FIXTURE)
+    )
+    assert '<a href="https://example.com/a?b=1">https://example.com/a?b=1</a>' in html, html
+    assert '<a href="http://www.example.org">www.example.org</a>' in html, html
+    assert '<a href="mailto:mail@example.com">mail@example.com</a>' in html, html
+    # An address inside a code span is text and is not touched.
+    assert '<code>https://example.com/code</code>' in html, html
+    # GitHub links an address and never guesses at one, so a file name ending
+    # in something a domain could end in stays a file name, and a bare host
+    # with no scheme and no www stays words.
+    assert 'href="http://install.sh"' not in html, html
+    assert 'run install.sh' in html, html
+    assert '<a href="http://example.com">' not in html, html
+    assert 'the example.com host' in html, html
+
+
 def test_block_lines_name_their_source():
     """Every block reports the source lines it was built from."""
     blocks = [(block['type'], block['line_start'], block['line_end'])
@@ -146,6 +243,35 @@ def test_frozen_fixture_renders_byte_for_byte():
     assert len(blocks) == len(FROZEN_BLOCKS), (len(blocks), len(FROZEN_BLOCKS))
     for got, expected in zip(blocks, FROZEN_BLOCKS):
         assert got == expected, (got, expected)
+
+
+def test_emoji_shortcodes_become_characters():
+    """A shortcode GitHub knows is drawn as the character. Everything else stands."""
+    blocks = render.render_blocks(EMOJI_FIXTURE)
+    prose, code_and_link, clock = blocks
+    assert 'Shipped \N{PARTY POPPER} with a \N{THUMBS UP SIGN}' in prose['html'], prose
+    # Not a name anything answers to, so it is left as the words it was.
+    assert ':nonesuch:' in prose['html'], prose
+    # A code span is text, and a link's words are prose like any other.
+    assert '<code>:tada:</code>' in code_and_link['html'], code_and_link
+    assert '>\N{PARTY POPPER}</a>' in code_and_link['html'], code_and_link
+    # Colons around something no shortcode names leave the text alone.
+    assert '10:30:45' in clock['html'], clock
+
+
+def test_footnotes_are_collected_and_name_their_source():
+    """The notes are gathered into a last block carrying the lines they were defined on."""
+    blocks = render.render_blocks(FOOTNOTE_FIXTURE)
+    assert len(blocks) == 3, blocks
+    first, second, notes = blocks
+    assert 'footnote-ref' in first['html'], first
+    assert 'footnote-ref' in second['html'], second
+    assert 'class="footnotes"' in notes['html'], notes
+    assert 'The first note.' in notes['html'], notes
+    assert 'onto another line.' in notes['html'], notes
+    # The notes belong to the lines the definitions were written on, so a click
+    # on them reaches the definition rather than the end of the file.
+    assert (notes['line_start'], notes['line_end']) == (5, 8), notes
 
 
 def test_heading_html_carries_no_id():
@@ -195,6 +321,24 @@ def test_table_and_strikethrough_render():
     assert '<table>' in blocks[0]['html'], blocks[0]
     assert '<th>Left</th>' in blocks[0]['html'], blocks[0]
     assert '<s>struck out</s>' in blocks[1]['html'], blocks[1]
+
+
+def test_task_list_items_become_checkboxes():
+    """An item written with a box is drawn as one, ticked or not as it was written."""
+    bullets, numbered, prose = render.render_blocks(TASK_FIXTURE)
+    assert 'class="contains-task-list"' in bullets['html'], bullets
+    ticked, empty, ordinary = bullets['html'].split('<li')[1:]
+    assert 'checked' in ticked, ticked
+    assert 'checked' not in empty, empty
+    assert 'task-list-item-checkbox' in empty, empty
+    # A box is never something to be ticked on the page, only something read.
+    assert 'disabled' in ticked and 'disabled' in empty, bullets
+    assert 'task-list-item' not in ordinary, ordinary
+    # The brackets are the box, so none of them are left as words.
+    assert '[x]' not in bullets['html'] and '[ ]' not in bullets['html'], bullets
+    assert 'task-list-item-checkbox' in numbered['html'], numbered
+    # Brackets in a paragraph are brackets and nothing more.
+    assert '[x]' in prose['html'] and '[ ]' in prose['html'], prose
 
 
 # The fixture below, and the blocks it has to produce, are frozen here in full.

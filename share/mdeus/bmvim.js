@@ -53,21 +53,30 @@ function begin() {
 }
 
 function blockForLine(line) {
-  /* The block whose source lines contain this one. Blocks are in source
-     order, so the search stops at the first one starting past the line. A
-     line in the blank space between two blocks belongs to the one above it,
-     which is where vim leaves the cursor when it lands on a blank line. */
-  let found = null;
+  /* The block whose source lines contain this one, and failing that the
+     nearest block above it, which is where vim leaves the cursor when it lands
+     on a blank line between two blocks.
+
+     The blocks are not all in source order. The footnotes are drawn at the
+     foot of the document out of definitions written anywhere above it, so that
+     one block starts further up the file than the blocks before it on the
+     page. Every block is therefore asked, rather than the search stopping at
+     the first one starting past the line. */
+  let holding = null;
+  let above = null;
   for (const block of pane.querySelectorAll('.block')) {
-    if (Number(block.dataset.start) > line) {
-      break;
+    const start = Number(block.dataset.start);
+    if (start > line) {
+      continue;
     }
-    found = block;
-    if (Number(block.dataset.end) >= line) {
-      break;
+    if (!holding && Number(block.dataset.end) >= line) {
+      holding = block;
+    }
+    if (!above || start > Number(above.dataset.start)) {
+      above = block;
     }
   }
-  return found;
+  return holding || above;
 }
 
 function flash(block) {

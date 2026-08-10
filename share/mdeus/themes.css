@@ -121,6 +121,23 @@
   opacity: 1;
 }
 
+/* A task list is a list whose markers are boxes, so the bullet or the number
+   beside each item goes and the box stands where it would have been. Where the
+   box sits is the shape of the list rather than a look, so the measurements are
+   GitHub's and all three themes take them. */
+.browser .doc .task-list-item,
+.report .doc .task-list-item,
+:where(.github) .doc .task-list-item {
+  list-style-type: none;
+}
+
+.browser .doc .task-list-item-checkbox,
+.report .doc .task-list-item-checkbox,
+:where(.github) .doc .task-list-item-checkbox {
+  margin: 0 0.2em 0.25em -1.4em;
+  vertical-align: middle;
+}
+
 /* ------------------------------------------------------------------
    browser: what the machine did before anyone styled anything
    ------------------------------------------------------------------ */
@@ -240,6 +257,20 @@
 
 .browser .doc blockquote {
   margin: 1em 40px;
+}
+
+/* A callout is a quote GitHub gives a name to, and GitHub tells one from
+   another by colour. This theme has none to spend, so all five are framed the
+   same way, in the hairline the fences and the tables are drawn with, and the
+   name at the top is what says which one it is. */
+.browser .doc .markdown-alert {
+  border-left: 4px solid #000000;
+  margin: 1em 0;
+  padding: 0 1em;
+}
+
+.browser .doc .markdown-alert-title {
+  font-weight: 700;
 }
 
 .browser .doc table {
@@ -430,6 +461,35 @@
 
 .report .doc blockquote p {
   margin: 0;
+}
+
+/* A callout takes the same rule down its side as a quote, and its name is set
+   like every other label in this theme. */
+.report .doc .markdown-alert {
+  border-left: 1px solid #141414;
+  margin: 0 0 1.3em;
+  padding: 0.1em 0 0.1em 1.1em;
+}
+
+.report .doc .markdown-alert-title {
+  color: #5a5a5a;
+  font-family: ui-monospace, 'DejaVu Sans Mono', Menlo, monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  margin: 0 0 0.4em;
+  text-transform: uppercase;
+}
+
+.report .doc .markdown-alert > :last-child {
+  margin-bottom: 0;
+}
+
+/* The notes at the foot of the document are an aside, and this theme sets its
+   asides small. */
+.report .doc .footnotes {
+  color: #787878;
+  font-size: 0.8em;
 }
 
 .report .doc table {
@@ -851,6 +911,86 @@
 
 :where(.github) .doc blockquote > :last-child {
   margin-bottom: 0;
+}
+
+/* GitHub's five callouts. In GitHub's own markup a callout is a div and not a
+   blockquote, and it is written that way here too, so none of the quote rules
+   above reach it. What separates one of the five from the others is a colour and
+   a drawing, and each carries both in two custom properties the title inherits.
+
+   The icons are GitHub's own drawings, laid on as a mask over the title's
+   colour the way the copy button's icon is, so the drawing needs no colour of
+   its own. GitHub draws the rule down the side a shade off the title's colour;
+   here the two are the same value, which is the one visible difference. */
+:where(.github) .doc .markdown-alert {
+  border-left: 0.25em solid var(--alert, #d1d9e0);
+  margin: 0 0 16px;
+  padding: 0.5rem 1rem;
+}
+
+:where(.github) .doc .markdown-alert > :first-child {
+  margin-top: 0;
+}
+
+:where(.github) .doc .markdown-alert > :last-child {
+  margin-bottom: 0;
+}
+
+:where(.github) .doc .markdown-alert-title {
+  align-items: center;
+  color: var(--alert, #d1d9e0);
+  display: flex;
+  font-weight: 500;
+  line-height: 1;
+}
+
+:where(.github) .doc .markdown-alert-title::before {
+  background: currentColor;
+  content: '';
+  flex: 0 0 auto;
+  height: 16px;
+  margin-right: 8px;
+  mask: var(--icon) center / 16px no-repeat;
+  width: 16px;
+}
+
+:where(.github) .doc .markdown-alert-note {
+  --alert: var(--accent, #0969da);
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z'/%3E%3C/svg%3E");
+}
+
+:where(.github) .doc .markdown-alert-tip {
+  --alert: var(--success, #1a7f37);
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1.5c-2.363 0-4 1.69-4 3.75 0 .984.424 1.625.984 2.304l.214.253c.223.264.47.556.673.848.284.411.537.896.621 1.49a.75.75 0 0 1-1.484.211c-.04-.282-.163-.547-.37-.847a8.456 8.456 0 0 0-.542-.68c-.084-.1-.173-.205-.268-.32C3.201 7.75 2.5 6.766 2.5 5.25 2.5 2.31 4.863 0 8 0s5.5 2.31 5.5 5.25c0 1.516-.701 2.5-1.328 3.259-.095.115-.184.22-.268.319-.207.245-.383.453-.541.681-.208.3-.33.565-.37.847a.751.751 0 0 1-1.485-.212c.084-.593.337-1.078.621-1.489.203-.292.45-.584.673-.848.075-.088.147-.173.213-.253.561-.679.985-1.32.985-2.304 0-2.06-1.637-3.75-4-3.75ZM5.75 12h4.5a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1 0-1.5ZM6 15.25a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1-.75-.75Z'/%3E%3C/svg%3E");
+}
+
+:where(.github) .doc .markdown-alert-important {
+  --alert: var(--done, #8250df);
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v9.5A1.75 1.75 0 0 1 14.25 13H8.06l-2.573 2.573A1.458 1.458 0 0 1 3 14.543V13H1.75A1.75 1.75 0 0 1 0 11.25Zm1.75-.25a.25.25 0 0 0-.25.25v9.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h6.5a.25.25 0 0 0 .25-.25v-9.5a.25.25 0 0 0-.25-.25Zm7 2.25v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 9a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z'/%3E%3C/svg%3E");
+}
+
+:where(.github) .doc .markdown-alert-warning {
+  --alert: var(--attention, #9a6700);
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z'/%3E%3C/svg%3E");
+}
+
+:where(.github) .doc .markdown-alert-caution {
+  --alert: var(--danger, #cf222e);
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.47.22A.749.749 0 0 1 5 0h6c.199 0 .389.079.53.22l4.25 4.25c.141.14.22.331.22.53v6a.749.749 0 0 1-.22.53l-4.25 4.25A.749.749 0 0 1 11 16H5a.749.749 0 0 1-.53-.22L.22 11.53A.749.749 0 0 1 0 11V5c0-.199.079-.389.22-.53Zm.84 1.28L1.5 5.31v5.38l3.81 3.81h5.38l3.81-3.81V5.31L10.69 1.5ZM8 4a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z'/%3E%3C/svg%3E");
+}
+
+/* The notes at the foot of the document. The parser puts a rule above them and
+   GitHub does not, drawing a hairline along the top of the notes themselves, so
+   the rule goes and the hairline takes its place. */
+:where(.github) .doc .footnotes-sep {
+  display: none;
+}
+
+:where(.github) .doc .footnotes {
+  border-top: 1px solid var(--border, #d1d9e0);
+  color: var(--fg-muted, #59636e);
+  font-size: 12px;
+  padding-top: 16px;
 }
 
 /* GitHub's rule is a 4px bar rather than a hairline. */

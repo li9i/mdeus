@@ -12,11 +12,19 @@ The page carries a dropdown of three themes and a `Contents` button, which is th
 
 The ground a jump lights in vim is the `BmvimJump` highlight group. It is set as a default, so a `.vimrc` naming it wins.
 
+## What it renders
+
+The markdown GitHub renders, so a document reads here the way it reads there. On top of CommonMark that means tables, strikethrough, task lists, footnotes, bare web and mail addresses turned into links, emoji shortcodes such as `:tada:`, and the five callouts written as `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]` and `> [!CAUTION]`. A marker that is not one of the five, and a marker with words after it on the same line, are both left as the quote they were written as. A shortcode nothing answers to is left as the words it was, and neither shortcodes nor addresses are touched inside a code span or a fence.
+
+Two things GitHub draws are not here, both because they would need something fetched from the network and nothing in a reading is: mathematics and mermaid diagrams. Fences are not syntax highlighted either.
+
+The three themes draw all of it. `GitHub` reproduces GitHub's own colours, icons and spacing for the callouts and the notes. The other two have no palette to spend, so they frame a callout in their own vocabulary and its name is what says which of the five it is.
+
 ## What is here
 
 | File | What it is |
 | --- | --- |
-| `render.py` | Markdown in, blocks out, each carrying the source lines it was built from, plus the heading outline. Where an image beside the document is written as is the caller's to say. |
+| `render.py` | Markdown in, blocks out, each carrying the source lines it was built from, plus the heading outline. GitHub's dialect, the five callouts included, since no plugin draws those. Where an image beside the document is written as is the caller's to say. |
 | `server.py` | Serves one reading: the page, the document, files from inside the starting tree, and the routes vim talks to. Imported by whoever is serving, and run by nobody. |
 | `state.py` | The one file a reading remembers itself in, read by the server and by the window alike. |
 | `export.py` | The self contained file `bmv --print` writes. |
@@ -24,7 +32,7 @@ The ground a jump lights in vim is the `BmvimJump` highlight group. It is set as
 | `cursor.vim` | What vim does for as long as a reading is up: the cursor reports, the double click that brings the page over, and the ground a jump lights. |
 | `bmvim_serve.py` | Runs the server for a `bmvim` reading and says which port it landed on, since the command that starts one is a shell script. `bmv` serves in process and needs no such thing. |
 | `bmvim_window.py` | The one window a reading with vim is drawn in, the browser and gvim inside it, and the seam between the two. |
-| `themes.css` | The three themes, the two controls and the copy button on a fence. |
+| `themes.css` | The three themes, the two controls, the copy button on a fence, and the look of the callouts, the task lists and the notes in each theme. |
 | `page.js` | The theme dropdown, the contents list, the copy button on every fence, the heading names, the folding of a section, which nothing calls for the moment, and the redraw. |
 | `bmvim.css`, `bmvim.js` | The two marks and the sync. `bmv` never loads either. |
 | `test_render.py`, `test_server.py` | The tests. |
@@ -37,7 +45,7 @@ A page for reading carries `reader` on the root element beside the theme name, a
 
 ## What it needs
 
-`python3-markdown-it` for the parser, and `python3-xlib` for the one window a `bmvim` reading is drawn in. Nothing else beyond the standard library. Nothing is fetched at runtime, no page loads an external font, script or stylesheet, and both commands serve on `127.0.0.1` and nowhere else.
+`python3-markdown-it` for the parser, `python3-mdit-py-plugins` for the task lists and the footnotes, `python3-linkify-it` for the bare addresses, `python3-emoji` for the shortcodes, and `python3-xlib` for the one window a `bmvim` reading is drawn in. Nothing else beyond the standard library. Nothing is fetched at runtime, no page loads an external font, script or stylesheet, and both commands serve on `127.0.0.1` and nowhere else.
 
 `bmvim` also wants Chrome or Chromium, and a vim built with `+clientserver` and a GUI. The vim half of `bmvim` is a `gvim --servername`, reached by `vim --servername` from the outside, and Ubuntu's plain `vim` package has neither the GUI nor `+clientserver`. `vim-gtk3` has both, and that is what `install.sh` installs. `vim --version | grep clientserver` says which one is on the machine.
 
@@ -129,6 +137,16 @@ Run all of it after touching anything to do with the browser, the windows or vim
 48. `bmv doc.md` on a document with an image in it, one beside the document and one named by an absolute path. The first is drawn, served out of the tree the reading started in. The second is left to the browser, which is right to find nothing for it.
 49. `bmv --print doc.md` on the same document. Open the file it names, move it somewhere else and open it again. The image beside the document is drawn wherever the file has been taken, since it travels inside it, and the theme dropdown works and stores nothing.
 50. Close the page in the browser rather than pressing ctrl-c. Within about ten seconds the command ends by itself and the shell comes back. Nothing else may be speaking to that port while you check: a page left open from an earlier reading goes on saying it is there, and a reading is kept up by any page that does.
+
+### Everything the markdown carries
+
+51. Open a document holding a task list, the five callouts, two footnotes, a bare address and a shortcode, and put it beside the same file on github.com under the `GitHub` theme. The two should agree throughout.
+52. The task list carries a box per item and no bullet or number beside it, ticked where the source says `[x]` and empty where it says `[ ]`. A box cannot be clicked. An ordinary item in the same list keeps its bullet. Brackets in a paragraph stay brackets.
+53. Each of the five callouts carries GitHub's colour, GitHub's icon and its name at the top, and the marker line itself is nowhere in the body. `> [!NOTHING]` stays an ordinary quote and so does `> [!NOTE] with words after it`, marker and all. Under the other two themes a callout is framed in that theme's own hairline and its name is what tells one from another.
+54. The notes sit at the foot of the document under a hairline, numbered, each ending in an arrow back to where it was cited. Click a number and the page goes to the note, click the arrow and it comes back.
+55. The notes are the one block drawn somewhere other than where it was written, so check the `bmvim` sync around them. Double click the notes and vim goes to the first definition. Put the vim cursor on a definition and the notes are marked. Put it on the last paragraph of the document, below the definitions, and that paragraph is marked and not the notes.
+56. A bare `https://` address, a `www.` address and a mail address are all links, and `:tada:` is drawn as the character. Neither happens inside a code span or a fence, and a shortcode nothing answers to stays as the words it was.
+57. `bmv --print` on the same document. All of it survives into the one file, icons included, since the icons are drawings in the stylesheet rather than anything fetched.
 
 ## Four things that look odd and are not
 
