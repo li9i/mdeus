@@ -263,6 +263,11 @@ function drawDocument() {
   /* The heading ids are assigned here, from the outline the server sends.
      Changing the theme does not come through this function, so no theme ever
      renames them. */
+
+  /* The title arrives with the document rather than being put together here,
+     and it is written on every draw rather than once at the start, so that
+     following a link to another document takes the tab along with it. */
+  document.title = doc.title;
   if (doc.gone) {
     docNode.innerHTML = `<p class="gone">${esc(doc.name || 'The file')} is gone.</p>`;
     headingIds = [];

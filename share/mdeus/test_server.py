@@ -5,6 +5,10 @@ Each test builds a fixture tree in a temporary directory, binds a real server
 on a free port and speaks to it over HTTP. No browser, no vim, no test
 framework. Needs markdown_it, which render.py needs anyway.
 
+bmvim_window.py is imported for one string, the word a reading's window looks
+for at the front of the page's title. Nothing else here is that module's, and
+it asks for no display to be read this way.
+
 Nothing here may reach the state file or the export cache in the home
 directory, so both paths are pointed into the temporary tree before any request
 is made, and the run checks at the end that neither was written to.
@@ -35,6 +39,7 @@ from urllib.parse import urlencode
 TEST_HOME = tempfile.mkdtemp(prefix='mdview-test-home-')
 os.environ['HOME'] = TEST_HOME
 
+import bmvim_window
 import export
 import render
 import server
@@ -511,11 +516,66 @@ def test_mtime_moves_only_when_the_file_is_written():
         stop()
 
 
+def test_page_is_served_under_the_name_a_reading_with_vim_was_given():
+    """A reading with vim beside it answers at its own name as well as at the root.
+
+    The browser names the window it puts up after the address it was given, and
+    that name is how a reading with vim picks its own page's window out of the
+    desktop. So the name has to be in the address, and the address has to be
+    answered. A reading without vim has no window to find and no name to be
+    found by, and answers at the root alone.
+    """
+    root, port, stop = start_reading(servername='TESTVIM')
+    try:
+        for path in ('/', '/TESTVIM'):
+            status, content_type, page = fetch(port, path)
+            assert status == 200, (path, status)
+            assert content_type.startswith('text/html'), (path, content_type)
+            assert b'<title>bmvim: start.md</title>' in page, page[:200]
+        assert fetch_json(port, '/OTHERVIM')[0] == 404, 'another reading was answered for'
+    finally:
+        stop()
+    root, port, stop = start_reading()
+    try:
+        assert fetch_json(port, '/TESTVIM')[0] == 404, 'a reading without vim took a name'
+    finally:
+        stop()
+
+
+def test_page_title_says_the_command_and_the_document():
+    """The title names the command and the file, and travels with the document.
+
+    The tab and, for a reading with vim beside it, the window on the panel both
+    read it. The page writes its own title as it draws, so that following a link
+    to another document takes the title along with it, and what it writes is the
+    title the server sent rather than one put together again there.
+    """
+    root, port, stop = start_reading()
+    try:
+        assert b'<title>bmv: start.md</title>' in fetch(port, '/')[2]
+        assert fetch_json(port, '/doc')[1]['title'] == 'bmv: start.md'
+        moved = fetch_json(port, '/doc?' + urlencode({'path': 'notes/other.md'}))[1]
+        assert moved['title'] == 'bmv: notes/other.md', moved
+    finally:
+        stop()
+    # The window a reading with vim is drawn in reads the page's title off the
+    # browser and takes it for its own, and it tells such a title from the
+    # address the browser shows while the page is still on its way by the word
+    # in front. That word is written in two files that never meet, so the one
+    # here has to go on beginning the one there.
+    root, port, stop = start_reading(servername='TESTVIM')
+    try:
+        title = fetch_json(port, '/doc')[1]['title']
+        assert title.startswith(bmvim_window.TITLE), (title, bmvim_window.TITLE)
+    finally:
+        stop()
+
+
 def test_removed_file_gives_the_gone_reply_and_recovers():
     """A source file taken away gives the gone reply, and the reading survives it."""
     root, port, stop = start_reading()
     try:
-        gone = {'name': 'start.md', 'gone': True,
+        gone = {'name': 'start.md', 'gone': True, 'title': 'bmv: start.md',
                 'state': {'contents': False, 'theme': 'browser', 'wide': True}}
         source = root / 'start.md'
         source.unlink()

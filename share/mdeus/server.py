@@ -51,7 +51,7 @@ def build_server(reading, port=DEFAULT_PORT):
         return ThreadingHTTPServer((HOST, 0), handler)
 
 
-def page_html(name, state, head, body_tail=''):
+def page_html(title, state, head, body_tail=''):
     """Return the empty page. The controls and the document are filled in by page.js.
 
     The one skeleton behind both a served reading and a printed copy. What
@@ -69,7 +69,7 @@ def page_html(name, state, head, body_tail=''):
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{escape(name)}</title>
+    <title>{escape(title)}</title>
 {head}
   </head>
   <body>
@@ -197,7 +197,13 @@ class ReadingHandler(BaseHTTPRequestHandler):
         """Answer a read. Even a refusal is JSON, so the page can decode every reply."""
         parts = urlsplit(self.path)
         path = parts.path
-        if path == '/':
+        # A reading with vim beside it answers at its own name as well as at
+        # the root, because the browser names the window it puts up after the
+        # address it was given, and that name is what tells one reading's page
+        # window from another's. Several such readings run at once and they all
+        # serve on the same host, so the host says nothing about which reading a
+        # window belongs to.
+        if path == '/' or path[1:] == self.reading.servername:
             self.send_page()
         # The routes that speak to vim are there only while vim is, so a
         # reading that is only a browser has no more of an API than before.
@@ -337,7 +343,7 @@ class ReadingHandler(BaseHTTPRequestHandler):
         if self.reading.servername:
             head.append('    <link rel="stylesheet" href="/assets/bmvim.css" />')
             head.append('    <script src="/assets/bmvim.js" defer></script>')
-        page = page_html(self.name(), load_state(), '\n'.join(head))
+        page = page_html(self.title(), load_state(), '\n'.join(head))
         self.send_bytes(page.encode('utf-8'), 'text/html')
 
     def snapshot(self):
@@ -348,10 +354,31 @@ class ReadingHandler(BaseHTTPRequestHandler):
         # it is the time of the document the page is about to draw, so the poll
         # that follows compares against what is on the screen without having to
         # ask a second question.
-        common = {'mtime': self.mtime(), 'name': self.name(), 'state': load_state()}
+        # The title travels with it because the page writes its own title as it
+        # draws, so that following a link to another document says so on the tab
+        # and, in a reading with vim beside it, on the panel. It is written here
+        # rather than put together again in the page, so the title a reading
+        # opened at and the title it moves on to are the one string.
+        common = {
+            'mtime': self.mtime(),
+            'name': self.name(),
+            'state': load_state(),
+            'title': self.title(),
+        }
         try:
             source = self.reading.current.read_text(encoding='utf-8')
         except (OSError, UnicodeDecodeError):
             return dict(common, gone=True)
         rendered = render_document(source, image_src=self.image_src)
         return dict(common, blocks=rendered['blocks'], outline=rendered['outline'])
+
+    def title(self):
+        """Return what the page is called: the command, then the document.
+
+        A window on the panel and a tab among twenty others both say what they
+        are as well as what they are showing. Which command is running is not
+        stored anywhere: a reading with vim beside it is the one that has a
+        servername, and there is no third command.
+        """
+        command = 'bmvim' if self.reading.servername else 'bmv'
+        return f'{command}: {self.name()}'

@@ -8,8 +8,8 @@
 #   bmvim <document.md>
 #
 # The reading opens a gvim of its own, so the shell this was run from stays yours
-# and waits. It needs a desktop session, so use bmv where there is none, and only
-# one reading runs at a time.
+# and waits. It needs a desktop session, so use bmv where there is none. Several
+# readings run at once, each in a window of its own with a vim of its own.
 #
 # The page opens in the browser you already have running, which is why it opens
 # as quickly as it does, and the reading holds it by that one window: it is taken
@@ -24,14 +24,16 @@
 
 set -euo pipefail
 
-# One name for the one reading. vim keeps servernames upper cased and so does
-# the check that only one reading is up.
-SERVERNAME=BMVIM
+# One name for this reading and for nothing else on the machine. vim keeps
+# servernames upper cased, so the name is written that way here, and the process
+# id is what no other reading can be given. It names more than vim: the page is
+# served under it as well, which is how the reading picks its own page's window
+# out of the desktop when several readings are up.
+SERVERNAME="BMVIM$$"
 
 # The modules this drives sit beside the script inside the package, so they are
 # found whether the package is stowed or run from a checkout of it.
 share="$(dirname "$(readlink -f "$0")")/../share/mdview"
-link="$share/vimlink.py"
 
 if [ $# -ne 1 ]
 then
@@ -56,14 +58,6 @@ file="$(readlink -f "$1")"
 if [ -z "${DISPLAY:-}" ]
 then
   echo "bmvim: needs a desktop session, so use bmv where there is none" >&2
-  exit 1
-fi
-
-# One reading at a time. vim answers to the name or it does not, and if it does
-# it is asked what it has open, so the refusal says which document is being read.
-if held="$(python3 "$link" holder "$SERVERNAME")"
-then
-  echo "bmvim: already reading ${held:-another document}" >&2
   exit 1
 fi
 

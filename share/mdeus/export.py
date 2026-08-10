@@ -111,7 +111,7 @@ def printed_page(document):
     styles = (ASSET_DIR / 'themes.css').read_text(encoding='utf-8')
     page = (ASSET_DIR / 'page.js').read_text(encoding='utf-8')
     return page_html(
-        document['name'],
+        document['title'],
         document['state'],
         f'    <style>\n{styles}\n    </style>',
         f'    <script>\n{stub_script(document)}\n    </script>\n'
@@ -142,6 +142,10 @@ def write_export(source):
         'name': source.name,
         'outline': rendered['outline'],
         'state': load_state(),
+        # A printed copy is served by nobody and opened by no command, so it is
+        # titled by the file alone, where a served reading says which command
+        # is showing it as well.
+        'title': source.name,
     }
     path = cache_path(source)
     path.parent.mkdir(parents=True, exist_ok=True)

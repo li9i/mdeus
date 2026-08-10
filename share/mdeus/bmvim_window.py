@@ -17,7 +17,10 @@ Nothing manages the two windows once they are inside, and the work a window
 manager would have done falls here. The panes are laid out again whenever the
 container is resized, the seam between them is dragged with the pointer, and
 the keyboard is handed from one pane to the other on a click, which is how the
-desktop is set to hand it between windows.
+desktop is set to hand it between windows. The title is the same sort of work:
+the desktop can see none of the panes, so the reading takes the page's own
+title for its own, and following a link in the browser renames the window on
+the panel with it.
 
 Without python3-xlib there is no container to be made, so the reading opens in
 two ordinary windows wherever the desktop puts them. It says so and carries on.
@@ -30,7 +33,6 @@ import signal
 import subprocess
 import sys
 import time
-from urllib.parse import urlsplit
 
 import vimlink
 from state import MAX_SPLIT, MIN_SPLIT, load_split, save_split
@@ -70,8 +72,13 @@ ICONS = tuple(
     )
     for size in (24, 128)
 )
-# What the reading is called, on its title bar and on the panel.
-NAME = b'bmvim'
+# What the reading is called, on its title bar and on the panel, with the
+# document being read after it. The page writes the same pair in its own title,
+# and the reading takes its title from the page from then on, so this is also
+# what tells a title the page wrote from the address the pane carries before
+# the page has arrived.
+NAME = 'bmvim'
+TITLE = f'{NAME}: '
 NO_BROWSER = (
     'bmvim: no chrome or chromium here, so the page opens in a tab of your\n'
     '       usual browser, which is neither placed nor closed for you'
@@ -272,6 +279,21 @@ def focus_pane(d, panes, focused):
     focus(d, panes.get(focused) or panes.get('vim'))
 
 
+def follow_title(d, container, page):
+    """Put what the page calls itself on the reading's title bar and panel entry.
+
+    The page's own title carries the document being read and follows a link to
+    another document, so the reading is named from the page rather than from the
+    document it started at.
+
+    What the pane calls itself before the page has arrived is the address it is
+    loading, which names no document, so only a title the page wrote is taken.
+    """
+    title = window_name(d, page)
+    if title and title.startswith(TITLE):
+        set_title(d, container, title)
+
+
 def ignore_gone(problem, request):
     """Say nothing when a window a request named has gone in the meantime.
 
@@ -349,11 +371,16 @@ def locked():
 def main(argv):
     """Open a reading, hold it up, and put everything away when it ends."""
     url, servername, script, document = argv
+    # The page is opened under the reading's own name rather than at the root,
+    # because the browser names the window it puts up after the address it was
+    # given, and that name is the whole of how one reading tells its own page's
+    # window from another reading's.
+    page = f'{url}/{servername}'
     browser = browser_path()
     if not browser:
         print(NO_BROWSER, flush=True)
     d = x_display() if browser else None
-    container = make_container(d) if d is not None else None
+    container = make_container(d, os.path.basename(document)) if d is not None else None
     if browser and container is None:
         print(UNPLACED, flush=True)
 
@@ -366,23 +393,18 @@ def main(argv):
         where = d.screen().root.translate_coords(container, 0, 0)
         origin = (where.x, where.y)
 
-    # What the desktop is showing before the page is asked for, so that the
-    # window the browser puts up for it can be told from the windows it already
-    # had. Read before the asking rather than after, since a browser already
-    # running answers within a tenth of a second.
-    before = set(client_list(d)) if container is not None else set()
     if browser:
         # Started and not held on to. The command hands the asking to a browser
         # already running and is gone within the moment, so what it leaves
         # behind is a window rather than a process, and the window is what the
         # reading holds the page by.
         subprocess.Popen(
-            browser_command(browser, url, boxes[0], origin),
+            browser_command(browser, page, boxes[0], origin),
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
     else:
         subprocess.Popen(
-            ['xdg-open', url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            ['xdg-open', page], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
     vim = subprocess.Popen(
         vim_command(servername, script, document, boxes[1], origin),
@@ -398,12 +420,12 @@ def main(argv):
     try:
         if container is not None:
             # vim is the reading's own and is known by its process. The page's
-            # window is somebody else's and is known by being new.
-            host = urlsplit(url).hostname
+            # window is somebody else's and is known by the name the reading
+            # served it under.
             wanted = [('vim', lambda listed: window_of(d, listed, vim.pid), boxes[1])]
             if browser:
                 wanted.append(
-                    ('browser', lambda listed: page_window(d, listed, before, host), boxes[0])
+                    ('browser', lambda listed: page_window(d, listed, servername), boxes[0])
                 )
             panes = take_in(d, container, wanted)
             # vim asks for a size of its own as it starts, and whether that
@@ -418,6 +440,11 @@ def main(argv):
             # The panes were mapped after the strip and are sitting over it, so
             # the seam is laid again now that there is something to lay it on.
             meet(d, container, panes, divider)
+            if 'browser' in panes:
+                # Asked for the page's own title from here on, since the title
+                # the reading carries is the page's and follows a link with it.
+                panes['browser'].change_attributes(event_mask=X.PropertyChangeMask)
+                follow_title(d, container, panes['browser'])
             focus(d, panes.get('vim'))
         watch(d, container, panes, divider, vim, servername)
     finally:
@@ -431,13 +458,15 @@ def main(argv):
     return 0
 
 
-def make_container(d):
+def make_container(d, document):
     """Put an empty window on the desktop for the reading to live in.
 
     It asks for the work area, so that nothing in the reading is put under a
     panel, and the window manager takes what its own border needs out of that.
     The name is the reading's own, since the container is the only window the
-    desktop can see and there is nothing left to borrow a name from.
+    desktop can see and there is nothing left to borrow a name from. It carries
+    the document from the start, and the page's own title takes over once the
+    page is up, so the panel never shows an address on its way to a name.
 
     It is white because it is seen before either pane is in it, and again
     afterwards in the band vim rounds off its height. A browser takes a moment
@@ -458,13 +487,9 @@ def make_container(d):
             X.StructureNotifyMask | X.SubstructureNotifyMask | X.FocusChangeMask
         ),
     )
-    utf8 = d.intern_atom('UTF8_STRING')
-    container.set_wm_name(NAME.decode())
-    container.set_wm_icon_name(NAME.decode())
-    container.set_wm_class('bmvim', 'Bmvim')
+    container.set_wm_class(NAME, NAME.capitalize())
     set_icon(d, container)
-    container.change_property(d.intern_atom('_NET_WM_NAME'), utf8, 8, NAME)
-    container.change_property(d.intern_atom('_NET_WM_ICON_NAME'), utf8, 8, NAME)
+    set_title(d, container, TITLE + document)
     container.change_property(
         d.intern_atom('_NET_WM_PID'), Xatom.CARDINAL, 32, [os.getpid()]
     )
@@ -525,25 +550,28 @@ def meet(d, container, panes, divider):
     d.sync()
 
 
-def page_window(d, listed, before, host):
+def page_window(d, listed, servername):
     """Return the window the browser has put up for the page, or nothing while it has not.
 
     The window belongs to the browser and to no process of the reading's, so it
-    is known by two things instead: it was not on the desktop before the page
-    was asked for, and a browser names a window opened with --app after the host
-    the page came from, which here is the reading's own server and nothing else
-    on the machine.
+    is known by its name instead. A browser names a window opened with --app
+    after the address the page came from, and the reading serves its page under
+    a name of its own for exactly this, so the name is in that address and in
+    nobody else's. The host is not enough on its own: every reading on the
+    machine serves on the same one, and the port never reaches the name.
+
+    The address ends at the name, so the name is looked for at the end and not
+    anywhere inside, and one reading whose name begins another's is not read as
+    that other one.
     """
     for xid in listed:
-        if xid in before:
-            continue
         window = d.create_resource_object('window', xid)
         try:
             classes = window.get_wm_class()
         except Exception:
             # The window has gone in the moment since the desktop listed it.
             continue
-        if classes and host in classes:
+        if classes and any(name.endswith(servername) for name in classes):
             return window
     return None
 
@@ -572,6 +600,19 @@ def set_icon(d, container):
         data += [pixels.width, pixels.height]
         data += [a << 24 | r << 16 | g << 8 | b for r, g, b, a in pixels.getdata()]
     container.change_property(d.intern_atom('_NET_WM_ICON'), Xatom.CARDINAL, 32, data)
+
+
+def set_title(d, container, title):
+    """Say what the reading is called, on its title bar and on the panel.
+
+    The modern name and the old one both, since which of the two a desktop
+    reads is the desktop's business and the two are meant to agree.
+    """
+    utf8 = d.intern_atom('UTF8_STRING')
+    container.set_wm_name(title)
+    container.set_wm_icon_name(title)
+    for atom in ('_NET_WM_NAME', '_NET_WM_ICON_NAME'):
+        container.change_property(d.intern_atom(atom), utf8, 8, title.encode('utf-8'))
 
 
 def settle(window):
@@ -732,6 +773,9 @@ def watch(d, container, panes, divider, vim, servername):
     """
     signal.signal(signal.SIGINT, lambda number, frame: vimlink.quit_vim(servername))
     focused = 'vim'
+    # The one property of the page's the reading follows, asked for once rather
+    # than on every event a browser writes about itself.
+    named = d.intern_atom('_NET_WM_NAME') if d is not None else None
     while vim.poll() is None:
         if container is None:
             time.sleep(POLL)
@@ -770,6 +814,12 @@ def watch(d, container, panes, divider, vim, servername):
                 if event.mode == X.NotifyNormal:
                     focused = under_pointer(container, panes) or focused
                     focus_pane(d, panes, focused)
+            elif event.type == X.PropertyNotify and event.atom == named:
+                # The page has renamed itself, which is how a link followed in
+                # the browser reaches the title bar and the panel.
+                page = panes.get('browser')
+                if page is not None and event.window.id == page.id:
+                    follow_title(d, container, page)
             elif event.type == X.ClientMessage:
                 if event.data[1][0] == d.intern_atom('WM_DELETE_WINDOW'):
                     vimlink.quit_vim(servername)
@@ -785,6 +835,22 @@ def white(d, window):
     if window.get_geometry().depth == 32:
         return 0xFFFFFFFF
     return d.screen().white_pixel
+
+
+def window_name(d, window):
+    """Return what a window calls itself, or nothing where it says nothing.
+
+    The modern name only, which is the one a browser writes and the one that
+    says it is UTF-8, so a document name with anything but ASCII in it arrives
+    as itself. The old name is bytes with no encoding named, and the browser
+    leaves it empty anyway.
+    """
+    try:
+        said = window.get_full_property(d.intern_atom('_NET_WM_NAME'), X.AnyPropertyType)
+    except Exception:
+        # The window belongs to the browser and may go at any moment.
+        return None
+    return said.value.decode('utf-8', 'replace') if said else None
 
 
 def window_of(d, listed, pid):

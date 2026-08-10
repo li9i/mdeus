@@ -1,14 +1,12 @@
 """
 The link between a reading in the browser and the vim beside it.
 
-Finding out whether a reading is already up, sending vim to a line or to
-another document, asking it to quit, and carrying the cursor line back the
-other way.
+Sending vim to a line or to another document, asking it to quit, and carrying
+the cursor line back the other way.
 
 The server imports this to reach vim, and the window imports it to ask vim to
-quit. The rest is reached from the command line, because the command that starts
-a reading is a shell script, and because vim reports its cursor by starting a
-process rather than by waiting on one.
+quit. The cursor report is reached from the command line instead, because vim
+reports its cursor by starting a process rather than by waiting on one.
 
 The windows a reading is drawn in are bmvim_window.py's, not this file's.
 """
@@ -24,11 +22,6 @@ NORMAL_MODE = r'<C-\><C-n>'
 # Nothing here is worth waiting on. A vim busy enough not to answer, or a
 # server that has stopped listening, must not hold up whoever asked.
 TIMEOUT = 2
-
-
-def document_open(servername):
-    """Return the file the reading under this name has open, or nothing if it will not say."""
-    return remote(servername, '--remote-expr', 'expand("%:p")') or ''
 
 
 def edit(servername, path):
@@ -56,14 +49,10 @@ def jump(servername, first, last):
 
 
 def main(argv):
-    """Run one of the small jobs the reading asks for from the command line."""
+    """Run the small job the reading asks for from the command line."""
     what = argv[0]
     if what == 'cursor':
         report_cursor(argv[1], argv[2], argv[3:4] == ['click'])
-    elif what == 'holder':
-        if argv[1].upper() not in servers():
-            return 1
-        print(document_open(argv[1]))
     return 0
 
 
@@ -107,14 +96,6 @@ def run(command):
         command, capture_output=True, check=True, text=True, timeout=TIMEOUT
     )
     return done.stdout.strip()
-
-
-def servers():
-    """Return the names vim answers to on this display, upper cased as vim keeps them."""
-    try:
-        return run(['vim', '--serverlist']).split()
-    except (OSError, subprocess.SubprocessError):
-        return []
 
 
 if __name__ == '__main__':
