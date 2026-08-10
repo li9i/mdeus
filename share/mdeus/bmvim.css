@@ -75,10 +75,10 @@
   --bmvim-rule: -13px;
 }
 
-/* github draws grounds of its own, at #f6f8fa, on inline code, on fenced
-   blocks and on table headers. The clicked ground steps well past them, so a
-   block that is grey for a second is never read as furniture that is grey
-   always. */
+/* github draws grounds of its own: #f6f8fa on a fenced block and on every
+   second row of a table, and a fainter grey on inline code. The clicked ground
+   steps well past all of them, so a block that is grey for a second is never
+   read as furniture that is grey always. */
 .github .doc {
   --bmvim-flash: #dbe2e9;
   --bmvim-rule: -7px;

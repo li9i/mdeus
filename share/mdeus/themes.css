@@ -45,9 +45,9 @@
    <p class="gone">.
 
    The wrapper and the button around a fence are page.js's, put up again on
-   every redraw. The button carries .copied for as long as it says Copied.
-   Nothing else renders that wrapper, so the rules for it reach this page and
-   no other.
+   every redraw. The button carries .copied for as long as it says Copied, and
+   the github theme reads that to swap its icon for a tick. Nothing else
+   renders that wrapper, so the rules for it reach this page and no other.
 
    THE SCOPING RULE
    ----------------
@@ -80,9 +80,10 @@
   }
 }
 
-/* Where the copy button sits and how it comes and goes is the same in all
-   three themes, so it is written once. What it looks like is each theme's own
-   and is set below with that theme's controls. */
+/* That the copy button sits in the corner of a fence, and how it comes and
+   goes, is the same in all three themes, so that much is written once. What it
+   looks like, and how far in from the corner it sits, is each theme's own and
+   is set below with that theme's controls. */
 .browser .code-block,
 .report .code-block,
 :where(.github) .code-block {
@@ -491,6 +492,14 @@
    there exactly as they did before they moved. Nothing defines them in this
    file, so the fallbacks apply and the theme is GitHub's light palette.
 
+   Three colours are written as values instead, and all three are translucent:
+   the ground under inline code, the ground under the copy button while the
+   pointer is on it, and the ring round that button once it has copied. GitHub
+   writes those translucent on purpose, so that one value darkens the page, a
+   fence and a shaded table row by the same amount. A variable holding an
+   opaque grey would need a value for each of those grounds and a second set
+   for a dark palette. Each is marked where it appears.
+
    One measurement is borrowed the same way. The heading rules below keep a
    heading clear of the review tool's sticky toolbar by reading --bar-height,
    which that tool defines as its own toolbar height. Nothing defines it here,
@@ -501,11 +510,13 @@
 :where(.github) .doc {
   color: var(--fg, #1f2328);
   font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji';
   font-size: 16px;
-  line-height: 1.55;
+  line-height: 1.5;
   margin: 0 auto;
   max-width: 1012px;
+  word-wrap: break-word;
 }
 
 /* The size above is the review tool's and has to stay at 16px, since that tool
@@ -535,26 +546,76 @@
   padding-bottom: 0.8rem;
 }
 
+/* A GitHub button: a grey face, a hairline round it and a shadow the width of
+   the bottom edge. */
 :where(.github) .controls select,
-:where(.github) .controls button,
-:where(.github) .code-block .copy {
+:where(.github) .controls button {
   background: var(--canvas-inset, #f6f8fa);
   border: 1px solid var(--border, #d1d9e0);
   border-radius: 6px;
+  box-shadow: var(--shadow, 0 1px 0 rgba(31, 35, 40, 0.04));
   color: var(--fg, #1f2328);
   font: inherit;
+  font-weight: 500;
   padding: 0.35em 0.7em;
 }
 
-:where(.github) .controls button,
-:where(.github) .code-block .copy {
+:where(.github) .controls button {
   cursor: pointer;
 }
 
-/* The controls sit in a row that is 12px throughout. The copy button sits in
-   the document, which is 16px, so it is given the row's size to match. */
+/* The copy button on a fence is not one of those. GitHub gives it no word and
+   no face: a 28px square holding the 16px copy icon, 8px in from the corner of
+   the fence, and the icon becomes a green tick for as long as the button says
+   it copied.
+
+   Both icons are GitHub's own drawings. They are laid on as a mask over the
+   button's colour rather than as pictures with a colour of their own, so the
+   tick is the same drawing in another colour and a dark palette carries both.
+   The word the button carries stays in the markup at no size, and is what a
+   screen reader reads out. */
 :where(.github) .code-block .copy {
-  font-size: 12px;
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z'/%3E%3Cpath d='M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z'/%3E%3C/svg%3E");
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--fg-muted, #59636e);
+  cursor: pointer;
+  display: flex;
+  font-size: 0;
+  height: 28px;
+  justify-content: center;
+  padding: 0;
+  right: 8px;
+  top: 8px;
+  width: 28px;
+}
+
+:where(.github) .code-block .copy::before {
+  background: currentColor;
+  content: '';
+  height: 16px;
+  mask: var(--icon) center / 16px no-repeat;
+  width: 16px;
+}
+
+/* The ground GitHub puts under the button while the pointer is on it. Theirs
+   is the opaque #eff2f5 of a button face; this is the translucent grey that
+   lands within a shade of it over a fence, and darkens a dark ground instead
+   of putting a light patch on it. The icon does not move with it: on GitHub
+   the icon keeps its own colour through a hover. */
+:where(.github) .code-block .copy:hover {
+  background: #818b981a;
+}
+
+/* Copied: the tick, and the green ring GitHub throws round the button for as
+   long as it is showing. The ring is written in pixels because the button has
+   no font size of its own for an em to measure against. */
+:where(.github) .code-block .copy.copied {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z'/%3E%3C/svg%3E");
+  box-shadow: 0 0 0 3px #34d05866;
+  color: var(--success, #1a7f37);
 }
 
 :where(.github) .controls select:focus-visible,
@@ -620,24 +681,50 @@
   scroll-margin-top: calc(var(--bar-height, 0px) + 16px);
 }
 
+/* Every heading is sized against the document rather than in fixed steps, as
+   GitHub sizes them, so the whole scale follows the reading size above and the
+   ratios between the six hold at any size. The underline under the first two
+   is GitHub's translucent hairline, which lands a shade darker than the soft
+   border the review tool defines. */
 :where(.github) .doc h1 {
-  border-bottom: 1px solid var(--border-soft, #e6eaef);
-  font-size: 30px;
-  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-soft, #d1d9e0b3);
+  font-size: 2em;
+  padding-bottom: 0.3em;
 }
 
 :where(.github) .doc h2 {
-  border-bottom: 1px solid var(--border-soft, #e6eaef);
-  font-size: 22px;
-  padding-bottom: 7px;
+  border-bottom: 1px solid var(--border-soft, #d1d9e0b3);
+  font-size: 1.5em;
+  padding-bottom: 0.3em;
 }
 
 :where(.github) .doc h3 {
-  font-size: 17px;
+  font-size: 1.25em;
 }
 
 :where(.github) .doc h4 {
-  font-size: 15px;
+  font-size: 1em;
+}
+
+:where(.github) .doc h5 {
+  font-size: 0.875em;
+}
+
+:where(.github) .doc h6 {
+  color: var(--fg-muted, #59636e);
+  font-size: 0.85em;
+}
+
+/* Inline code in a heading keeps the heading's size, rather than dropping to
+   the 85% it takes in prose. */
+:where(.github) .doc h1 code,
+:where(.github) .doc h2 code,
+:where(.github) .doc h3 code,
+:where(.github) .doc h4 code,
+:where(.github) .doc h5 code,
+:where(.github) .doc h6 code {
+  font-size: inherit;
+  padding: 0 0.2em;
 }
 
 :where(.github) .doc p,
@@ -649,59 +736,121 @@
   margin: 0 0 16px;
 }
 
+/* GitHub leaves no space above the first thing in a document, nor below the
+   last. The document is drawn a block at a time here, so the first and the last
+   of those are what the rule has to reach rather than a child of .doc. */
+:where(.github) .doc .block:first-child .prose > :first-child {
+  margin-top: 0;
+}
+
+:where(.github) .doc .block:last-child .prose > :last-child {
+  margin-bottom: 0;
+}
+
 :where(.github) .doc ul,
 :where(.github) .doc ol {
   padding-left: 2em;
 }
 
 :where(.github) .doc li + li {
-  margin-top: 4px;
+  margin-top: 0.25em;
 }
 
-:where(.github) .doc li > ul,
-:where(.github) .doc li > ol {
+/* A list inside a list closes right up against the item holding it, and takes
+   a marker of its own: roman numerals at the second level, letters at the
+   third. */
+:where(.github) .doc ul ul,
+:where(.github) .doc ul ol,
+:where(.github) .doc ol ol,
+:where(.github) .doc ol ul {
   margin-bottom: 0;
-  margin-top: 4px;
+  margin-top: 0;
 }
 
+:where(.github) .doc ol ol,
+:where(.github) .doc ul ol {
+  list-style-type: lower-roman;
+}
+
+:where(.github) .doc ul ul ol,
+:where(.github) .doc ul ol ol,
+:where(.github) .doc ol ul ol,
+:where(.github) .doc ol ol ol {
+  list-style-type: lower-alpha;
+}
+
+/* An item written with blank lines around it comes out as a paragraph, and
+   GitHub spaces those away from the line above. */
+:where(.github) .doc li > p {
+  margin-top: 16px;
+}
+
+/* The one ground in this theme written as a colour rather than as a variable.
+   GitHub's inline code sits on a translucent grey, which is the point of it:
+   the same value darkens the page, a fence and a shaded table row by the same
+   amount, and needs no second value for a dark palette. A variable holding an
+   opaque grey could not do that. */
 :where(.github) .doc code {
-  background: var(--canvas-inset, #f6f8fa);
+  background: #818b981f;
   border-radius: 6px;
   font-family: ui-monospace, 'SFMono-Regular', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
   font-size: 85%;
+  margin: 0;
   padding: 0.2em 0.4em;
+  white-space: break-spaces;
 }
 
+/* A fence reads at 85% of the document, as it does on GitHub, so it is a step
+   smaller than the prose around it rather than the same size. */
 :where(.github) .doc pre {
   background: var(--canvas-inset, #f6f8fa);
   border-radius: 6px;
+  color: var(--fg, #1f2328);
   font-family: ui-monospace, 'SFMono-Regular', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+  font-size: 85%;
+  line-height: 1.45;
   overflow-x: auto;
   padding: 16px;
+  word-wrap: normal;
 }
 
+/* Inside a fence the code is already at the fence's size and keeps its lines
+   as they were written. The wrapping the rule above allows inline code is
+   turned off again here. */
 :where(.github) .doc pre code {
   background: none;
   font-size: 100%;
   padding: 0;
+  white-space: pre;
+  word-break: normal;
 }
 
 :where(.github) .doc blockquote {
-  border-left: 4px solid var(--border, #d1d9e0);
+  border-left: 0.25em solid var(--border, #d1d9e0);
   color: var(--fg-muted, #59636e);
   padding: 0 1em;
 }
 
+:where(.github) .doc blockquote > :first-child {
+  margin-top: 0;
+}
+
+:where(.github) .doc blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+/* GitHub's rule is a 4px bar rather than a hairline. */
 :where(.github) .doc hr {
   background: var(--border, #d1d9e0);
   border: 0;
-  height: 1px;
+  height: 0.25em;
   margin: 24px 0;
 }
 
 :where(.github) .doc table {
   border-collapse: collapse;
   display: block;
+  font-variant: tabular-nums;
   overflow-x: auto;
   width: max-content;
   max-width: 100%;
@@ -713,13 +862,33 @@
   padding: 6px 13px;
 }
 
+/* GitHub leaves the header row on the document's own ground and shades every
+   second row of the body instead. A row is counted within the head or the body
+   holding it, so the header is never one of the shaded ones. */
 :where(.github) .doc th {
-  background: var(--canvas-inset, #f6f8fa);
   font-weight: 600;
+}
+
+:where(.github) .doc tr {
+  background: var(--canvas, #ffffff);
+}
+
+:where(.github) .doc tr:nth-child(2n) {
+  background: var(--canvas-inset, #f6f8fa);
 }
 
 :where(.github) .doc a {
   color: var(--accent, #0969da);
+  text-underline-offset: 0.2rem;
+}
+
+:where(.github) .doc img {
+  box-sizing: content-box;
+  max-width: 100%;
+}
+
+:where(.github) .doc strong {
+  font-weight: 600;
 }
 
 /* The base size drops on a narrow window, as it did where these rules came
