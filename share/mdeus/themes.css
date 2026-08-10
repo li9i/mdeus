@@ -220,8 +220,18 @@
   padding: 8px;
 }
 
+/* A monospace face at the prose size reads larger than the Times around it,
+   since Times has the smaller x-height of the two. A step down puts inline
+   code at the size the fence above already uses. */
 .browser .doc code {
   font-family: 'Courier New', monospace;
+  font-size: 0.85em;
+}
+
+/* The code inside a fence is already at the fence's size, so the step above is
+   taken back here rather than applied twice. */
+.browser .doc pre code {
+  font-size: 100%;
 }
 
 .browser .doc blockquote {
