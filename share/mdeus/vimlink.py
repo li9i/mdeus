@@ -5,12 +5,12 @@ Finding out whether a reading is already up, sending vim to a line or to
 another document, asking it to quit, and carrying the cursor line back the
 other way.
 
-The server imports this to reach vim, and the container imports it to ask vim to
+The server imports this to reach vim, and the window imports it to ask vim to
 quit. The rest is reached from the command line, because the command that starts
 a reading is a shell script, and because vim reports its cursor by starting a
 process rather than by waiting on one.
 
-The windows a reading is drawn in are container.py's, not this file's.
+The windows a reading is drawn in are bmvim_window.py's, not this file's.
 """
 
 import json

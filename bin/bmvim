@@ -87,7 +87,7 @@ trap cleanup EXIT HUP INT TERM
 # so the wait is the read itself and ends the moment the line arrives, or the
 # moment the server gives up and closes its end.
 mkfifo "$dir/url"
-python3 "$share/server.py" "$file" "$SERVERNAME" > "$dir/url" &
+python3 "$share/bmvim_serve.py" "$file" "$SERVERNAME" > "$dir/url" &
 server=$!
 url=
 read -r url < "$dir/url" || true
@@ -103,5 +103,5 @@ echo "       ctrl-c here asks vim to quit, as the reading's close button does"
 
 # The window the reading is drawn in, and everything inside it. This holds the
 # shell until the reading ends.
-python3 "$share/container.py" \
+python3 "$share/bmvim_window.py" \
   "$url" "$SERVERNAME" "$share/cursor.vim" "$file"

@@ -17,12 +17,13 @@ The ground a jump lights in vim is the `BmvimJump` highlight group. It is set as
 | File | What it is |
 | --- | --- |
 | `render.py` | Markdown in, blocks out, each carrying the source lines it was built from, plus the heading outline. Where an image beside the document is written as is the caller's to say. |
-| `server.py` | Serves one reading: the page, the document, files from inside the starting tree, and the routes vim talks to. |
+| `server.py` | Serves one reading: the page, the document, files from inside the starting tree, and the routes vim talks to. Imported by whoever is serving, and run by nobody. |
 | `state.py` | The one file a reading remembers itself in, read by the server and by the window alike. |
 | `export.py` | The self contained file `bmv --print` writes. |
 | `vimlink.py` | The link to vim: the servername, jumps, following a link on both sides, and the cursor line coming back. |
 | `cursor.vim` | What vim does for as long as a reading is up: the cursor reports, the folds, and the ground a jump lights. |
-| `container.py` | The one window a reading with vim is drawn in, the browser and terminal inside it, and the seam between the two. |
+| `bmvim_serve.py` | Runs the server for a `bmvim` reading and says which port it landed on, since the command that starts one is a shell script. `bmv` serves in process and needs no such thing. |
+| `bmvim_window.py` | The one window a reading with vim is drawn in, the browser and terminal inside it, and the seam between the two. |
 | `themes.css` | The three themes, the two controls and the copy button on a fence. |
 | `page.js` | The theme dropdown, the contents list, the copy button on every fence, the heading names, the sections a double click folds away, and the redraw. |
 | `bmvim.css`, `bmvim.js` | The two marks and the sync. `bmv` never loads either. |
@@ -100,7 +101,7 @@ Run all of it after touching anything to do with the browser, the windows or vim
 29. Close the browser pane instead, with `ctrl-w` in it. vim is asked to quit, which it refuses while anything in it is unwritten, and the reading ends as soon as vim goes.
 30. Press the window's close button, and separately press `ctrl-c` in the shell the command was run from. Both ask the same question the browser pane closing asks, and both are refused the same way while anything in vim is unwritten. Nothing is ever taken away from under unsaved work.
 31. Kill the terminal outright, with `pkill -f 'mate-terminal --disable-factory'`. The window goes and the server stops, the same as quitting vim.
-32. After every one of the four: the page's window is gone and every other window of that browser is still open, on the same pages and in the same places. No server is left behind either, and no terminal. `pgrep -af mdview/server.py` should say nothing.
+32. After every one of the four: the page's window is gone and every other window of that browser is still open, on the same pages and in the same places. No server is left behind either, and no terminal. `pgrep -af mdview/bmvim_serve.py` should say nothing.
 33. With no browser running at all, start a reading and end it. The reading starts one, and the browser it started goes when the reading does, since the page's window was the only window in it.
 
 ### The three themes
@@ -126,7 +127,7 @@ Run all of it after touching anything to do with the browser, the windows or vim
 46. Neither Chrome nor Chromium on the machine. Take both off `PATH` and start a reading. The page opens in a plain tab of the default browser, both lines of the message are printed saying the window is neither placed nor closed for you, and the reading works.
 47. No `DISPLAY`. `env -u DISPLAY bmvim doc.md` says `bmvim` needs a desktop session and suggests `bmv`, and exits 1.
 48. The servername already taken. Start one reading, then start a second. The second names the document the first has open and exits 1.
-49. The server killed mid-reading. `pkill -f mdview/server.py` while a reading is up. vim stays usable. Nothing it sends waits on an answer, so nothing it does can hang on a server that has stopped listening.
+49. The server killed mid-reading. `pkill -f mdview/bmvim_serve.py` while a reading is up. vim stays usable. Nothing it sends waits on an answer, so nothing it does can hang on a server that has stopped listening.
 
 ### bmv on its own
 

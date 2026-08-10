@@ -14,7 +14,6 @@ source document is opened read only and is never written to.
 
 import json
 import mimetypes
-import sys
 import threading
 import time
 from functools import partial
@@ -50,18 +49,6 @@ def build_server(reading, port=DEFAULT_PORT):
         return ThreadingHTTPServer((HOST, port), handler)
     except OSError:
         return ThreadingHTTPServer((HOST, 0), handler)
-
-
-def main(argv):
-    """Serve one reading with vim beside it, saying on its output where it landed.
-
-    The command that starts such a reading is a shell script, and it has to be
-    told the port, since a reading already up may hold the preferred one.
-    """
-    document, servername = argv
-    bound, reading, url = start(Path(document), servername=servername)
-    print(url, flush=True)
-    serve(bound, reading)
 
 
 def page_html(name, theme, head, body_tail=''):
@@ -358,7 +345,3 @@ class ReadingHandler(BaseHTTPRequestHandler):
             return dict(common, gone=True)
         rendered = render_document(source, image_src=self.image_src)
         return dict(common, blocks=rendered['blocks'], outline=rendered['outline'])
-
-
-if __name__ == '__main__':
-    sys.exit(main(sys.argv[1:]))
