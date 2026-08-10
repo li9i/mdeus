@@ -196,6 +196,15 @@
   outline-offset: 1px;
 }
 
+/* A browser's own button stands taller than one line of code and the fence's
+   padding come to, so a fence of a single line has no room to hold it the 10px
+   down from the top that the other themes leave. It comes in less from the top
+   than from the side, and that is what leaves the same air above it as below
+   it on a one line fence. */
+.browser .code-block .copy {
+  top: 6px;
+}
+
 .browser a {
   color: #0000ee;
 }
