@@ -2,9 +2,15 @@
 """
 Read a markdown document in your browser.
 
-    bmv <document.md>           serve the document to your default browser
+    bmv <document.md>           serve the document to a window of its own
+    bmv --tab <document.md>     serve it to a tab of your default browser
     bmv --print <document.md>   write one self contained HTML file, print its
                                 path, and open nothing
+
+The window a reading opens in carries the page and nothing else: no address bar,
+no tabs, no bookmarks. It comes from Chrome or Chromium, whichever is on the
+machine, and where neither is the reading opens in a tab as though --tab had
+been asked for.
 
 A reading is served from this machine and nowhere else, redrawn whenever the
 file changes. It ends on ctrl-c, or once the page has stopped saying it is
@@ -15,6 +21,7 @@ its own port. The document is opened read only and is never written to.
 
 import argparse
 import os
+import subprocess
 import sys
 import threading
 import webbrowser
@@ -24,6 +31,7 @@ from pathlib import Path
 # found whether the package is stowed or run from a checkout of it.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'share' / 'mdview'))
 
+from browser import app_command, browser_path  # noqa: E402
 from export import write_export  # noqa: E402
 from server import serve, start  # noqa: E402
 
@@ -41,8 +49,28 @@ def main(argv=None):
     if args.print:
         print(write_export(document))
         return 0
-    read(document)
+    read(document, args.tab)
     return 0
+
+
+def open_page(url, tab):
+    """Open the reading, in a window of its own unless a tab was asked for."""
+    browser = None if tab else browser_path()
+    if browser:
+        # Started and not held on to. The command hands the asking to a browser
+        # already running and is gone within the moment, so what it leaves
+        # behind is a window rather than a process to wait on. The reading ends
+        # with that window all the same, since a page that has gone stops
+        # saying it is still open.
+        subprocess.Popen(
+            app_command(browser, url),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        return
+    # Off the serving thread: opening a browser can block until it exits. A
+    # desktop with nothing to open it with is not a failure either, since the
+    # address is already printed and the reading stays reachable by hand.
+    threading.Thread(target=webbrowser.open, args=(url, 2), daemon=True).start()
 
 
 def parse_args(argv):
@@ -57,19 +85,21 @@ def parse_args(argv):
         action='store_true',
         help='write one self contained HTML file and print its path, opening nothing',
     )
+    parser.add_argument(
+        '--tab',
+        action='store_true',
+        help='open in a tab of your default browser rather than a window of its own',
+    )
     return parser.parse_args(argv)
 
 
-def read(document):
+def read(document, tab):
     """Serve one reading and open it, until ctrl-c or until the page goes quiet."""
     bound, reading, url = start(document)
     print(f'reading {document.name}')
     print(f'  {url}')
     print('  ctrl-c to stop, or close the page', flush=True)
-    # Off the serving thread: opening a browser can block until it exits. A
-    # desktop with nothing to open it with is not a failure either, since the
-    # address is already printed and the reading stays reachable by hand.
-    threading.Thread(target=webbrowser.open, args=(url, 2), daemon=True).start()
+    open_page(url, tab)
     serve(bound, reading)
 
 

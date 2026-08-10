@@ -28,13 +28,13 @@ two ordinary windows wherever the desktop puts them. It says so and carries on.
 
 import os
 import select
-import shutil
 import signal
 import subprocess
 import sys
 import time
 
 import vimlink
+from browser import app_command, browser_path
 from state import MAX_SPLIT, MIN_SPLIT, load_split, save_split
 
 try:
@@ -47,10 +47,6 @@ try:
 except ImportError:  # python3-xlib is not installed
     X = Xatom = Xutil = display = error = protocol = None
 
-# The browsers a reading can borrow a window of, in the order they are looked
-# for. Each of them gives a window with nothing in it but the page, and hands
-# the asking straight to a copy of itself already running where there is one.
-BROWSERS = ('google-chrome', 'chromium', 'chromium-browser')
 # How long to wait for the browser to take its window away once it has been
 # asked to, in seconds.
 BROWSER_STOP = 5
@@ -141,37 +137,20 @@ def adopt(d, container, window, box):
 
 
 def browser_command(browser, url, box, origin):
-    """Return the command that asks for the page in a window of its own.
+    """Return the command that asks for the page in the window it is to fill.
 
-    --app gives a window with nothing in it but the page, and asks the browser
-    you already have running for it, which is the whole of why a reading opens
-    as quickly as it does: a browser of the reading's own takes about a second
-    to put up its first frame, and a browser already up takes a tenth of one.
-    The command that carries the asking is answered and gone within a moment,
-    so the window it asked for is the reading's hold on the page and there is no
-    process of the reading's to wait on.
-
-    Where the window is going to end up is asked for as well. A running browser
-    pays no attention to that and puts the window where it likes, since the
-    window is its own; it counts only where the reading has to start a browser
-    because none was running, and there it saves the window a visible jump on
-    its way into the container.
+    The asking itself is app_command()'s, and what is added here is where the
+    window is going to end up. A running browser pays no attention to that and
+    puts the window where it likes, since the window is its own; it counts only
+    where the reading has to start a browser because none was running, and there
+    it saves the window a visible jump on its way into the container.
     """
-    command = [browser, f'--app={url}']
+    command = app_command(browser, url)
     if box is not None:
         x, y, width, height = box
         command.append(f'--window-position={origin[0] + x},{origin[1] + y}')
         command.append(f'--window-size={width},{height}')
     return command
-
-
-def browser_path():
-    """Return the browser a reading can own a window of, or nothing where there is none."""
-    for candidate in BROWSERS:
-        found = shutil.which(candidate)
-        if found:
-            return found
-    return None
 
 
 def client_list(d):
