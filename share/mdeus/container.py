@@ -30,6 +30,7 @@ import signal
 import subprocess
 import sys
 import time
+from urllib.parse import urlsplit
 
 import vimlink
 from state import MAX_SPLIT, MIN_SPLIT, load_split, save_split
@@ -39,11 +40,12 @@ try:
 except ImportError:  # python3-xlib is not installed
     X = Xatom = Xutil = display = error = protocol = None
 
-# The browsers a reading can own a window of, in the order they are looked for.
-# Each of them gives a window with nothing in it but the page, and a profile of
-# its own, which is what lets the reading close that window again.
+# The browsers a reading can borrow a window of, in the order they are looked
+# for. Each of them gives a window with nothing in it but the page, and hands
+# the asking straight to a copy of itself already running where there is one.
 BROWSERS = ('google-chrome', 'chromium', 'chromium-browser')
-# How long to give the browser to close before it is made to, in seconds.
+# How long to wait for the browser to take its window away once it has been
+# asked to, in seconds.
 BROWSER_STOP = 5
 # How wide a strip of the reading you can take hold of the seam by. It lies
 # over the join rather than between the panes, so the two go on meeting exactly
@@ -115,17 +117,24 @@ def adopt(d, container, window, box):
     d.sync()
 
 
-def browser_command(browser, url, profile, box, origin):
-    """Return the command that opens the page in a window of its own.
+def browser_command(browser, url, box, origin):
+    """Return the command that asks for the page in a window of its own.
 
-    --app gives a window with nothing in it but the page, and a profile of its
-    own makes that window a process of its own, which is what lets the reading
-    own it and close it. A profile that has never been used greets you on the
-    way in, and the greeting would arrive over the document, so it is turned
-    off. The window is asked for where it is going to end up, so that the moment
-    before it is taken into the container looks like no moment at all.
+    --app gives a window with nothing in it but the page, and asks the browser
+    you already have running for it, which is the whole of why a reading opens
+    as quickly as it does: a browser of the reading's own takes about a second
+    to put up its first frame, and a browser already up takes a tenth of one.
+    The command that carries the asking is answered and gone within a moment,
+    so the window it asked for is the reading's hold on the page and there is no
+    process of the reading's to wait on.
+
+    Where the window is going to end up is asked for as well. A running browser
+    pays no attention to that and puts the window where it likes, since the
+    window is its own; it counts only where the reading has to start a browser
+    because none was running, and there it saves the window a visible jump on
+    its way into the container.
     """
-    command = [browser, f'--app={url}', '--no-first-run', f'--user-data-dir={profile}']
+    command = [browser, f'--app={url}']
     if box is not None:
         x, y, width, height = box
         command.append(f'--window-position={origin[0] + x},{origin[1] + y}')
@@ -148,6 +157,29 @@ def client_list(d):
         d.intern_atom('_NET_CLIENT_LIST'), Xatom.WINDOW
     )
     return list(listed.value) if listed else []
+
+
+def close_page(d, window):
+    """Ask the browser to take the page's window away, and wait until it has.
+
+    The window is the browser's and not the reading's, since the reading borrowed
+    a browser rather than starting one, so it is asked in the way the close
+    button on a window asks. Ending the process behind it would take every other
+    window in that browser with it, and destroying the window outright would
+    take it away from under a browser still holding it.
+    """
+    window.send_event(protocol.event.ClientMessage(
+        window=window, client_type=d.intern_atom('WM_PROTOCOLS'),
+        data=(32, [d.intern_atom('WM_DELETE_WINDOW'), X.CurrentTime, 0, 0, 0]),
+    ))
+    d.sync()
+    deadline = time.monotonic() + BROWSER_STOP
+    while time.monotonic() < deadline:
+        try:
+            window.get_geometry()
+        except Exception:
+            return
+        time.sleep(SETTLE_WAIT)
 
 
 def divider_at(divider, seam, height):
@@ -300,7 +332,7 @@ def locked():
 
 def main(argv):
     """Open a reading, hold it up, and put everything away when it ends."""
-    url, servername, profile, script, document = argv
+    url, servername, script, document = argv
     browser = browser_path()
     if not browser:
         print(NO_BROWSER, flush=True)
@@ -318,13 +350,21 @@ def main(argv):
         where = d.screen().root.translate_coords(container, 0, 0)
         origin = (where.x, where.y)
 
+    # What the desktop is showing before the page is asked for, so that the
+    # window the browser puts up for it can be told from the windows it already
+    # had. Read before the asking rather than after, since a browser already
+    # running answers within a tenth of a second.
+    before = set(client_list(d)) if container is not None else set()
     if browser:
-        page = subprocess.Popen(
-            browser_command(browser, url, profile, boxes[0], origin),
+        # Started and not held on to. The command hands the asking to a browser
+        # already running and is gone within the moment, so what it leaves
+        # behind is a window rather than a process, and the window is what the
+        # reading holds the page by.
+        subprocess.Popen(
+            browser_command(browser, url, boxes[0], origin),
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
     else:
-        page = None
         subprocess.Popen(
             ['xdg-open', url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
@@ -341,27 +381,25 @@ def main(argv):
     panes = {}
     try:
         if container is not None:
-            # A window narrower than half the pane is one the browser put up for
-            # itself rather than the one the page is in. The terminal is taken
-            # at whatever width it comes up at.
-            wanted = [('terminal', terminal.pid, boxes[1], 0)]
-            if page is not None:
-                wanted.append(('browser', page.pid, boxes[0], boxes[0][2] // 2))
+            # The terminal is the reading's own and is known by its process. The
+            # page's window is somebody else's and is known by being new.
+            host = urlsplit(url).hostname
+            wanted = [('terminal', lambda listed: window_of(d, listed, terminal.pid), boxes[1])]
+            if browser:
+                wanted.append(
+                    ('browser', lambda listed: page_window(d, listed, before, host), boxes[0])
+                )
             panes = take_in(d, container, wanted)
             # The panes were mapped after the strip and are sitting over it, so
             # the seam is laid again now that there is something to lay it on.
             meet(d, container, panes, divider)
             focus(d, panes.get('terminal'))
-        watch(d, container, panes, divider, page, terminal, servername)
+        watch(d, container, panes, divider, terminal, servername)
     finally:
-        if page is not None and page.poll() is None:
-            # Waited for rather than left to close in its own time, because the
-            # profile it is still writing to is about to be taken away from it.
-            page.terminate()
-            try:
-                page.wait(timeout=BROWSER_STOP)
-            except subprocess.TimeoutExpired:
-                page.kill()
+        if 'browser' in panes:
+            # Asked to go before the container it sits in is taken away, so that
+            # the browser closes the window rather than losing it.
+            close_page(d, panes['browser'])
         if container is not None:
             container.destroy()
             d.sync()
@@ -461,6 +499,29 @@ def meet(d, container, panes, divider):
     d.sync()
 
 
+def page_window(d, listed, before, host):
+    """Return the window the browser has put up for the page, or nothing while it has not.
+
+    The window belongs to the browser and to no process of the reading's, so it
+    is known by two things instead: it was not on the desktop before the page
+    was asked for, and a browser names a window opened with --app after the host
+    the page came from, which here is the reading's own server and nothing else
+    on the machine.
+    """
+    for xid in listed:
+        if xid in before:
+            continue
+        window = d.create_resource_object('window', xid)
+        try:
+            classes = window.get_wm_class()
+        except Exception:
+            # The window has gone in the moment since the desktop listed it.
+            continue
+        if classes and host in classes:
+            return window
+    return None
+
+
 def pane_boxes(width, height):
     """Return where each pane goes inside a container of this size."""
     left = round(width * browser_share)
@@ -482,11 +543,14 @@ def settle(window):
 def take_in(d, container, wanted):
     """Take each pane into the container as its window appears.
 
-    Both programs are started together and either may be up first, and a
-    browser is commonly seconds behind a terminal. So both are watched at once
-    and each is taken in the moment it arrives. Waiting for them in turn left
-    whichever came first standing on the desktop as a window of its own, with a
-    title bar of its own, for as long as the other one took to start.
+    Both halves are asked for together and either may be up first, so both are
+    watched at once and each is taken in the moment it arrives. Waiting for them
+    in turn left whichever came first standing on the desktop as a window of its
+    own, with a title bar of its own, for as long as the other one took.
+
+    Each pane says how its own window is to be picked out of the desktop's list,
+    since the two are found in quite different ways: the terminal is a process
+    of the reading's and the page's window is not.
     """
     panes = {}
     waiting = list(wanted)
@@ -496,8 +560,8 @@ def take_in(d, container, wanted):
         # since both panes are looked for in the same list.
         listed = client_list(d)
         for pane in list(waiting):
-            name, pid, box, least_width = pane
-            window = window_of(d, listed, pid, least_width)
+            name, find, box = pane
+            window = find(listed)
             if window is not None:
                 adopt(d, container, window, box)
                 panes[name] = window
@@ -578,7 +642,7 @@ def under_pointer(container, panes):
     return None
 
 
-def watch(d, container, panes, divider, page, terminal, servername):
+def watch(d, container, panes, divider, terminal, servername):
     """Hold the reading up until it ends.
 
     It ends when vim quits, which is what the terminal is waiting on, or when
@@ -587,6 +651,11 @@ def watch(d, container, panes, divider, page, terminal, servername):
     anything in it is unwritten, so a reading is never taken away from under
     unsaved work. The container's close button and an interrupt in the terminal
     the command was typed into both ask the same question.
+
+    That window belongs to a browser the reading borrowed, so its closing is
+    heard as the window being destroyed rather than as a process ending. Where
+    there is no container there is nothing watching it, and a reading opened in
+    two ordinary windows ends when vim quits and not before.
 
     The keyboard reaches a pane by two roads, because the desktop only lends
     the click on the first of them. A reading that has just been clicked into
@@ -598,10 +667,6 @@ def watch(d, container, panes, divider, page, terminal, servername):
     signal.signal(signal.SIGINT, lambda number, frame: vimlink.quit_vim(servername))
     focused = 'terminal'
     while terminal.poll() is None:
-        if page is not None and page.poll() is not None:
-            vimlink.quit_vim(servername)
-            page = None
-            panes.pop('browser', None)
         if container is None:
             time.sleep(POLL)
             continue
@@ -628,6 +693,13 @@ def watch(d, container, panes, divider, page, terminal, servername):
                     layout(d, container, panes, divider)
                 else:
                     meet(d, container, panes, divider)
+            elif event.type == X.DestroyNotify:
+                # The page's window closed, by its own close button or with the
+                # browser it belongs to. The reading goes with it.
+                page = panes.get('browser')
+                if page is not None and event.window.id == page.id:
+                    panes.pop('browser')
+                    vimlink.quit_vim(servername)
             elif event.type == X.FocusIn and event.window.id == container.id:
                 if event.mode == X.NotifyNormal:
                     focused = under_pointer(container, panes) or focused
@@ -649,22 +721,19 @@ def white(d, window):
     return d.screen().white_pixel
 
 
-def window_of(d, listed, pid, least_width):
+def window_of(d, listed, pid):
     """Return the window a program has put up, or nothing while it has put up none.
 
     A program may put up a window of its own as well as the one wanted, so the
-    widest is taken and anything too narrow to be a pane is passed over. Each
-    width is asked for once and carried, since this runs many times a second
-    while a browser starts.
+    widest is taken. Each width is asked for once and carried, since this runs
+    many times a second while a reading opens.
     """
     wide = []
     for window in windows_of(d, listed, pid):
         try:
-            width = window.get_geometry().width
+            wide.append((window.get_geometry().width, window))
         except Exception:
             continue
-        if width >= least_width:
-            wide.append((width, window))
     if not wide:
         return None
     return max(wide, key=lambda found: found[0])[1]
