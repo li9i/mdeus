@@ -197,7 +197,7 @@ class Reading:
         self.clicks = 0
         self.current = document.resolve()
         self.cursor = None
-        # Whether the Edit box belongs on the page at all, which is to say
+        # Whether the Edit toggle belongs on the page at all, which is to say
         # whether there is a desktop session to open vim into.
         self.editable = editable
         # Whether vim is up. Written by the session that opens and closes it,
@@ -220,7 +220,7 @@ class Reading:
 
         A reading with no desktop behind it has nowhere to open vim into, so a
         request to edit is not recorded rather than acted on and then found
-        impossible. Its page carries no Edit box, so nothing belonging to the
+        impossible. Its page carries no Edit toggle, so nothing belonging to the
         reading is asking. A request to stop is always taken, since it can
         always be honoured.
         """
@@ -382,9 +382,9 @@ class ReadingHandler(BaseHTTPRequestHandler):
         """Send the time the page polls to decide whether to redraw.
 
         Whether vim is up rides along with it. The page polls this twice a
-        second already, and the Edit box has to follow the reading rather than
-        lead it, so a vim that quit of its own accord unticks the box without a
-        route of its own to do it.
+        second already, and the Edit toggle has to follow the reading rather than
+        lead it, so a vim that quit of its own accord brings the toggle up without
+        a route of its own to do it.
         """
         self.send_json({'editing': self.reading.editing, 'mtime': self.mtime()})
 
@@ -419,15 +419,15 @@ class ReadingHandler(BaseHTTPRequestHandler):
         # and, in a reading with vim beside it, on the panel. It is written here
         # rather than put together again in the page, so the title a reading
         # opened at and the title it moves on to are the one string.
-        # Whether the Edit box belongs on the page travels with the document
+        # Whether the Edit toggle belongs on the page travels with the document
         # rather than with the markup, because the controls are built from the
         # first reply and a printed copy, which is answered by no server at all,
-        # then carries no box without having to be told not to.
+        # then carries no toggle without having to be told not to.
         common = {
             'editable': self.reading.editable,
             # Whether vim is up travels with the document as well as with the
             # poll, so that a page reloaded in the middle of a session draws
-            # its Edit box ticked on the first paint rather than half a second
+            # its Edit toggle pressed on the first paint rather than half a second
             # later, when the first poll comes round.
             'editing': self.reading.editing,
             'mtime': self.mtime(),

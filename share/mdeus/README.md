@@ -6,15 +6,15 @@ One command for reading a markdown document in a browser, and for editing it the
 
 `mdeus --print <document.md>` writes one self contained HTML file under `~/.cache/mdview/` and prints its path. Images are embedded, every theme is inlined, and nothing is served or opened. The file survives being moved or sent to somebody.
 
-## The Edit box
+## The Edit toggle
 
-The page carries an `Edit` box at the top of it, and ticking it brings vim in beside the page, in one window. The browser takes the left of that window and gvim takes the right, 44 percent against 56 until you drag the seam between them somewhere else. The window fills the work area, so the page moves and grows as it goes in, and vim opens on the document the page is showing rather than the one the reading started at: follow a link and then tick the box, and vim opens where you are looking.
+The page carries an `Edit` toggle at the top of it, and pressing it brings vim in beside the page, in one window. The browser takes the left of that window and gvim takes the right, 44 percent against 56 until you drag the seam between them somewhere else. The window fills the work area, so the page moves and grows as it goes in, and vim opens on the document the page is showing rather than the one the reading started at: follow a link and then press it, and vim opens where you are looking.
 
-Untick the box and vim goes, the window goes with it, and the page is handed back to the desktop at the size and in the place it had before you ticked, still open on the same document and still where you had scrolled it to. It never reloads. A reading opened with `--edit` had no window of its own to go back to, so that one is left filling the work area. Quitting vim does the same thing, and the box unticks itself within half a second of vim going. The box follows the reading rather than leading it, so an untick a vim with unsaved work refuses shows as the box ticking itself again.
+Press it again and vim goes, the window goes with it, and the page is handed back to the desktop at the size and in the place it had before, still open on the same document and still where you had scrolled it to. It never reloads. A reading opened with `--edit` had no window of its own to go back to, so that one is left filling the work area. Quitting vim does the same thing, and the toggle comes back up within half a second of vim going. The toggle follows the reading rather than leading it, so a press a vim with unsaved work refuses shows as the toggle going back down.
 
-`mdeus --edit <document.md>` is that box ticked before you see the page, for when you knew from the start. The reading then opens whole rather than a half at a time: the window is made first and both halves are asked for together.
+`mdeus --edit <document.md>` is that toggle already down before you see the page, for when you knew from the start. The reading then opens whole rather than a half at a time: the window is made first and both halves are asked for together.
 
-The box is on the page only where there is a desktop session to open vim into. A printed copy never carries it.
+The toggle is on the page only where there is a desktop session to open vim into. A printed copy never carries it.
 
 ## What the two halves do to each other
 
@@ -28,11 +28,13 @@ The ground a jump lights in vim is the `MdeusJump` highlight group. It is set as
 
 While a reading is only the page, ctrl-c ends it, and so does closing the page, which the server notices within ten seconds of the page going quiet.
 
-While vim is up, vim is what holds the reading. Ctrl-c, the window's close button and the page's window being closed all ask vim to quit, and vim refuses while anything in it is unwritten, so nothing is ever taken away from under unsaved work. Those three end the whole reading once vim goes. Unticking the box and quitting vim yourself are the two that leave the page behind.
+While vim is up, vim is what holds the reading. Ctrl-c, the window's close button and the page's window being closed all ask vim to quit, and vim refuses while anything in it is unwritten, so nothing is ever taken away from under unsaved work. Those three end the whole reading once vim goes. Pressing `Edit` again and quitting vim yourself are the two that leave the page behind.
 
 ## The rest of the page
 
-The page carries a dropdown of three themes, a `Full width` box, the `Edit` box, and a `Contents` button, which is there only once the document has three or more headings. The full width box governs `Browser default` and `Mono headings`: ticked, which is how both open, they run their lines to the edge of the pane and rewrap them wherever the seam is dragged to, and unticked they hold them to 46em and 38em. `GitHub` holds its 1012px whichever way the box is set, since that measure is github.com's rather than the theme's to choose. The theme, the contents setting, the full width setting, and where the seam between the panes was last dragged to, are kept in `~/.config/mdview/state.json`, so a reading opens the way the last one was left. The `Edit` box is not among them: it says what the reading in front of you is doing rather than what you prefer, so it is stored nowhere and every reading opens with the page alone.
+The page carries a dropdown of three themes and then three toggles: `Contents`, which is there only once the document has three or more headings, `Full width`, and `Edit`. The theme is a choice between three, so it is a dropdown. The other three are each one view state that is on or off, so each is a button that stands down while it is on and keeps its label wherever it stands, rather than a box that reads as a form waiting to be submitted or a label that flips between saying what is and saying what a click would do.
+
+`Full width` governs `Browser default` and `Mono headings`: on, which is how both open, they run their lines to the edge of the pane and rewrap them wherever the seam is dragged to, and off they hold them to 46em and 38em. `GitHub` holds its 1012px whichever way it is set, since that measure is github.com's rather than the theme's to choose. The theme, the contents setting, the full width setting, and where the seam between the panes was last dragged to, are kept in `~/.config/mdview/state.json`, so a reading opens the way the last one was left. `Edit` is not among them: it says what the reading in front of you is doing rather than what you prefer, so it is stored nowhere and every reading opens with the page alone.
 
 Every fence carries a copy button in its corner as well, which shows on hover or on focus and puts the fence on the clipboard. Two of the themes say `Copy` on it and `GitHub` draws GitHub's own copy icon instead, which turns into a green tick once the fence is on the clipboard. Neither half folds a section away at the moment. Double click used to fold one in the page and space used to fold one in vim, and double click now belongs to the sync in both halves. The code behind the page's fold is still in `page.js` with nothing calling it, and vim is left with whatever folding your own `.vimrc` gives it.
 
@@ -59,7 +61,7 @@ The three themes draw all of it. `GitHub` reproduces GitHub's own colours, icons
 | `cursor.vim` | What vim does for as long as vim is up: the cursor reports, the double click that brings the page over, and the ground a jump lights. |
 | `window.py` | One editing session: the window it is drawn in, the browser and gvim inside it, the seam between the two, the title it takes from the page, and handing the page's window back to the desktop at the end. |
 | `themes.css` | The three themes, the control row above the document, the copy button on a fence, and the look of the callouts, the task lists and the notes in each theme. |
-| `page.js` | The theme dropdown, the full width box, the Edit box, the contents list, the copy button on every fence, the heading names, the folding of a section, which nothing calls for the moment, and the redraw. |
+| `page.js` | The theme dropdown, the three toggles beside it, the contents list, the copy button on every fence, the heading names, the folding of a section, which nothing calls for the moment, and the redraw. |
 | `sync.css`, `sync.js` | The two marks and the sync with vim. Loaded by every reading, and asleep until vim is up. |
 | `test_render.py`, `test_server.py` | The tests. |
 | `../icons/hicolor/*/apps/mdeus.png` | What a reading looks like on the panel while vim is up, and in the "Open With" menu. |
@@ -74,7 +76,9 @@ That icon is worn only while vim is up. A reading that is only the page is a win
 
 A page for reading carries `reader` on the root element beside the theme name, and the spec review tool does not. That marker is what sizes the `github` theme at 14px for reading while the review tool keeps 16px. The server writes it once, when it sends the page, and a theme change in `page.js` turns the theme keys on and off one at a time rather than writing the whole class name over, so nothing else on the root is this page's to lose. A printed copy carries the marker too, so `mdeus --print` reads at the same size as a served reading.
 
-`wide` sits on the root as well while the `Full width` box is ticked, and the server writes it with the markup for the same reason it writes the theme there: the first paint has to be the page the reader left, rather than lines drawn one way and rewrapped the moment the script catches up. `page.js` turns that one class on and off as the box is ticked, and the `browser` and `report` themes are the two that read it.
+`wide` sits on the root as well while `Full width` is on, and the server writes it with the markup for the same reason it writes the theme there: the first paint has to be the page the reader left, rather than lines drawn one way and rewrapped the moment the script catches up. `page.js` turns that one class on and off as the toggle is pressed, and the `browser` and `report` themes are the two that read it.
+
+Each of the three toggles carries `aria-pressed`, and the word in it is written out both ways rather than the attribute being added and taken away: a button with no `aria-pressed` at all is a plain button carrying no state, and each theme draws its pressed face off the same word. `browser` takes the face a machine with no stylesheet gives a button held down, `report` swaps the ink and the paper of its stamp, and `github` drops the face a shade and throws a line of shadow in under the top edge.
 
 ## What it needs
 
@@ -105,17 +109,17 @@ Run all of it after touching anything to do with the browser, the windows or vim
 4. No browser reachable. `env -u DISPLAY -u BROWSER mdeus doc.md`. Nothing opens and nothing is said about it, since a browser asked for a window without a desktop to draw it on fails quietly. The address is printed anyway and the reading serves, so it can still be opened by hand. Fetch it with `curl` or paste it into a browser started later.
 5. `mdeus doc.md` on a document with an image in it, one beside the document and one named by an absolute path. The first is drawn, served out of the tree the reading started in. The second is left to the browser, which is right to find nothing for it.
 6. Close the page rather than pressing ctrl-c, with its close button or with `ctrl-w` in it. Within about ten seconds the command ends by itself and the shell comes back. Nothing else may be speaking to that port while you check: a page left open from an earlier reading goes on saying it is there, and a reading is kept up by any page that does.
-7. `env -u DISPLAY mdeus doc.md`. The page carries no `Edit` box, since there is no desktop to open vim into. `env -u DISPLAY mdeus --edit doc.md` says so in one line and exits 1.
+7. `env -u DISPLAY mdeus doc.md`. The page carries no `Edit` toggle, since there is no desktop to open vim into. `env -u DISPLAY mdeus --edit doc.md` says so in one line and exits 1.
 
-### Ticking the box
+### Pressing Edit
 
-8. Tick `Edit` in a reading. Within about a second the page's window is taken into a window of the reading's own, filling the work area, with gvim on the right of it. The page keeps its place in the document and does not reload. The seam sits where the last session left it. One entry on the panel, reading `mdeus: doc.md`, carrying the reading's own icon.
-9. The page keeps whatever you had set: the theme, the full width box, and where you had scrolled to. The `Edit` box is ticked and stays ticked.
-10. Untick `Edit`. vim goes, the window goes, and the page comes back as a window of its own at the size and in the place it had before the box was ticked, still on the same document, still scrolled where it was, and still not reloaded. It has a title bar and a close button of its own again, and it can be clicked in, scrolled and dragged like any other window.
-11. Do it from a window that is not maximised. Unmaximise the page, put it somewhere out of the way and make it small, then tick and untick several times in a row. It fills the work area every time it goes in and comes back to that same small window every time it comes out, rather than keeping the big size or walking a title bar's depth down the screen on each round. Nothing accumulates on the desktop, and the page never reloads.
-12. Untick `Edit` with unsaved work in vim. vim refuses, and the box ticks itself again within half a second rather than lying about what the reading is doing. Save, untick again, and it goes.
-13. Quit vim with `:qa`. The box unticks itself within half a second and the reading is back to the page alone, exactly as unticking leaves it.
-14. Follow a link to another document, then tick `Edit`. vim opens that document, not the one the reading started at.
+8. Press `Edit` in a reading. Within about a second the page's window is taken into a window of the reading's own, filling the work area, with gvim on the right of it. The page keeps its place in the document and does not reload. The seam sits where the last session left it. One entry on the panel, reading `mdeus: doc.md`, carrying the reading's own icon.
+9. The page keeps whatever you had set: the theme, the full width setting, and where you had scrolled to. `Edit` stands down and stays down.
+10. Press `Edit` again. vim goes, the window goes, and the page comes back as a window of its own at the size and in the place it had before it was pressed, still on the same document, still scrolled where it was, and still not reloaded. It has a title bar and a close button of its own again, and it can be clicked in, scrolled and dragged like any other window.
+11. Do it from a window that is not maximised. Unmaximise the page, put it somewhere out of the way and make it small, then press `Edit` on and off several times in a row. It fills the work area every time it goes in and comes back to that same small window every time it comes out, rather than keeping the big size or walking a title bar's depth down the screen on each round. Nothing accumulates on the desktop, and the page never reloads.
+12. Press `Edit` with unsaved work in vim. vim refuses, and the toggle goes back down within half a second rather than lying about what the reading is doing. Save, press it again, and vim goes.
+13. Quit vim with `:qa`. The toggle comes up within half a second and the reading is back to the page alone, exactly as pressing it leaves it.
+14. Follow a link to another document, then press `Edit`. vim opens that document, not the one the reading started at.
 15. Kill vim outright, with `pkill -f 'gvim -f --servername MDEUS'`. The same as quitting it: the window goes and the page comes back. That pattern names every reading that is editing, so end the others first if you have several.
 
 ### Ending it from the editing side
@@ -124,7 +128,7 @@ Run all of it after touching anything to do with the browser, the windows or vim
 17. Press ctrl-c in the shell the command was run from, while editing. The same, and refused the same way.
 18. Close the page's window while editing, with `ctrl-w` in it. vim is asked to quit and the whole reading ends when it goes, since there is no page left to come back to.
 19. After every one of those: every other window of that browser is still open, on the same pages and in the same places, and no server and no gvim is left behind. `pgrep -af mdview` should say nothing.
-20. With no browser running at all, tick `Edit`. The reading starts one, and the browser it started goes when the reading does, since the page's window was the only window in it.
+20. With no browser running at all, press `Edit`. The reading starts one, and the browser it started goes when the reading does, since the page's window was the only window in it.
 
 ### The one window
 
@@ -135,14 +139,14 @@ Run all of it after touching anything to do with the browser, the windows or vim
 25. Leave the reading on the screen, click into a window of another program beside it, and type there for a while. What you type goes to that window and goes on going there, and the reading never takes the keyboard back from it. Scroll and click about in vim first, so that both panes have had the keyboard, and check the same again. A reading takes the keyboard only for its own panes, and only while it is the window the desktop has in front.
 26. Unmaximise the window and resize it, larger and smaller. The two panes keep their proportion and go on meeting exactly at every size. A band of the window may be left showing below vim, up to one character row deep and white like the panes beside it, since vim settles on whole rows however tall it is asked to be. The vim pane holds the whole document at every size, both while you resize and once you stop.
 27. Two readings editing at once. `mdeus --edit one.md`, then `mdeus --edit two.md` from another shell. Two windows, two entries on the panel, each named after its own document, and each holding its own browser pane and its own vim. Neither takes the other's page window. Type in one and the other stays where it was, and follow a link in one and only that one's name changes. End one and the other carries on whole, page and vim alike.
-28. `mdeus doc.md` again from the file manager, through the `mdeus` entry in the "Open With" menu, then tick `Edit`. The same one window opens, and no spare window is opened beside it.
+28. `mdeus doc.md` again from the file manager, through the `mdeus` entry in the "Open With" menu, then press `Edit`. The same one window opens, and no spare window is opened beside it.
 
 ### The divider
 
 29. Put the pointer on the join between the two panes. It becomes an arrow pointing both ways, which is the whole of what says the join can be moved. Take the pointer a few pixels off the join and the arrow goes again.
 30. Drag the join left and right. Both panes follow the pointer and go on meeting exactly at every moment of the drag, and the seam lands on a whole character column of vim rather than exactly where you let go.
 31. Drag as far as it will go each way. It stops while there is still a pane worth reading in on both sides, at 15 percent of the window one way and 85 percent the other.
-32. Drag the join somewhere else, untick `Edit`, and tick it again. It opens where you left it. Change the theme in the page as well, and neither setting has put the other out of `~/.config/mdview/state.json`.
+32. Drag the join somewhere else, press `Edit` off, and press it on again. It opens where you left it. Change the theme in the page as well, and neither setting has put the other out of `~/.config/mdview/state.json`.
 
 ### The three way sync
 
@@ -158,18 +162,18 @@ Run all of it after touching anything to do with the browser, the windows or vim
 42. The two marks are never confusable. The cursor block carries a rule in the margin and stays marked. The block you double clicked flashes a light grey ground that fades after a second.
 43. Write the file in vim. The page redraws. Change the file from somewhere else, with `git checkout` or a formatter, and the page redraws the same way.
 44. Click a relative link to another markdown document. The page renders it and vim opens it too, so both halves show the same file, and the title bar and the panel entry both take the new file's name. The browser's back button returns, and the name comes back with it. An absolute path, a path leading out of the starting tree, and an `http` link are all left alone. A double click on a link follows it as the first of the two clicks, so a block with a link in it is pointed at by double clicking the words around the link.
-45. Untick `Edit` while a block carries the cursor rule. The rule goes with vim rather than being left standing on a page with nothing behind it. Double click a block afterwards: nothing happens, no grey ground and no jump, since there is no vim to send to. Tick the box again and the sync starts from where the new vim's cursor is rather than from where the last one left off.
+45. Press `Edit` off while a block carries the cursor rule. The rule goes with vim rather than being left standing on a page with nothing behind it. Double click a block afterwards: nothing happens, no grey ground and no jump, since there is no vim to send to. Press it on again and the sync starts from where the new vim's cursor is rather than from where the last one left off.
 
 ### The three themes
 
 46. Open a document with headings at three levels, a fence, a quote, a list, a table, a link and a rule, and go through the dropdown. `Browser default`, `Mono headings` and `GitHub`.
 47. The first two are black on white, and only `Browser default` has any colour at all, on its links. `GitHub` is the exception and keeps GitHub's own palette. Put the same document beside github.com and the two should agree: the heading scale and the underline under the first two levels, a fence a step smaller than the prose around it, inline code on a faint grey, every second row of a table shaded with the header row on the page's own ground, a rule 4px thick, and the copy icon in the corner of each fence.
-48. `Browser default` and `Mono headings` open with `Full width` ticked and run their lines to the edge of the pane, which is what a browser with no stylesheet does. `GitHub` caps its measure at 1012px, so a maximised window does not throw its lines across the whole screen. Drag the seam in each of the first two and the lines rewrap at every position of it, not only once the pane is narrow. Code blocks scroll inside their own box in all three rather than widening the page. In `Browser default` that box is a hairline of the same weight as the contents list and the tables, and the copy button sits inside it without covering the first line of the fence.
-49. Untick `Full width`. `Browser default` holds its lines to 46em and `Mono headings` to 38em, and dragging the seam wider than that leaves them where they are. In `Mono headings` the lines still stand clear of the pane edge either way, since the padding down its sides is not the cap. Tick the box again and both follow the seam once more. It changes nothing in `GitHub`, which holds its own measure either way, and it does not reload the page or lose your place in it.
-50. Quit and start another reading. It opens with the box the way you left it, and with the lines already drawn that way rather than drawn one way and rewrapping a moment later.
+48. `Browser default` and `Mono headings` open with `Full width` down and run their lines to the edge of the pane, which is what a browser with no stylesheet does. `GitHub` caps its measure at 1012px, so a maximised window does not throw its lines across the whole screen. Drag the seam in each of the first two and the lines rewrap at every position of it, not only once the pane is narrow. Code blocks scroll inside their own box in all three rather than widening the page. In `Browser default` that box is a hairline of the same weight as the contents list and the tables, and the copy button sits inside it without covering the first line of the fence.
+49. Press `Full width` off. `Browser default` holds its lines to 46em and `Mono headings` to 38em, and dragging the seam wider than that leaves them where they are. In `Mono headings` the lines still stand clear of the pane edge either way, since the padding down its sides is not the cap. Press it on again and both follow the seam once more. It changes nothing in `GitHub`, which holds its own measure either way, and it does not reload the page or lose your place in it.
+50. Quit and start another reading. It opens with the toggle the way you left it, and with the lines already drawn that way rather than drawn one way and rewrapping a moment later.
 51. Changing the theme does not reload the page and does not lose your place in it.
 52. Both marks work in all three. Each theme leaves the margin rule its own offset, so check that the rule stands clear of the text in every one of them.
-53. The `Edit` box sits after `Full width` and before `Contents` in all three themes, and takes the same face and the same focus ring the other controls take.
+53. The row reads `Theme`, `Contents`, `Full width`, `Edit` in all three themes, and `Contents` keeps that place between the dropdown and `Full width` whether the document has headings enough for it or not. Every toggle takes the same face and the same focus ring the other controls take, and stands down while it is on: a grey face with the edge turned in under `Browser default`, white on black under `Mono headings`, and a shade below its neighbours under `GitHub`. No label moves as a toggle is pressed.
 
 ### The copy button
 
@@ -178,14 +182,14 @@ Run all of it after touching anything to do with the browser, the windows or vim
 56. Press it and paste somewhere. You get the fence exactly as it reads, trailing newline and all. The button says `Copied` for a second and a half, then says `Copy` again. In `GitHub` there are no words to change: the icon becomes a green tick inside a green ring for that second and a half, and goes back to the two squares.
 57. Change the theme, then write the file from an editor. The buttons survive both, one per fence and no more.
 58. While editing, press a copy button. It copies and vim does not move. Double click the fence beside it and vim moves.
-59. `mdeus --print doc.md`, then open the file it names over `file://`. The buttons work there too, and there is no `Edit` box on that page. That is the reading where the browser may refuse the clipboard outright, and the button falls back to the old selection copy without saying so.
+59. `mdeus --print doc.md`, then open the file it names over `file://`. The buttons work there too, and there is no `Edit` toggle on that page. That is the reading where the browser may refuse the clipboard outright, and the button falls back to the old selection copy without saying so.
 
 ### When something is missing
 
-60. `python3-xlib` missing. Put a directory on `PYTHONPATH` holding an `Xlib/__init__.py` that raises `ImportError`, then tick `Edit`. There is no window to make one out of, so vim opens as an ordinary window of its own wherever the desktop puts it and the page stays where it is. It says so in one line and the sync works. Untick the box and vim goes and the page is untouched, since it was never taken anywhere.
-61. Neither Chrome nor Chromium on the machine, or `--tab` asked for. The page is in a tab, so ticking `Edit` opens vim as a window of its own beside it and says so in one line. The sync works.
+60. `python3-xlib` missing. Put a directory on `PYTHONPATH` holding an `Xlib/__init__.py` that raises `ImportError`, then press `Edit`. There is no window to make one out of, so vim opens as an ordinary window of its own wherever the desktop puts it and the page stays where it is. It says so in one line and the sync works. Press it again and vim goes and the page is untouched, since it was never taken anywhere.
+61. Neither Chrome nor Chromium on the machine, or `--tab` asked for. The page is in a tab, so pressing `Edit` opens vim as a window of its own beside it and says so in one line. The sync works.
 62. The server killed mid-reading. `pkill -f mdeus` while a reading is editing. vim stays usable. Nothing it sends waits on an answer, so nothing it does can hang on a server that has stopped listening.
-63. `python3-pil` missing. Put a directory on `PYTHONPATH` holding a `PIL/__init__.py` that raises `ImportError`, then tick `Edit`. The window opens and the reading works as ever. The one thing lost is the reading's own image on the panel and on the title bar, and the desktop draws whatever it gives a window carrying no image of its own.
+63. `python3-pil` missing. Put a directory on `PYTHONPATH` holding a `PIL/__init__.py` that raises `ImportError`, then press `Edit`. The window opens and the reading works as ever. The one thing lost is the reading's own image on the panel and on the title bar, and the desktop draws whatever it gives a window carrying no image of its own.
 
 ### Everything the markdown carries
 

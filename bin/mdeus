@@ -13,12 +13,12 @@ the page and no more: no address bar, no tabs, no bookmarks. It comes from
 Chrome or Chromium, whichever is on the machine, and where neither is the
 reading opens in a tab as though --tab had been asked for.
 
-The Edit box at the top of the page brings vim in beside it. The page and vim
+The Edit toggle at the top of the page brings vim in beside it. The page and vim
 are then one window, the page on the left and gvim on the right, with a seam
-between them you can drag. Untick the box, or quit vim, and vim goes and the
+between them you can drag. Press it again, or quit vim, and vim goes and the
 page is handed back to the desktop, still open on the same document and still
-where you had scrolled it to. --edit is that box ticked for you before you see
-the page.
+where you had scrolled it to. --edit is that toggle pressed for you before you
+see the page.
 
 A reading is served from this machine and nowhere else, redrawn whenever the
 file changes. While it is only the page, it ends on ctrl-c or once the page has
@@ -114,7 +114,7 @@ def parse_args(argv):
     opening.add_argument(
         '--edit',
         action='store_true',
-        help='open with vim beside the page, rather than waiting for the Edit box',
+        help='open with vim beside the page, rather than waiting for the Edit toggle',
     )
     opening.add_argument(
         '--print',

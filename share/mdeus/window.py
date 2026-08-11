@@ -272,7 +272,7 @@ def edit(reading, url, ending, opening=False, app_window=True):
     for the whole reading to end, and False where the reading is going back to
     viewing with the page alone.
 
-    Two ways in and one way through. Ticking the Edit box arrives here with the
+    Two ways in and one way through. Pressing the Edit toggle arrives here with the
     page's window already on the desktop, and it is taken in where it stands.
     Asking for --edit arrives here with no page yet, and the container is made
     first and the page asked for after it, so that neither half is seen
@@ -459,7 +459,7 @@ def hold(d, container, panes, divider, vim, reading, ending):
     It ends when vim quits, or when vim is killed outright, which comes to the
     same thing here. Four things ask vim to quit, and vim refuses while
     anything in it is unwritten, so a session is never taken away from under
-    unsaved work: the Edit box being unticked, the browser window being closed,
+    unsaved work: the Edit toggle being pressed again, the browser window being
     the container's close button, and an interrupt in the terminal the command
     was typed into. The last three mean the whole reading is to end, and say so
     by setting the flag they share with whoever called this. The first means

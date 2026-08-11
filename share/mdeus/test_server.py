@@ -604,9 +604,9 @@ def test_mtime_moves_only_when_the_file_is_written():
 
 
 def test_mtime_carries_whether_vim_is_up():
-    """The poll the page already runs is what the Edit box follows.
+    """The poll the page already runs is what the Edit toggle follows.
 
-    The box has to follow the reading rather than lead it, so that a vim quitting
+    The toggle has to follow the reading rather than lead it, so that a vim quitting
     of its own accord unticks it. The page asks for the modification time twice
     a second, so the answer carries both and the box needs no route of its own.
     """

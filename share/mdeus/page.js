@@ -1,13 +1,13 @@
-/* The reading page: the theme dropdown, the full width box beside it, the
-   Edit box that brings vim in, the contents list, the sections a double click
-   folds away, the redraw when the file changes, and the heartbeat that ends a
-   reading with no terminal.
+/* The reading page: the theme dropdown, the Contents, Full width and Edit
+   toggles beside it, the contents list, the sections a double click folds away,
+   the redraw when the file changes, and the heartbeat that ends a reading with
+   no terminal.
 
    The page keeps nothing of its own. It draws what GET /doc sends and writes
    every change back through POST /api/state, so one reading and the next
    agree wherever they were opened from.
 
-   The Edit box is the exception to that: it is not a setting and is stored
+   The Edit toggle is the exception to that: it is not a setting and is stored
    nowhere. It is a fact about the reading in front of you, so it follows what
    the server says rather than leading it, and every poll writes it again.
 
@@ -46,7 +46,7 @@ let contentsOpen = false;
 let doc = null;
 /* Whether vim is up, as the server last said. Never what this page asked for:
    opening vim takes a moment and closing it is refused outright while anything
-   in vim is unwritten, so the box has to follow rather than lead. */
+   in vim is unwritten, so the toggle has to follow rather than lead. */
 let editing = false;
 let headingIds = [];
 let mtime = null;
@@ -54,8 +54,8 @@ let mtime = null;
    section the page can fold begins. Taken from the outline the server sends. */
 let sectionLines = new Set();
 let theme = null;
-/* Whether the Full width box is ticked. Two of the three themes are drawn any
-   differently for it. Null until the server has said. */
+/* Whether Full width is on. Two of the three themes are drawn any differently
+   for it. Null until the server has said. */
 let wide = null;
 
 function anchor() {
@@ -76,16 +76,16 @@ function anchor() {
 }
 
 function applyEditing(now) {
-  /* Say what the server says about vim: tick the box to match, and tell
+  /* Say what the server says about vim: press the toggle to match, and tell
      sync.js when the answer has moved.
 
-     The box is written on every poll rather than only when the answer changes,
-     because the click that ticked it has already moved it. A tick the reading
-     could not honour, an untick a vim with unsaved work refused, and a vim that
-     quit of its own accord are all put right within half a second by this. */
-  const box = document.getElementById('edit');
-  if (box) {
-    box.checked = now;
+     The toggle is written on every poll rather than only when the answer
+     changes. A press the reading could not honour, a press a vim with unsaved
+     work refused, and a vim that quit of its own accord are all put right
+     within half a second by this. */
+  const button = document.getElementById('edit');
+  if (button) {
+    setPressed(button, now);
   }
   if (now === editing) {
     return;
@@ -116,8 +116,9 @@ function applyTheme() {
 }
 
 function applyWide() {
-  /* One class on the root, on while the box is ticked, off while it is not. The
-     stylesheet is what decides which themes are drawn any differently for it. */
+  /* One class on the root, on while the toggle is pressed, off while it is not.
+     The stylesheet is what decides which themes are drawn any differently for
+     it. */
   document.documentElement.classList.toggle('wide', wide);
 }
 
@@ -131,9 +132,20 @@ function blockHtml(block) {
 }
 
 function buildControls() {
-  /* Native controls and nothing else. The contents button is not built here,
-     since whether the document has headings enough for one is a question every
-     redraw asks again. */
+  /* Native controls and nothing else. The theme is a choice between three, so
+     it is a dropdown. Everything else on the row is one view state that is
+     either on or off, so each is a button that says whether it is pressed
+     rather than a box that reads as a form waiting to be submitted.
+
+     The Edit toggle is built only where the reading could open vim at all,
+     which the server says with every document: a printed copy is answered by
+     nobody and carries no toggle, and neither does a reading served where
+     there is no desktop session to open vim into.
+
+     The contents button is not built here, since whether the document has
+     headings enough for one is a question every redraw asks again. It sits
+     between the dropdown and Full width, and drawContents is what puts it
+     there. */
   const label = document.createElement('label');
   label.htmlFor = 'theme';
   label.textContent = 'Theme';
@@ -147,17 +159,9 @@ function buildControls() {
   });
   select.value = theme;
   select.addEventListener('change', onTheme);
-  const box = document.createElement('input');
-  box.checked = wide;
-  box.id = 'wide';
-  box.type = 'checkbox';
-  box.addEventListener('change', onWide);
-  const boxLabel = document.createElement('label');
-  boxLabel.htmlFor = 'wide';
-  boxLabel.textContent = 'Full width';
-  controlsNode.append(label, select, box, boxLabel);
+  controlsNode.append(label, select, toggleButton('wide', 'Full width', wide, onWide));
   if (doc.editable) {
-    controlsNode.append(...editControl());
+    controlsNode.append(toggleButton('edit', 'Edit', editing, onEdit));
   }
 }
 
@@ -225,7 +229,7 @@ function copyFence(pre, button) {
 async function currentPoll() {
   /* The modification time the server last saw, which is null once the file is
      gone, and whether vim is up. Two answers on one question, because the page
-     asks this twice a second already and the Edit box needs nothing more than
+     asks this twice a second already and the Edit toggle needs nothing more than
      somewhere to ride. */
   const response = await fetch('/mtime');
   return response.json();
@@ -263,7 +267,7 @@ function drawContents() {
   if (contentsOpen && enough) {
     docNode.insertAdjacentHTML('beforebegin', contentsHtml());
   }
-  let button = controlsNode.querySelector('button');
+  let button = document.getElementById('contents');
   if (!enough) {
     if (button) {
       button.remove();
@@ -271,13 +275,13 @@ function drawContents() {
     return;
   }
   if (!button) {
-    button = document.createElement('button');
-    button.addEventListener('click', onContents);
-    button.id = 'contents';
-    button.type = 'button';
-    controlsNode.append(button);
+    button = toggleButton('contents', 'Contents', contentsOpen, onContents);
+    /* Put in front of the toggle that is always there rather than appended, so
+       that a button coming and going with the headings of a document lands in
+       the same place on the row every time. */
+    controlsNode.insertBefore(button, document.getElementById('wide'));
   }
-  button.textContent = contentsOpen ? 'Hide contents' : 'Contents';
+  setPressed(button, contentsOpen);
 }
 
 function drawCopyButtons() {
@@ -335,22 +339,6 @@ function drawDocument() {
   });
   drawCopyButtons();
   applyFolds();
-}
-
-function editControl() {
-  /* The box that brings vim in, and its label. Built only where the reading
-     could open vim at all, which the server says with every document: a
-     printed copy is answered by nobody and carries no box, and neither does a
-     reading served where there is no desktop session to open vim into. */
-  const box = document.createElement('input');
-  box.checked = editing;
-  box.id = 'edit';
-  box.type = 'checkbox';
-  box.addEventListener('change', onEdit);
-  const label = document.createElement('label');
-  label.htmlFor = 'edit';
-  label.textContent = 'Edit';
-  return [box, label];
 }
 
 function esc(text) {
@@ -433,8 +421,8 @@ async function load() {
     buildControls();
   }
   /* After the controls are built rather than with them, so that a page
-     reloaded in the middle of a session ticks its box and tells sync.js in the
-     one movement, rather than opening ticked and telling nobody. */
+     reloaded in the middle of a session presses its toggle and tells sync.js in
+     the one movement, rather than opening pressed and telling nobody. */
   applyEditing(Boolean(doc.editing));
   drawDocument();
   drawContents();
@@ -464,13 +452,16 @@ function onContents() {
   saveState();
 }
 
-function onEdit(event) {
+function onEdit() {
   /* Ask for vim, or ask for vim to go. Nothing here waits for an answer and
      nothing here decides: opening vim takes a moment, and closing it is
      refused outright while anything in vim is unwritten, so what became of the
-     asking arrives on the next poll like every other thing this page knows. */
+     asking arrives on the next poll like every other thing this page knows.
+     The toggle is not pressed here either, for the same reason: what is asked
+     for is the opposite of what the server last said, and the server is what
+     moves it. */
   fetch('/api/edit', {
-    body: JSON.stringify({ editing: event.target.checked }),
+    body: JSON.stringify({ editing: !editing }),
     headers: { 'Content-Type': 'application/json' },
     method: 'POST',
   }).catch(() => {});
@@ -499,8 +490,9 @@ function onWide(event) {
   /* Same as a theme change: a class swap, the reading position held across it,
      and the choice written back so the next reading opens the same way. */
   const mark = anchor();
-  wide = event.target.checked;
+  wide = !wide;
   applyWide();
+  setPressed(event.currentTarget, wide);
   restore(mark);
   saveState();
 }
@@ -542,6 +534,14 @@ function saveState() {
   }).catch(() => {});
 }
 
+function setPressed(button, on) {
+  /* Say whether a toggle is on. The word is written out rather than the
+     attribute being added and removed, because a toggle that is off has to say
+     so: an absent aria-pressed is a plain button that carries no state at all,
+     and the stylesheet draws the face off the same word. */
+  button.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+
 function slug(text, used) {
   /* The same naming the spec review tool uses, so a link to a section reads
      the same whichever tool rendered the document. */
@@ -568,6 +568,21 @@ async function start() {
   heartbeat();
   window.setInterval(heartbeat, HEARTBEAT_MS);
   window.setInterval(poll, MTIME_MS);
+}
+
+function toggleButton(id, text, pressed, handler) {
+  /* One control of the row: a button whose label never moves and whose pressed
+     state is what says it is on. The label stays put because a label that
+     flips between Contents and Hide contents describes what a click will do,
+     while the face describes what is already so, and a control that does both
+     at once leaves the reader working out which of the two it is looking at. */
+  const button = document.createElement('button');
+  button.addEventListener('click', handler);
+  button.id = id;
+  button.textContent = text;
+  button.type = 'button';
+  setPressed(button, pressed);
+  return button;
 }
 
 start();
