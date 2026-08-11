@@ -19,6 +19,7 @@ import hashlib
 import json
 import os
 import re
+import select
 import shutil
 import sys
 import tempfile
@@ -153,6 +154,15 @@ def home_state_snapshot():
         return exists, HOME_STATE_PATH.read_bytes()
     except OSError:
         return exists, None
+
+
+def said_down(reading):
+    """Say whether anything is waiting in the pipe a reading passes a wish down.
+
+    Looked at rather than read, so that the pipe is left as a session would find
+    it. A session empties it itself.
+    """
+    return bool(select.select([reading.heard], [], [], 0)[0])
 
 
 def served_blocks(source):
@@ -353,17 +363,24 @@ def test_edit_is_recorded_and_answered_with_the_state_as_it_stands():
     Opening vim takes a second and closing it may be refused outright by a vim
     with unsaved work, so the answer cannot be the wish granted. It is the state
     as it stands, and the page learns the outcome from the poll it already runs.
+
+    A reading waits in two ways, on an event between sessions and on its X
+    connection inside one, so the asking has to reach both. The pipe is the
+    second of those roads and a session that is not told down it goes on waiting
+    for a quarter of a second after every press.
     """
     root, port, reading, stop = start_reading(editable=True)
     try:
         assert reading.wanted is False, reading.wanted
         assert not reading.asked.is_set(), 'nobody asked yet'
+        assert not said_down(reading), 'nothing has been asked for yet'
         status, reply = fetch_json(port, '/api/edit', 'POST', {'editing': True})
         assert status == 200, status
-        # The wish is recorded and whoever acts on it is woken, and the reading
-        # is still doing what it was doing until that somebody has acted.
+        # The wish is recorded and whoever acts on it is woken, both ways, and
+        # the reading is still doing what it was doing until somebody has acted.
         assert reading.wanted is True, reading.wanted
         assert reading.asked.is_set(), 'nobody was woken'
+        assert said_down(reading), 'nothing was said down the pipe'
         assert reply == {'editing': False}, reply
         # And once vim is up, the same route answers with the truth rather than
         # with what was last asked for.
@@ -385,6 +402,7 @@ def test_edit_is_recorded_and_answered_with_the_state_as_it_stands():
             'editing': False}
         assert reading.wanted is False, reading.wanted
         assert not reading.asked.is_set(), 'an ask nobody can honour woke the reading'
+        assert not said_down(reading), 'an ask nobody can honour was passed on'
     finally:
         stop()
 
@@ -657,34 +675,31 @@ def test_page_is_served_under_the_reading_s_own_name():
             status, content_type, page = fetch(port, path)
             assert status == 200, (path, status)
             assert content_type.startswith('text/html'), (path, content_type)
-            assert b'<title>mdeus: start.md</title>' in page, page[:200]
+            assert b'<title>start.md</title>' in page, page[:200]
         assert fetch_json(port, '/MDEUSOTHER')[0] == 404, 'another reading was answered for'
     finally:
         stop()
 
 
-def test_page_title_says_the_command_and_the_document():
-    """The title names the command and the file, and travels with the document.
+def test_page_title_says_the_document_and_nothing_else():
+    """The title is the document's name, and travels with the document.
 
     The tab, and the window on the panel while a reading is editing, both read
     it. The page writes its own title as it draws, so that following a link to
     another document takes the title along with it, and what it writes is the
-    title the server sent rather than one put together again there.
+    name the server sent rather than one put together again there.
 
-    It reads the same in both states. The window a reading is drawn in tells a
-    title the page wrote from the address the pane carries before the page has
-    arrived, and it does so by the word in front, so a title that changed as vim
-    came and went would leave the window unable to name itself.
+    It reads the same in both states, since either way it is one reading of one
+    document.
     """
     root, port, reading, stop = start_reading()
     try:
-        assert b'<title>mdeus: start.md</title>' in fetch(port, '/')[2]
-        assert fetch_json(port, '/doc')[1]['title'] == 'mdeus: start.md'
+        assert b'<title>start.md</title>' in fetch(port, '/')[2]
+        assert fetch_json(port, '/doc')[1]['name'] == 'start.md'
         moved = fetch_json(port, '/doc?' + urlencode({'path': 'notes/other.md'}))[1]
-        assert moved['title'] == 'mdeus: notes/other.md', moved
-        assert moved['title'].startswith(server.TITLE), (moved['title'], server.TITLE)
+        assert moved['name'] == 'notes/other.md', moved
         reading.editing = True
-        assert fetch_json(port, '/doc')[1]['title'] == 'mdeus: notes/other.md'
+        assert fetch_json(port, '/doc')[1]['name'] == 'notes/other.md'
     finally:
         stop()
 
@@ -694,7 +709,7 @@ def test_removed_file_gives_the_gone_reply_and_recovers():
     root, port, reading, stop = start_reading()
     try:
         gone = {'editable': False, 'editing': False, 'name': 'start.md',
-                'gone': True, 'title': 'mdeus: start.md',
+                'gone': True,
                 'state': {'contents': False, 'theme': 'browser', 'wide': True}}
         source = root / 'start.md'
         source.unlink()

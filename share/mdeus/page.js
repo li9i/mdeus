@@ -19,6 +19,12 @@
 
 'use strict';
 
+/* How long the page goes on asking after a press of the Edit toggle, and how
+   often it asks while it does, in milliseconds. It gives up rather than asking
+   for ever, since a press a vim with unsaved work refuses has no answer coming
+   and the ordinary poll is enough to catch that vim when it does let go. */
+const CHASE_FOR = 3000;
+const CHASE_MS = 100;
 /* Three headings is the point at which a contents list starts to earn its
    place. Below it the button is absent rather than disabled. */
 const CONTENTS_MINIMUM = 3;
@@ -42,6 +48,8 @@ const docNode = document.querySelector('.doc');
    built again from scratch on every redraw and the elements go with it. */
 const foldedAt = new Set();
 
+/* The timer asking after a press of the Edit toggle, while one is unanswered. */
+let chasing = null;
 let contentsOpen = false;
 let doc = null;
 /* Whether vim is up, as the server last said. Never what this page asked for:
@@ -163,6 +171,29 @@ function buildControls() {
   if (doc.editable) {
     controlsNode.append(toggleButton('edit', 'Edit', editing, onEdit));
   }
+}
+
+function chase() {
+  /* Ask after the Edit toggle often for a moment, so that the button follows the
+     window rather than trailing it by half a second.
+
+     The page draws what the server says, and the server has nothing to say until
+     vim is up or vim has agreed to go, so the outcome of a press arrives at a
+     poll like everything else here and asking sooner is the whole of what can be
+     done about it. It stops as soon as the answer moves, and gives up after a few
+     seconds for the press a vim with unsaved work refuses, since that press has
+     no answer coming. */
+  const asked = editing;
+  const until = Date.now() + CHASE_FOR;
+  window.clearInterval(chasing);
+  chasing = window.setInterval(() => {
+    if (editing !== asked || Date.now() > until) {
+      window.clearInterval(chasing);
+      chasing = null;
+      return;
+    }
+    poll();
+  }, CHASE_MS);
 }
 
 function contentsHtml() {
@@ -307,10 +338,10 @@ function drawDocument() {
      Changing the theme does not come through this function, so no theme ever
      renames them. */
 
-  /* The title arrives with the document rather than being put together here,
-     and it is written on every draw rather than once at the start, so that
+  /* A reading is called after the document it is showing and nothing else. The
+     name is written on every draw rather than once at the start, so that
      following a link to another document takes the tab along with it. */
-  document.title = doc.title;
+  document.title = doc.name;
   if (doc.gone) {
     docNode.innerHTML = `<p class="gone">${esc(doc.name || 'The file')} is gone.</p>`;
     headingIds = [];
@@ -459,12 +490,17 @@ function onEdit() {
      asking arrives on the next poll like every other thing this page knows.
      The toggle is not pressed here either, for the same reason: what is asked
      for is the opposite of what the server last said, and the server is what
-     moves it. */
+     moves it.
+
+     The polls are made to come quicker for a moment, since the ordinary half
+     second is long enough that a button pressed here reads as a button that did
+     not take. */
   fetch('/api/edit', {
     body: JSON.stringify({ editing: !editing }),
     headers: { 'Content-Type': 'application/json' },
     method: 'POST',
   }).catch(() => {});
+  chase();
 }
 
 function onPop(event) {

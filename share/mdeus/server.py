@@ -20,6 +20,7 @@ source document is opened read only and is never written to.
 
 import json
 import mimetypes
+import os
 import threading
 import time
 from functools import partial
@@ -53,12 +54,10 @@ HOST = '127.0.0.1'
 ICON_ROUTE = '/icon.png'
 ICON_SIZE = 128
 MAX_BODY = 256 * 1024
-# What a reading is called, in front of the document it is showing. The page
-# writes it into its own title, and the window a reading is drawn in reads that
-# title off the page and takes it for its own, so the two are the one string
-# here rather than one string in each file.
+# What the command is called. It names the icon files and the window class, and
+# nothing else: a reading is titled by the document it is showing and says the
+# command nowhere.
 NAME = 'mdeus'
-TITLE = f'{NAME}: '
 
 
 def build_server(reading, port=DEFAULT_PORT):
@@ -221,6 +220,16 @@ class Reading:
         # Whether vim is up. Written by the session that opens and closes it,
         # and read here to decide which routes answer.
         self.editing = False
+        # The two ends of the pipe an asking is also said down, for a waiter
+        # that cannot hear the event above. A reading with vim up is inside its
+        # X event loop, waiting on a socket, and one wait can cover a socket and
+        # a pipe but not a socket and an event. Without this the box being
+        # unticked is not noticed until that wait times out, which is a quarter
+        # of a second of a session nobody wants any more.
+        self.heard, self.said = os.pipe()
+        # Written to without waiting, so that a page asking many times over
+        # while nobody is reading the other end cannot hold the server up.
+        os.set_blocking(self.said, False)
         # The tree is fixed by the document the reading started at. Following
         # a link moves the current document but never widens what is served.
         self.root = self.current.parent
@@ -241,11 +250,23 @@ class Reading:
         impossible. Its page carries no Edit toggle, so nothing belonging to the
         reading is asking. A request to stop is always taken, since it can
         always be honoured.
+
+        Said twice, because a reading waits in two quite different ways
+        depending on which of its states it is in. Between sessions it waits on
+        the event, and inside one it waits on its X connection, where only
+        something with a file of its own can reach it.
         """
         if editing and not self.editable:
             return
         self.wanted = editing
         self.asked.set()
+        try:
+            os.write(self.said, b'.')
+        except OSError:
+            # Nobody is reading, and the pipe is full of earlier askings. The
+            # wish is recorded either way, and a session opening later reads it
+            # rather than being told it.
+            pass
 
 
 class ReadingHandler(BaseHTTPRequestHandler):
@@ -441,7 +462,7 @@ class ReadingHandler(BaseHTTPRequestHandler):
             '    <script src="/assets/page.js" defer></script>',
             '    <script src="/assets/sync.js" defer></script>',
         ]
-        page = page_html(self.title(), load_state(), '\n'.join(head))
+        page = page_html(self.name(), load_state(), '\n'.join(head))
         self.send_bytes(page.encode('utf-8'), 'text/html')
 
     def snapshot(self):
@@ -452,11 +473,9 @@ class ReadingHandler(BaseHTTPRequestHandler):
         # it is the time of the document the page is about to draw, so the poll
         # that follows compares against what is on the screen without having to
         # ask a second question.
-        # The title travels with it because the page writes its own title as it
-        # draws, so that following a link to another document says so on the tab
-        # and, in a reading with vim beside it, on the panel. It is written here
-        # rather than put together again in the page, so the title a reading
-        # opened at and the title it moves on to are the one string.
+        # The document's name travels with it because the page writes its own
+        # title as it draws, so that following a link to another document says
+        # so on the tab and, in a reading with vim beside it, on the panel.
         # Whether the Edit toggle belongs on the page travels with the document
         # rather than with the markup, because the controls are built from the
         # first reply and a printed copy, which is answered by no server at all,
@@ -471,7 +490,6 @@ class ReadingHandler(BaseHTTPRequestHandler):
             'mtime': self.mtime(),
             'name': self.name(),
             'state': load_state(),
-            'title': self.title(),
         }
         try:
             source = self.reading.current.read_text(encoding='utf-8')
@@ -479,13 +497,3 @@ class ReadingHandler(BaseHTTPRequestHandler):
             return dict(common, gone=True)
         rendered = render_document(source, image_src=self.image_src)
         return dict(common, blocks=rendered['blocks'], outline=rendered['outline'])
-
-    def title(self):
-        """Return what the page is called: the command, then the document.
-
-        A window on the panel and a tab among twenty others both say what they
-        are as well as what they are showing. It reads the same whether vim is
-        up or not, since either way it is one reading of one document by one
-        command.
-        """
-        return f'{NAME}: {self.name()}'

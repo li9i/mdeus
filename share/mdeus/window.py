@@ -46,7 +46,7 @@ import webbrowser
 
 import vimlink
 from browser import app_command, browser_path
-from server import NAME, TITLE, icon_path
+from server import HOST, NAME, icon_path
 from state import MAX_SPLIT, MIN_SPLIT, load_split, save_split
 
 try:
@@ -69,6 +69,10 @@ DIVIDER = 6
 # The glyph in the cursor font that says a thing can be dragged sideways, and
 # the glyph after it, which is its mask.
 DIVIDER_CURSOR = 108
+# How much of the pipe a wish arrives down is taken off it at a time. Every byte
+# in it says the same thing, that the page has asked for something, so one read
+# is enough however many are waiting.
+DRAIN = 1024
 # The image the reading wears on the panel and on its title bar, in the two
 # sizes it ships in. It is the same image the desktop entry names, and the same
 # one the page hands the browser for the window a reading opens in, so a reading
@@ -91,8 +95,14 @@ POLL = 0.25
 # What vim is sourced from for as long as a session lasts. It sits beside this
 # file inside the package, so a stowed package and a checkout of it both find it.
 SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cursor.vim')
-SETTLE_TRIES = 20
-SETTLE_WAIT = 0.05
+# How long to wait between two looks at something that is still moving, and how
+# many looks are taken before it is left as it is. Every short wait in a session
+# is measured in these: a window settling on a size, a window manager letting go
+# of one window or taking charge of another. It is a hundredth of a second
+# because two of these waits stand between the Edit toggle and vim on the screen,
+# and each of them costs at least two looks however quickly the thing settles.
+SETTLE_TRIES = 100
+SETTLE_WAIT = 0.01
 UNPLACED = f'{NAME}: vim is in a window of its own, wherever the desktop put it'
 # How long to go on waiting for a program to put its window up, in seconds.
 WINDOW_WAIT = 15
@@ -268,11 +278,18 @@ def edit(reading, url, ending, opening=False, app_window=True):
 
     Two ways in and one way through. Pressing the Edit toggle arrives here with the
     page's window already on the desktop, and it is taken in where it stands.
-    Asking for --edit arrives here with no page yet, and the container is made
-    first and the page asked for after it, so that neither half is seen
-    standing on the desktop on its way in. Both funnel into the same loop,
-    which takes each window in as it appears in the desktop's list and finds
-    one that is already there on its first turn.
+    Asking for --edit arrives here with no page yet, so the page is asked for as
+    the session begins. Both funnel into the same loop, which takes each window
+    in as it appears in the desktop's list and finds one that is already there on
+    its first turn.
+
+    gvim is started before the container is made rather than after it. It takes
+    a fifth of a second to put its window up, the container takes about as long
+    to be made and to settle, and neither waits on the other, so a session that
+    does the two in turn opens half as quickly for no gain. Where the panes are
+    going to be is worked out from the work area the container is about to fill,
+    which is a hint and no more: both windows are placed again for themselves
+    once they are inside.
 
     The split is read here rather than at import, because a session may begin
     an hour into a reading and another reading may have moved the seam since.
@@ -290,27 +307,25 @@ def edit(reading, url, ending, opening=False, app_window=True):
     if not app_window:
         print(IN_A_TAB, flush=True)
     d = x_display() if app_window else None
-    container = make_container(d, reading.current.name) if d is not None else None
-    if app_window and container is None:
-        print(UNPLACED, flush=True)
-
-    if container is None:
-        boxes, divider, origin = (None, None), None, (0, 0)
-    else:
-        here = container.get_geometry()
-        boxes = pane_boxes(here.width, here.height)
-        divider = make_divider(d, container)
-        where = d.screen().root.translate_coords(container, 0, 0)
-        origin = (where.x, where.y)
 
     # Where the page's window stands now, read before anything is done to it. A
     # session opened with --edit has no page yet, so there is nowhere for one to
     # go back to and the container's own place stands in.
     was_at = None
-    if container is not None and app_window and not opening:
+    if d is not None and app_window and not opening:
         standing = page_window(d, client_list(d), reading.servername)
         if standing is not None:
             was_at = where_of(d, standing)
+
+    # The hint each half is started with, taken from the work area the container
+    # is about to fill. There is no container yet to measure, and there is
+    # nothing to measure for a reading with no desktop behind it.
+    if d is None:
+        boxes, origin = (None, None), (0, 0)
+    else:
+        area = work_area(d)
+        boxes = pane_boxes(area[2], area[3])
+        origin = (area[0], area[1])
 
     if opening:
         open_page(url, reading.servername, app_window, boxes[0], origin)
@@ -328,6 +343,19 @@ def edit(reading, url, ending, opening=False, app_window=True):
     # document, and the box on the page ticks without waiting for the layout.
     reading.editing = True
 
+    # Made while gvim is starting, and the panes measured against it rather than
+    # against the work area they were hinted with, since the window manager takes
+    # what its own border needs out of that.
+    container = make_container(d, reading.current.name) if d is not None else None
+    if app_window and container is None:
+        print(UNPLACED, flush=True)
+    if container is None:
+        boxes, divider = (None, None), None
+    else:
+        here = container.get_geometry()
+        boxes = pane_boxes(here.width, here.height)
+        divider = make_divider(d, container)
+
     panes = {}
     try:
         if container is not None:
@@ -344,10 +372,13 @@ def edit(reading, url, ending, opening=False, app_window=True):
             panes = take_in(d, container, wanted)
             # vim asks for a size of its own as it starts, and whether that
             # lands before the pane was placed or after it is a matter of a few
-            # hundredths of a second. So the session waits for vim to have
-            # finished asking and then lays both panes out again, and a session
-            # opens at the split the last one was left at rather than at
-            # whatever vim happened to settle on.
+            # hundredths of a second. So the session waits for vim to stop
+            # moving and then lays both panes out again, and a session opens at
+            # the split the last one was left at rather than at whatever vim
+            # happened to settle on. The wait is short enough that vim may still
+            # answer after it, and what that costs is the seam standing within a
+            # character of where the split asks rather than exactly on it, since
+            # meet() hands whatever vim rounds off its width to the page.
             if 'vim' in panes:
                 settle(panes['vim'])
                 layout(d, container, panes, divider)
@@ -398,10 +429,12 @@ def follow_title(d, container, page):
     document it started at.
 
     What the pane calls itself before the page has arrived is the address it is
-    loading, which names no document, so only a title the page wrote is taken.
+    loading, which names no document, so a title beginning at the host a
+    reading is served from is left where it is and the window keeps the name it
+    already has.
     """
     title = window_name(d, page)
-    if title and title.startswith(TITLE):
+    if title and not title.startswith(HOST):
         set_title(d, container, title)
 
 
@@ -485,10 +518,19 @@ def hold(d, container, panes, divider, vim, reading, ending):
             if was is False:
                 vimlink.quit_vim(reading.servername)
         if container is None:
-            time.sleep(POLL)
+            # A session drawn in windows of their own has no desktop to hear
+            # from, so what it waits on is the page asking for something, or vim
+            # going once vim has been asked to go.
+            if was:
+                wait([reading.heard], POLL)
+            else:
+                try:
+                    vim.wait(timeout=POLL)
+                except subprocess.TimeoutExpired:
+                    pass
             continue
         keep_focus(d, container, panes, focused)
-        select.select([d], [], [], POLL)
+        wait([d, reading.heard], POLL)
         while d.pending_events():
             event = d.next_event()
             if event.type == X.ButtonPress:
@@ -614,10 +656,10 @@ def make_container(d, document):
 
     It asks for the work area, so that nothing in the reading is put under a
     panel, and the window manager takes what its own border needs out of that.
-    The name is the reading's own, since the container is the only window the
-    desktop can see and there is nothing left to borrow a name from. It carries
-    the document from the start, and the page's own title takes over once the
-    page is up, so the panel never shows an address on its way to a name.
+    It is named here, since the container is the only window the desktop can
+    see and there is nothing left to borrow a name from. It carries the
+    document from the start, and the page's own title takes over once the page
+    is up, so the panel never shows an address on its way to a name.
 
     It is white because it is seen before either pane is in it, and again
     afterwards in the band vim rounds off its height. A browser takes a moment
@@ -625,12 +667,7 @@ def make_container(d, document):
     that colour and then become a reading.
     """
     root = d.screen().root
-    area = root.get_full_property(d.intern_atom('_NET_WORKAREA'), Xatom.CARDINAL)
-    if area:
-        x, y, width, height = tuple(area.value[:4])
-    else:
-        x, y = 0, 0
-        width, height = d.screen().width_in_pixels, d.screen().height_in_pixels
+    x, y, width, height = work_area(d)
     container = root.create_window(
         x, y, width, height, 0, X.CopyFromParent, X.InputOutput, X.CopyFromParent,
         background_pixel=d.screen().white_pixel,
@@ -640,7 +677,7 @@ def make_container(d, document):
     )
     container.set_wm_class(NAME, NAME.capitalize())
     set_icon(d, container)
-    set_title(d, container, TITLE + document)
+    set_title(d, container, document)
     container.change_property(
         d.intern_atom('_NET_WM_PID'), Xatom.CARDINAL, 32, [os.getpid()]
     )
@@ -982,6 +1019,24 @@ def vim_command(servername, document, box, origin):
     ]
 
 
+def wait(files, timeout):
+    """Wait until one of these has something to say, or until the time is up.
+
+    The X connection and the pipe a wish arrives down, waited on together. A
+    session is held up by the first and told what the page wants by the second,
+    and waiting on the connection alone left the reading a quarter of a second
+    behind every press of the Edit toggle.
+
+    The pipe is emptied as it is read, since all it says is that something has
+    changed, and the change itself is read where it is written. The connection is
+    left alone: its events are the caller's to take.
+    """
+    ready, _, _ = select.select(files, [], [], timeout)
+    for file in ready:
+        if isinstance(file, int):
+            os.read(file, DRAIN)
+
+
 def where_of(d, window):
     """Return where a window stands on the screen and how big it is.
 
@@ -1071,6 +1126,21 @@ def withdraw(d, window):
     deadline = time.monotonic() + WITHDRAW_WAIT
     while time.monotonic() < deadline and window.id in client_list(d):
         time.sleep(SETTLE_WAIT)
+
+
+def work_area(d):
+    """Return the part of the screen a window may have, with the panels left out.
+
+    What the container asks for, and asked for a second time before the container
+    exists, since the panes are started against it and the container is made
+    while they start. A desktop that says nothing about its panels is read as
+    giving the whole screen.
+    """
+    root = d.screen().root
+    area = root.get_full_property(d.intern_atom('_NET_WORKAREA'), Xatom.CARDINAL)
+    if area:
+        return tuple(area.value[:4])
+    return (0, 0, d.screen().width_in_pixels, d.screen().height_in_pixels)
 
 
 def x_display():
