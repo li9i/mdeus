@@ -54,3 +54,9 @@ Everything else is the standard library. Nothing is fetched at runtime, no page 
 [How it works](docs/how-it-works.md) covers the `Edit` toggle, the sync between the two halves, the themes and the page, and what each file in the repository does.
 
 [Checks](docs/checks.md) is the test command, and the manual list to walk after touching anything to do with the browser, the windows or vim.
+
+## Licence
+
+[MIT](LICENSE), with one exception. The application icon under `share/icons` was cut from Buuf by Paul Davey, which is Creative Commons Attribution-NonCommercial-ShareAlike, so those two PNG files carry that licence instead and may not be used commercially. Nothing depends on them: delete them, or put your own image there, and everything left is MIT.
+
+The stylesheet embeds seven of GitHub's Octicons, which are MIT too. [LICENSE](LICENSE) carries their notice and the full detail on both.
