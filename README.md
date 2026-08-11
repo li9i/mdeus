@@ -3,7 +3,7 @@
 Read a markdown document in your browser, and edit it there when you want to.
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="mdeus reading a markdown document in a window of its own" width="760">
+  <img src="docs/screenshot.png" alt="A reading with vim beside it, the page on the left and vim on the right in one window" width="900">
 </p>
 
 `mdeus notes.md` opens the document in a browser window that carries the page and nothing else: no address bar, no tabs, no bookmarks. The page redraws whenever the file changes.
