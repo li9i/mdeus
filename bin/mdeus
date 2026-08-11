@@ -143,6 +143,14 @@ def read(document, edit, tab):
     for the page to ask for vim, and a reading with vim waits inside the
     session. Ending a session either ends the reading or drops it back to
     waiting, and which of the two is the session's to say.
+
+    Some of that waiting is spent warming vim. gvim takes half a second to put a
+    window together, and a reading that leaves that until the Edit toggle is
+    pressed spends the whole of it with somebody watching. So it is spent
+    earlier instead, once the page says it has drawn the document and the
+    machine is free again, and vim waits out of sight until it is wanted. It is
+    warmed again after each session, since a reading may edit as many times as
+    the box is ticked and only the first vim was warmed for free.
     """
     servername = f'{NAME.upper()}{os.getpid()}'
     # Whether the page's window is one that can be taken into a container.
@@ -168,22 +176,50 @@ def read(document, edit, tab):
     else:
         window.open_page(url, servername, app_window)
 
-    while not ending.is_set():
-        # Cleared before the wish is read rather than after, so that a page
-        # asking in the moment between the two is answered by the wait ending
-        # at once rather than by a whole turn of waiting.
-        reading.asked.clear()
-        # Read after the clearing above, for the same reason: the server
-        # stopping is said by the same event, and looking before the clearing
-        # would leave a reading whose page closed at that moment waiting out a
-        # turn it has no reason to wait.
-        if reading.over.is_set():
-            break
-        if reading.wanted:
-            if window.edit(reading, url, ending, app_window=app_window):
-                return
-            continue
-        reading.asked.wait(WAKE)
+    # The vim warmed behind the page, or nothing while none is warmed. A session
+    # takes it over and leaves nothing behind it, so this is emptied whenever one
+    # begins and filled again when the reading comes back to waiting.
+    waiting = None
+    # Whether warming has been tried for the reading as it stands. A warming that
+    # came back with nothing is not tried again every turn of the loop, since
+    # whatever stopped it will not have changed in the meantime, and the toggle
+    # opens vim the long way instead. Each session clears this, so the reading
+    # tries again once it is back to the page alone.
+    warmed = False
+    try:
+        while not ending.is_set():
+            # Cleared before the wish is read rather than after, so that a page
+            # asking in the moment between the two is answered by the wait ending
+            # at once rather than by a whole turn of waiting.
+            reading.asked.clear()
+            # Read after the clearing above, for the same reason: the server
+            # stopping is said by the same event, and looking before the clearing
+            # would leave a reading whose page closed at that moment waiting out a
+            # turn it has no reason to wait.
+            if reading.over.is_set():
+                break
+            if reading.wanted:
+                session = waiting
+                waiting = None
+                warmed = False
+                if window.edit(reading, url, ending, app_window=app_window,
+                               waiting=session):
+                    return
+                continue
+            # Warmed only once the page has drawn what it was opened on. A
+            # browser drawing a page and a gvim starting want the same machine,
+            # and the page is the one being waited on, so vim is left until the
+            # page is done. A reading whose page never draws never warms, which
+            # is a reading nobody can press Edit in anyway.
+            if not warmed and app_window and reading.drawn.is_set():
+                warmed = True
+                waiting = window.warm(reading, url)
+                continue
+            reading.asked.wait(WAKE)
+    finally:
+        # A vim warmed and never wanted goes with the reading, since nothing
+        # else knows it is there to end it.
+        window.cool(reading, waiting)
 
 
 if __name__ == '__main__':

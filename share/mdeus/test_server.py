@@ -346,12 +346,15 @@ def test_a_page_that_comes_straight_back_holds_the_reading():
         watching.join(timeout=TIMEOUT)
 
 
-def test_a_link_is_followed_in_vim_only_while_editing():
+def test_a_link_is_followed_in_vim_while_vim_is_up():
     """Following a link takes vim with it while vim is up, and speaks to nobody otherwise.
 
     Both halves of a reading have to be of the same file, or the sync marks a
-    document vim does not have open. A reading that is viewing has no vim to
-    tell, and must not go looking for one.
+    document vim does not have open. That holds for a vim still waiting out of
+    sight as much as for one on the screen: it is the vim the next session will
+    show, and it should already be on the document the page is on when it is
+    shown. A reading with no vim at all has nobody to tell, and must not go
+    looking for one.
     """
     root, port, reading, stop = start_reading()
     told = []
@@ -360,9 +363,13 @@ def test_a_link_is_followed_in_vim_only_while_editing():
     try:
         fetch_json(port, '/doc?' + urlencode({'path': 'notes/other.md'}))
         assert told == [], told
-        reading.editing = True
+        reading.waiting = True
         fetch_json(port, '/doc?' + urlencode({'path': 'start.md'}))
         assert told == [(SERVERNAME, 'start.md')], told
+        reading.waiting = False
+        reading.editing = True
+        fetch_json(port, '/doc?' + urlencode({'path': 'notes/other.md'}))
+        assert told[-1] == (SERVERNAME, 'other.md'), told
     finally:
         vimlink.edit = was
         stop()
@@ -901,6 +908,27 @@ def test_state_is_stored_and_reported_back():
         assert stored == wanted, stored
         status, doc = fetch_json(port, '/doc')
         assert doc['state'] == wanted, doc['state']
+    finally:
+        stop()
+
+
+def test_the_first_heartbeat_says_the_page_has_drawn():
+    """A page speaking for the first time is a page that has finished drawing.
+
+    The page sends its first heartbeat once the document is on the screen, and
+    that is what the reading waits for before starting vim behind it. A reading
+    that started vim earlier would have a browser and a gvim wanting the same
+    machine at the moment somebody is watching the page draw.
+    """
+    root, port, reading, stop = start_reading()
+    try:
+        assert not reading.drawn.is_set(), 'drawn before the page said anything'
+        fetch_json(port, '/api/heartbeat', 'POST')
+        assert reading.drawn.is_set(), 'a drawn page did not say so'
+        # Every heartbeat after the first says the same thing, and saying it
+        # again changes nothing.
+        fetch_json(port, '/api/heartbeat', 'POST')
+        assert reading.drawn.is_set()
     finally:
         stop()
 

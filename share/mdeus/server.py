@@ -240,6 +240,11 @@ class Reading:
         self.clicks = 0
         self.current = document.resolve()
         self.cursor = None
+        # Set once the page has drawn the document it was sent, which is what
+        # its first heartbeat says. vim is started after that and not before, so
+        # that the browser has the machine to itself while it is doing the one
+        # thing the reader is waiting on.
+        self.drawn = threading.Event()
         # Whether the Edit toggle belongs on the page at all, which is to say
         # whether there is a desktop session to open vim into.
         self.editable = editable
@@ -273,6 +278,12 @@ class Reading:
         # of the window it puts up out of the address it was given, and that
         # name is the whole of how a reading finds its own page's window.
         self.servername = servername
+        # Whether a vim is up and waiting to be shown, which is a vim started
+        # ahead of the toggle so that pressing it has nothing left to wait for.
+        # It answers to the servername like any other, so anything the reading
+        # sends vim reaches it, and a link followed while it waits is followed
+        # by it too.
+        self.waiting = False
         # What the page last asked for. The truth is `editing` above; this is
         # the wish, left where whoever acts on it will find it.
         self.wanted = False
@@ -370,6 +381,10 @@ class ReadingHandler(BaseHTTPRequestHandler):
                 # across a reload, where the goodbye and the page that comes
                 # back are a moment apart.
                 self.reading.gone = None
+                # The page sends its first heartbeat once it has drawn the
+                # document, so this is also where the reading learns that the
+                # window it opened is finished and the machine is free again.
+                self.reading.drawn.set()
                 self.send_json({'ok': True})
             elif self.path == '/api/jump' and self.reading.editing:
                 vimlink.jump(self.reading.servername, *wanted_block(body))
@@ -443,8 +458,9 @@ class ReadingHandler(BaseHTTPRequestHandler):
             self.reading.current = target
             # vim follows the link too, so that both halves of a reading are
             # always of the same file and the sync never marks a document vim
-            # does not have open.
-            if self.reading.editing:
+            # does not have open. A vim still waiting to be shown follows it as
+            # well, so that it is already on the right document when it is.
+            if self.reading.editing or self.reading.waiting:
                 vimlink.edit(self.reading.servername, target)
         self.send_json(self.snapshot())
 

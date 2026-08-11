@@ -15,13 +15,28 @@ Either way the session ends by putting the container away again, and the page's
 window is either handed back to the desktop or asked to close, according to
 whether the reading is going back to viewing or ending altogether.
 
-Taking a window off the window manager has an order to it. Reparenting a window
-the manager is still managing loses a race: the manager sees its client leave
-the frame it drew, runs the same tidying up it runs for a window that has gone,
-and that tidying up hands the client back to the root window. So each window is
-withdrawn first, in the way the ICCCM asks for, and reparented only once the
-manager has let go of it. Handing one back is the same journey the other way,
-and there the map is what asks the manager to take charge again.
+Most of what a session used to cost was gvim starting, so gvim is started
+before the session rather than inside it. Once the page says it has drawn the
+document, warm() makes a container without putting it up and starts a gvim
+straight into it, where nobody can see either. Ticking the box then puts that
+container up with vim already in it, and only the page's own window is left to
+fetch. A reading with no container to hide a vim in warms none, and opens vim
+the long way when it is asked to.
+
+The two windows come in by different roads, because only one of them is the
+reading's own. The page's belongs to a browser, and the window manager is
+holding it: reparenting a window the manager is still managing loses a race,
+since the manager sees its client leave the frame it drew, runs the same tidying
+up it runs for a window that has gone, and that tidying up hands the client back
+to the root window. So the page's window is withdrawn first, in the way the
+ICCCM asks for, and reparented only once the manager has let go of it. Handing
+it back at the end is the same journey the other way, and there the map is what
+asks the manager to take charge again. vim's window needs none of that: the
+reading starts vim itself and asks it, with --echo-wid, to name the window it is
+about to put up, so the window is taken in while it is still unmapped and the
+manager has never heard of it. That is also what keeps a warmed vim out of
+sight, since a window the manager never saw is a window that never flashed over
+the page.
 
 Nothing manages the two windows once they are inside, and the work a window
 manager would have done falls here. The panes are laid out again whenever the
@@ -117,6 +132,38 @@ WITHDRAW_WAIT = 5
 browser_share = load_split()
 
 
+class Waiting:
+    """A vim already up, in a window nobody can see, waiting for the toggle.
+
+    Pressing Edit used to start gvim and then wait the half second gvim takes to
+    put a window together, which was most of what pressing Edit cost. So gvim is
+    started earlier instead, once the page has drawn the document and the
+    machine is free again, and put straight into a container that is made but
+    never shown. Pressing Edit then has only the page's own window left to take
+    in, and the container to put up with vim already inside it.
+
+    It holds its own connection to the desktop, because the connection has to
+    outlive the moment it was opened in and be the same one the session later
+    draws with. A session handed one of these adopts all of it, connection and
+    all, and closes the connection when it is done as it always did.
+    """
+
+    def __init__(self, d, container, vim, pane):
+        self.container = container
+        self.d = d
+        # The gvim process, which is what says whether there is still a vim
+        # here at all. One that was killed while it waited leaves this holding
+        # nothing, and the session that finds it that way starts its own.
+        self.vim = vim
+        # vim's window, already inside the container and already the size of a
+        # pane, so that showing the container is the whole of showing vim.
+        self.pane = pane
+
+    def gone(self):
+        """Say whether the vim that was waiting here has since gone."""
+        return self.vim is None or self.vim.poll() is not None
+
+
 def active_window(d):
     """Return the window the desktop has in front, or None where it does not say."""
     active = d.screen().root.get_full_property(
@@ -128,34 +175,14 @@ def active_window(d):
 def adopt(d, container, window, box):
     """Take a window off the window manager and put it in the container.
 
-    The click that would ordinarily give a window the keyboard is asked for
-    here as well, since the two panes are one window as far as the desktop is
-    concerned and nothing else is left to hand the keyboard between them.
-
-    White is put under the pane on the way in, for the moment between the
-    window arriving and the program drawing in it again. A window that has been
-    unmapped and mapped somewhere else holds nothing, and until its program
-    catches up what shows is whatever the X server was left with, which is
-    black. A browser takes seconds to draw its first page, and those are seconds
-    of a black rectangle where the reading is. The container is white for the
-    same reason, so a pane arriving over it looks like no arrival at all.
+    This is the way in for a window the reading did not make and cannot ask
+    anything of, which is the page's. The window manager is holding it, so it
+    has to be prised loose before it can be moved. vim's own window skips the
+    prising, since the reading starts vim itself and hears which window it is
+    while the manager still knows nothing about it.
     """
     withdraw(d, window)
-    x, y, width, height = box
-    window.change_attributes(background_pixel=white(d, window))
-    window.reparent(container, x, y)
-    window.configure(x=x, y=y, width=width, height=height)
-    window.map()
-    for button in (1, 2, 3):
-        for modifiers in locked():
-            # Synchronous, so that the click can be looked at and then let
-            # through to the pane it was meant for. The wheel is left alone,
-            # since a pane scrolled through is a pane already under the pointer.
-            window.grab_button(
-                button, modifiers, False, X.ButtonPressMask,
-                X.GrabModeSync, X.GrabModeAsync, X.NONE, X.NONE,
-            )
-    d.sync()
+    put_in(d, container, window, box)
 
 
 def browser_command(browser, url, box, origin):
@@ -204,6 +231,33 @@ def close_page(d, window):
         except Exception:
             return
         time.sleep(SETTLE_WAIT)
+
+
+def cool(reading, waiting):
+    """Put away a vim that was waiting and was never wanted.
+
+    A reading that ends while vim is still waiting has a gvim and a window
+    nobody ever saw, and both have to go with it or the command leaves them
+    behind. vim is asked to quit in the ordinary way first, since there is
+    nothing unwritten in a vim nobody has typed in and it will go; a vim that
+    does not go within the moment is ended outright, because there is no reader
+    left to tell about it.
+
+    A session that took the waiting vim over calls this with nothing, since what
+    it was given is its own to put away and it does that in release().
+    """
+    if waiting is None:
+        return
+    reading.waiting = False
+    if not waiting.gone():
+        vimlink.quit_vim(reading.servername)
+        try:
+            waiting.vim.wait(timeout=WITHDRAW_WAIT)
+        except subprocess.TimeoutExpired:
+            waiting.vim.kill()
+    waiting.container.destroy()
+    waiting.d.sync()
+    waiting.d.close()
 
 
 def divider_at(divider, seam, height):
@@ -267,7 +321,7 @@ def drag(d, container, panes, divider, press):
     save_split(browser_share)
 
 
-def edit(reading, url, ending, opening=False, app_window=True):
+def edit(reading, url, ending, opening=False, app_window=True, waiting=None):
     """Hold one editing session up, and say whether the reading is to end with it.
 
     The session makes the container, puts the page and gvim inside it, holds
@@ -276,20 +330,22 @@ def edit(reading, url, ending, opening=False, app_window=True):
     for the whole reading to end, and False where the reading is going back to
     viewing with the page alone.
 
-    Two ways in and one way through. Pressing the Edit toggle arrives here with the
-    page's window already on the desktop, and it is taken in where it stands.
-    Asking for --edit arrives here with no page yet, so the page is asked for as
-    the session begins. Both funnel into the same loop, which takes each window
-    in as it appears in the desktop's list and finds one that is already there on
-    its first turn.
+    Three ways in and one way through. Pressing the Edit toggle usually arrives
+    here with a vim already warmed and waiting, made by warm() once the page
+    finished drawing, and then there is no vim to start and no container to
+    make: the container is put up with vim already inside it, and only the
+    page's own window is left to take in. Where nothing was warmed, the toggle
+    arrives with the page's window on the desktop and vim yet to start. Asking
+    for --edit arrives with no page yet, so the page is asked for as the session
+    begins. All three funnel into the same work below.
 
     gvim is started before the container is made rather than after it. It takes
-    a fifth of a second to put its window up, the container takes about as long
-    to be made and to settle, and neither waits on the other, so a session that
-    does the two in turn opens half as quickly for no gain. Where the panes are
-    going to be is worked out from the work area the container is about to fill,
-    which is a hint and no more: both windows are placed again for themselves
-    once they are inside.
+    half a second to name a window, the container takes a moment to be made and
+    to settle, and neither waits on the other, so a session that does the two in
+    turn opens more slowly for no gain. Where the panes are going to be is
+    worked out from the work area the container is about to fill, which is a
+    hint and no more: both windows are placed again for themselves once they are
+    inside.
 
     The split is read here rather than at import, because a session may begin
     an hour into a reading and another reading may have moved the seam since.
@@ -306,7 +362,16 @@ def edit(reading, url, ending, opening=False, app_window=True):
     reading.wanted = True
     if not app_window:
         print(IN_A_TAB, flush=True)
-    d = x_display() if app_window else None
+
+    # A vim warmed behind the page is the session's to take over, connection,
+    # container and all. One that has gone in the meantime leaves nothing to
+    # take over, so it is put away here and the session opens vim the long way
+    # as though none had been warmed at all.
+    if waiting is not None and waiting.gone():
+        cool(reading, waiting)
+        waiting = None
+    reading.waiting = False
+    d = waiting.d if waiting is not None else (x_display() if app_window else None)
 
     # Where the page's window stands now, read before anything is done to it. A
     # session opened with --edit has no page yet, so there is nowhere for one to
@@ -329,15 +394,7 @@ def edit(reading, url, ending, opening=False, app_window=True):
 
     if opening:
         open_page(url, reading.servername, app_window, boxes[0], origin)
-    vim = subprocess.Popen(
-        vim_command(reading.servername, reading.current, boxes[1], origin),
-        env=dict(
-            os.environ,
-            MDEUS_LINK=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vimlink.py'),
-            MDEUS_URL=url,
-        ),
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
+    vim = waiting.vim if waiting is not None else start_vim(reading, url, boxes[1], origin)
     # Said as soon as vim is started rather than once its window is in, so that
     # the routes are open for the cursor vim reports the moment it has read the
     # document, and the box on the page ticks without waiting for the layout.
@@ -345,13 +402,19 @@ def edit(reading, url, ending, opening=False, app_window=True):
 
     # Made while gvim is starting, and the panes measured against it rather than
     # against the work area they were hinted with, since the window manager takes
-    # what its own border needs out of that.
-    container = make_container(d, reading.current.name) if d is not None else None
+    # what its own border needs out of that. A warmed session has both already:
+    # the container was made when the page finished drawing and vim has been
+    # sitting in it ever since, so all that is left is to put it up.
+    if waiting is not None:
+        container = waiting.container
+    else:
+        container = make_container(d, reading.current.name) if d is not None else None
     if app_window and container is None:
         print(UNPLACED, flush=True)
     if container is None:
         boxes, divider = (None, None), None
     else:
+        show_container(d, container)
         here = container.get_geometry()
         boxes = pane_boxes(here.width, here.height)
         divider = make_divider(d, container)
@@ -359,17 +422,22 @@ def edit(reading, url, ending, opening=False, app_window=True):
     panes = {}
     try:
         if container is not None:
-            # vim is the reading's own and is known by its process. The page's
-            # window is somebody else's and is known by the name the reading
-            # served it under.
-            wanted = [('vim', lambda listed: window_of(d, listed, vim.pid), boxes[1])]
+            # A warmed vim is already in and there is nothing to wait for. A
+            # cold one names its own window down a pipe while the page's window
+            # is found in the desktop's list, and since both were started before
+            # either is waited on, the two half seconds are spent at the same
+            # time and the session costs the longer of them rather than the sum.
+            pane = waiting.pane if waiting is not None else vim_window(
+                d, container, vim, boxes[1]
+            )
+            if pane is not None:
+                panes['vim'] = pane
             if app_window:
-                wanted.append(
-                    ('browser',
-                     lambda listed: page_window(d, listed, reading.servername),
-                     boxes[0])
-                )
-            panes = take_in(d, container, wanted)
+                panes.update(take_in(d, container, [(
+                    'browser',
+                    lambda listed: page_window(d, listed, reading.servername),
+                    boxes[0],
+                )]))
             # vim asks for a size of its own as it starts, and whether that
             # lands before the pane was placed or after it is a matter of a few
             # hundredths of a second. So the session waits for vim to stop
@@ -530,7 +598,15 @@ def hold(d, container, panes, divider, vim, reading, ending):
                     pass
             continue
         keep_focus(d, container, panes, focused)
-        wait([d, reading.heard], POLL)
+        # vim's own pipe is waited on beside the desktop and the page, because
+        # it is the one thing that says vim has gone. The desktop says its
+        # window was destroyed, which happens a moment before the process
+        # itself ends, so a session waiting on the desktop alone hears the
+        # window go, finds vim still running, and then sits out a whole quarter
+        # of a second before looking again. gvim writes nothing down this pipe
+        # after naming its window, so it is quiet until it closes, and it closes
+        # when vim goes.
+        wait([d, reading.heard, vim.stdout], POLL)
         while d.pending_events():
             event = d.next_event()
             if event.type == X.ButtonPress:
@@ -652,7 +728,7 @@ def locked():
 
 
 def make_container(d, document):
-    """Put an empty window on the desktop for the reading to live in.
+    """Make the window the reading is to live in, without putting it up yet.
 
     It asks for the work area, so that nothing in the reading is put under a
     panel, and the window manager takes what its own border needs out of that.
@@ -665,6 +741,11 @@ def make_container(d, document):
     afterwards in the band vim rounds off its height. A browser takes a moment
     to start, and a container of any other colour would open as a rectangle of
     that colour and then become a reading.
+
+    Making it and putting it up are two steps rather than one, because a
+    container is also what a vim started ahead of the toggle is kept in. Such a
+    window is made, filled and left where nobody can see it, and show_container()
+    is what puts it up when the toggle is finally pressed.
     """
     root = d.screen().root
     x, y, width, height = work_area(d)
@@ -683,8 +764,6 @@ def make_container(d, document):
     )
     container.set_wm_hints(flags=Xutil.InputHint, input=1)
     container.set_wm_protocols([d.intern_atom('WM_DELETE_WINDOW')])
-    container.map()
-    settle(container)
     return container
 
 
@@ -828,6 +907,38 @@ def place(d, window, box):
     d.sync()
 
 
+def put_in(d, container, window, box):
+    """Put a window in the container, at the size and in the place a pane takes.
+
+    The click that would ordinarily give a window the keyboard is asked for
+    here as well, since the two panes are one window as far as the desktop is
+    concerned and nothing else is left to hand the keyboard between them.
+
+    White is put under the pane on the way in, for the moment between the
+    window arriving and the program drawing in it again. A window that has been
+    unmapped and mapped somewhere else holds nothing, and until its program
+    catches up what shows is whatever the X server was left with, which is
+    black. A browser takes seconds to draw its first page, and those are seconds
+    of a black rectangle where the reading is. The container is white for the
+    same reason, so a pane arriving over it looks like no arrival at all.
+    """
+    x, y, width, height = box
+    window.change_attributes(background_pixel=white(d, window))
+    window.reparent(container, x, y)
+    window.configure(x=x, y=y, width=width, height=height)
+    window.map()
+    for button in (1, 2, 3):
+        for modifiers in locked():
+            # Synchronous, so that the click can be looked at and then let
+            # through to the pane it was meant for. The wheel is left alone,
+            # since a pane scrolled through is a pane already under the pointer.
+            window.grab_button(
+                button, modifiers, False, X.ButtonPressMask,
+                X.GrabModeSync, X.GrabModeAsync, X.NONE, X.NONE,
+            )
+    d.sync()
+
+
 def release(d, container, panes, ending, was_at):
     """Put the session's window away, and settle what becomes of the page's own.
 
@@ -897,33 +1008,71 @@ def settle(window):
         was = now
 
 
+def show_container(d, container):
+    """Put the reading's window up, and wait for it to stop settling.
+
+    Whatever is already inside comes up with it, which is how a vim started
+    ahead of the toggle arrives whole rather than being watched on its way in.
+    The window is asked for the work area again here, since a container made
+    when the reading began may have been waiting a while and the panels may
+    have moved in the meantime.
+    """
+    x, y, width, height = work_area(d)
+    container.configure(x=x, y=y, width=width, height=height)
+    container.map()
+    settle(container)
+
+
+def start_vim(reading, url, box, origin):
+    """Start the gvim a reading is read with, and return it without waiting.
+
+    Nothing is waited on here, so that whoever calls this can get on with making
+    the container while gvim spends its half second putting a window together.
+    vim_window() is the other half, and it is what waits.
+
+    The pipe carries one line and is left open afterwards. gvim says which
+    window it made and then says nothing for the rest of its life, so there is
+    nothing further to read and nothing that can fill it.
+    """
+    return subprocess.Popen(
+        vim_command(reading.servername, reading.current, box, origin),
+        env=dict(
+            os.environ,
+            MDEUS_LINK=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vimlink.py'),
+            MDEUS_URL=url,
+        ),
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+    )
+
+
 def take_in(d, container, wanted):
-    """Take each pane into the container as its window appears.
+    """Take each pane into the container as its window appears in the desktop's list.
 
-    Both halves are asked for together and either may be up first, so both are
-    watched at once and each is taken in the moment it arrives. Waiting for them
-    in turn left whichever came first standing on the desktop as a window of its
-    own, with a title bar of its own, for as long as the other one took.
+    This is the road for a window the reading did not make, which is the page's:
+    the reading cannot ask a browser which window it is about to put up, so it
+    watches the desktop until one answering to the reading's own name is there.
+    vim comes in by vim_window() instead, where the window is named down a pipe
+    before the desktop ever hears of it.
 
-    Each pane says how its own window is to be picked out of the desktop's list,
-    since the two are found in quite different ways: vim is a process of the
-    reading's and the page's window is not.
+    Each pane says how its own window is to be picked out of the list, and each
+    is taken in the moment it arrives rather than after the last of them, so
+    nothing stands on the desktop waiting for anything else.
     """
     panes = {}
-    waiting = list(wanted)
+    left = list(wanted)
     deadline = time.monotonic() + WINDOW_WAIT
-    while waiting and time.monotonic() < deadline:
+    while left and time.monotonic() < deadline:
         # The desktop's list is asked for once a turn rather than once a pane,
-        # since both panes are looked for in the same list.
+        # since every pane is looked for in the same list.
         listed = client_list(d)
-        for pane in list(waiting):
+        for pane in list(left):
             name, find, box = pane
             window = find(listed)
             if window is not None:
                 adopt(d, container, window, box)
                 panes[name] = window
-                waiting.remove(pane)
-        if waiting:
+                left.remove(pane)
+        if left:
             time.sleep(SETTLE_WAIT)
     return panes
 
@@ -992,6 +1141,14 @@ def vim_command(servername, document, box, origin):
     The process started here is the whole of how the reading knows vim is still
     up, and its ending is how the reading ends.
 
+    It is asked to say which window it is about to put up, because it says so
+    while that window is still nothing on the screen. The reading takes the
+    window in at that moment, before the window manager has drawn a frame round
+    it or listed it among the desktop's windows, so vim is never seen standing
+    anywhere but where the reading puts it. That matters most for a vim started
+    ahead of the toggle, which would otherwise flash over the page somebody is
+    in the middle of reading.
+
     The headroom gvim keeps goes before the vimrc, since it is read once as the
     window is made and not again. It is fifty pixels by default, kept clear so
     that a window and the border a window manager draws round it both fit the
@@ -1009,7 +1166,7 @@ def vim_command(servername, document, box, origin):
     settles on, so without this the seam sits somewhere else every second or
     third reading.
     """
-    command = ['gvim', '-f', '--servername', servername]
+    command = ['gvim', '-f', '--echo-wid', '--servername', servername]
     if box is not None:
         command += ['-geometry', f'+{origin[0] + box[0]}+{origin[1] + box[1]}']
     return command + [
@@ -1019,22 +1176,82 @@ def vim_command(servername, document, box, origin):
     ]
 
 
+def vim_window(d, container, vim, box):
+    """Wait for gvim to name its window, and put that window in the container.
+
+    gvim says which window it is about to put up while the window is still
+    nothing on the screen: unmapped, unframed, and unknown to the window
+    manager. Taking it in at that moment is the whole of why it is never seen
+    standing on the desktop, whether the reading is opening or vim is being
+    started quietly behind a page somebody is reading.
+
+    Nothing is found for a gvim that failed to start, which says the same thing
+    as a gvim that started and then went: there is no vim, and the caller has a
+    session or a reading to carry on without one.
+    """
+    for line in vim.stdout:
+        if line.startswith('WID:'):
+            window = d.create_resource_object('window', int(line[len('WID:'):]))
+            put_in(d, container, window, box)
+            return window
+    return None
+
+
 def wait(files, timeout):
     """Wait until one of these has something to say, or until the time is up.
 
-    The X connection and the pipe a wish arrives down, waited on together. A
-    session is held up by the first and told what the page wants by the second,
-    and waiting on the connection alone left the reading a quarter of a second
-    behind every press of the Edit toggle.
+    The X connection, the pipe a wish arrives down and vim's own pipe, waited on
+    together. A session is held up by the first, told what the page wants by the
+    second and told that vim has gone by the third, and waiting on any of them
+    alone left the reading a quarter of a second behind whichever of the three
+    spoke.
 
-    The pipe is emptied as it is read, since all it says is that something has
-    changed, and the change itself is read where it is written. The connection is
-    left alone: its events are the caller's to take.
+    Only the wish pipe is emptied as it is read, since all it says is that
+    something has changed and the change itself is read where it is written. The
+    connection is left alone, because its events are the caller's to take, and
+    so is vim's pipe, because what it says is that it has closed and reading it
+    would say no more than that.
     """
     ready, _, _ = select.select(files, [], [], timeout)
     for file in ready:
         if isinstance(file, int):
             os.read(file, DRAIN)
+
+
+def warm(reading, url):
+    """Start vim behind the page, so that pressing Edit has nothing left to wait for.
+
+    Called once the page says it has drawn the document, and not before. gvim
+    and a browser drawing a page at the same time are two programs wanting the
+    same machine, and the one the reader is waiting on is the page, so the page
+    is left to finish first.
+
+    What comes back is a gvim already up and already inside a container that has
+    never been shown. Nothing of it is on the desktop: no window, no entry on
+    the panel, and nothing the pointer can reach. The reader sees the page they
+    were reading and nothing else, and the half second gvim costs is spent while
+    they are reading rather than while they are waiting.
+
+    Nothing comes back where there is no desktop to draw in or gvim never named
+    a window, and a reading whose warming failed simply opens vim the long way
+    when the toggle is pressed.
+    """
+    d = x_display()
+    if d is None:
+        return None
+    area = work_area(d)
+    boxes = pane_boxes(area[2], area[3])
+    vim = start_vim(reading, url, boxes[1], (area[0], area[1]))
+    container = make_container(d, reading.current.name)
+    pane = vim_window(d, container, vim, boxes[1])
+    if pane is None:
+        container.destroy()
+        d.close()
+        return None
+    # Said only once vim is in, so that a link followed from here on is followed
+    # by vim as well and the two are never of different documents.
+    reading.waiting = True
+    return Waiting(d, container, vim, pane)
 
 
 def where_of(d, window):
@@ -1075,35 +1292,6 @@ def window_name(d, window):
         # The window belongs to the browser and may go at any moment.
         return None
     return said.value.decode('utf-8', 'replace') if said else None
-
-
-def window_of(d, listed, pid):
-    """Return the window a program has put up, or nothing while it has put up none.
-
-    A program may put up a window of its own as well as the one wanted, so the
-    widest is taken. Each width is asked for once and carried, since this runs
-    many times a second while a reading opens.
-    """
-    wide = []
-    for window in windows_of(d, listed, pid):
-        try:
-            wide.append((window.get_geometry().width, window))
-        except Exception:
-            continue
-    if not wide:
-        return None
-    return max(wide, key=lambda found: found[0])[1]
-
-
-def windows_of(d, listed, pid):
-    """Return the windows belonging to a process, out of the desktop's own list."""
-    windows = []
-    for xid in listed:
-        window = d.create_resource_object('window', xid)
-        owner = window.get_full_property(d.intern_atom('_NET_WM_PID'), Xatom.CARDINAL)
-        if owner and owner.value[0] == pid:
-            windows.append(window)
-    return windows
 
 
 def withdraw(d, window):
