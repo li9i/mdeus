@@ -1,10 +1,21 @@
-# mdview
+# mdeus
 
 One command for reading a markdown document in a browser, and for editing it there when you want to.
 
 `mdeus <document.md>` serves the document to a window of its own, redraws the page whenever the file changes, and follows relative links to other markdown documents inside the same tree. That window carries the page and nothing else: no address bar, no tabs, no bookmarks. It comes out of the Chrome or Chromium you already have running, which is what makes it open as quickly as it does, and where neither is on the machine the reading opens in an ordinary tab instead. `mdeus --tab <document.md>` asks for that tab whichever browsers are about. Several readings run at once, each on its own port and each under a name of its own. A reading ends on ctrl-c, or once the page has stopped saying it is still open, which is what ends one started from the file manager where there is no terminal to interrupt, and closing the window or the tab is one way of stopping.
 
-`mdeus --print <document.md>` writes one self contained HTML file under `~/.cache/mdview/` and prints its path. Images are embedded, every theme is inlined, and nothing is served or opened. The file survives being moved or sent to somebody.
+`mdeus --print <document.md>` writes one self contained HTML file under `~/.cache/mdeus/` and prints its path. Images are embedded, every theme is inlined, and nothing is served or opened. The file survives being moved or sent to somebody.
+
+## Installing
+
+```bash
+git clone https://github.com/li9i/mdeus.git ~/mdeus
+~/mdeus/install.sh
+```
+
+The installer asks for root once, to fetch the six python packages and a vim with a GUI, and then makes five links into `~/.local` pointing back at the checkout. Nothing is copied anywhere. Pulling the repository is the whole of updating it, and removing those five links leaves nothing behind. Run the installer as often as you like: it does the least it can and a second run changes nothing.
+
+`~/.local/bin` has to be on your path for the command and its "Open With" entry to resolve. Ubuntu's stock `~/.profile` puts it there at login once the directory exists, and the installer creates it, so a fresh machine wants one log out and back in. The installer says so if it has to.
 
 ## The Edit toggle
 
@@ -34,7 +45,7 @@ While vim is up, vim is what holds the reading. Ctrl-c, the window's close butto
 
 The page carries a dropdown of three themes and then three toggles: `Contents`, which is there only once the document has three or more headings, `Full width`, and `Edit`. The theme is a choice between three, so it is a dropdown. The other three are each one view state that is on or off, so each is a button that stands down while it is on and keeps its label wherever it stands, rather than a box that reads as a form waiting to be submitted or a label that flips between saying what is and saying what a click would do.
 
-`Full width` governs `Browser default` and `Mono headings`: on, which is how both open, they run their lines to the edge of the pane and rewrap them wherever the seam is dragged to, and off they hold them to 46em and 38em. `GitHub` holds its 1012px whichever way it is set, since that measure is github.com's rather than the theme's to choose. The theme, the contents setting, the full width setting, and where the seam between the panes was last dragged to, are kept in `~/.config/mdview/state.json`, so a reading opens the way the last one was left. `Edit` is not among them: it says what the reading in front of you is doing rather than what you prefer, so it is stored nowhere and every reading opens with the page alone.
+`Full width` governs `Browser default` and `Mono headings`: on, which is how both open, they run their lines to the edge of the pane and rewrap them wherever the seam is dragged to, and off they hold them to 46em and 38em. `GitHub` holds its 1012px whichever way it is set, since that measure is github.com's rather than the theme's to choose. The theme, the contents setting, the full width setting, and where the seam between the panes was last dragged to, are kept in `~/.config/mdeus/state.json`, so a reading opens the way the last one was left. `Edit` is not among them: it says what the reading in front of you is doing rather than what you prefer, so it is stored nowhere and every reading opens with the page alone.
 
 Every fence carries a copy button in its corner as well, which shows on hover or on focus and puts the fence on the clipboard. Two of the themes say `Copy` on it and `GitHub` draws GitHub's own copy icon instead, which turns into a green tick once the fence is on the clipboard. Neither half folds a section away at the moment. Double click used to fold one in the page and space used to fold one in vim, and double click now belongs to the sync in both halves. The code behind the page's fold is still in `page.js` with nothing calling it, and vim is left with whatever folding your own `.vimrc` gives it.
 
@@ -50,6 +61,8 @@ The three themes draw all of it. `GitHub` reproduces GitHub's own colours, icons
 
 ## What is here
 
+`bin/mdeus` is the command. Everything it drives is under `share/mdeus`, which is where the names in the table below live unless the table says otherwise, and the rest of `share` holds the three files the installer links into place: the icon, the desktop entry and the shell completion.
+
 | File | What it is |
 | --- | --- |
 | `render.py` | Markdown in, blocks out, each carrying the source lines it was built from, plus the heading outline. GitHub's dialect, the five callouts included, since no plugin draws those. Where an image beside the document is written as is the caller's to say. |
@@ -64,17 +77,15 @@ The three themes draw all of it. `GitHub` reproduces GitHub's own colours, icons
 | `page.js` | The theme dropdown, the three toggles beside it, the contents list, the copy button on every fence, the heading names, the folding of a section, which nothing calls for the moment, and the redraw. |
 | `sync.css`, `sync.js` | The two marks and the sync with vim. Loaded by every reading, and asleep until vim is up. |
 | `test_render.py`, `test_server.py` | The tests. |
-| `../icons/hicolor/*/apps/mdeus.png` | What a reading looks like on the panel, in both of its states, and in the "Open With" menu. |
+| `share/icons/hicolor/*/apps/mdeus.png` | What a reading looks like on the panel, in both of its states, and in the "Open With" menu. |
+| `share/applications/mdeus.desktop` | The "Open With" entry. It names the command and the icon, both by name rather than by path, so both resolve through `~/.local`. |
+| `share/bash-completion/completions/mdeus` | The flags and the markdown files, offered on tab. |
 
-The command itself is `mdeus`, and it lives in `~/.local/bin`.
-
-Its desktop entry is in the `caja` package. A reading is a browser, and a browser with vim beside it as soon as you ask, and an entry carries one icon, so its icon is one image of the two: the terminal behind at the top left and the browser in front at the bottom right, the pair overlapping inside one square. No theme has such an image, so it ships here, and the window an editing session opens wears it as well. It was cut from Buuf 3.46 at 128 pixels, `gnome/128x128/apps/utilities-terminal.png` behind `miscellaneous/128x128/apps/google-chrome.png`, each trimmed to what it draws and scaled to seven tenths of the square. The square is what matters more than the pair: everything else on the panel is square, and an icon wider than it is tall stands out for the wrong reason.
+A reading is a browser, and a browser with vim beside it as soon as you ask, and an entry carries one icon, so its icon is one image of the two: the terminal behind at the top left and the browser in front at the bottom right, the pair overlapping inside one square. No theme has such an image, so it ships here, and the window an editing session opens wears it as well. It was cut from Buuf 3.46 at 128 pixels, `gnome/128x128/apps/utilities-terminal.png` behind `miscellaneous/128x128/apps/google-chrome.png`, each trimmed to what it draws and scaled to seven tenths of the square. The square is what matters more than the pair: everything else on the panel is square, and an icon wider than it is tall stands out for the wrong reason.
 
 A reading wears that icon in both of its states, and reaches it two different ways. While vim is up the window belongs to the reading, so the image is read off the disk and put on the window as pixels. While a reading is only the page the window belongs to the browser, and a browser window wears the icon its page names, so the page names one: `<link rel="icon">` pointing at `/icon.png`, which the server answers with the 128 pixel file. The images sit outside the directory the page's own files are served from, hence the route of its own. A printed copy names no icon, since it reaches for no file at all and an icon is not worth breaking that for.
 
-`render.py` and `themes.css` are read by the spec review tool in `~/.claude/scripts/spec_review` as well, so that tool will not start unless this package is stowed.
-
-A page for reading carries `reader` on the root element beside the theme name, and the spec review tool does not. That marker is what sizes the `github` theme at 14px for reading while the review tool keeps 16px. The server writes it once, when it sends the page, and a theme change in `page.js` turns the theme keys on and off one at a time rather than writing the whole class name over, so nothing else on the root is this page's to lose. A printed copy carries the marker too, so `mdeus --print` reads at the same size as a served reading.
+A page for reading carries `reader` on the root element beside the theme name. That marker is what sizes the `github` theme at 14px, below the 16px github.com itself sets, since reading a document at length wants a smaller size than a web page does. The server writes it once, when it sends the page, and a theme change in `page.js` turns the theme keys on and off one at a time rather than writing the whole class name over, so nothing else on the root is this page's to lose. A printed copy carries the marker too, so `mdeus --print` reads at the same size as a served reading.
 
 `wide` sits on the root as well while `Full width` is on, and the server writes it with the markup for the same reason it writes the theme there: the first paint has to be the page the reader left, rather than lines drawn one way and rewrapped the moment the script catches up. `page.js` turns that one class on and off as the toggle is pressed, and the `browser` and `report` themes are the two that read it.
 
@@ -85,8 +96,6 @@ Each of the three toggles carries `aria-pressed`, and the word in it is written 
 `python3-markdown-it` for the parser, `python3-mdit-py-plugins` for the task lists and the footnotes, `python3-linkify-it` for the bare addresses, `python3-emoji` for the shortcodes, `python3-xlib` for the one window an editing session is drawn in, and `python3-pil` to read that window's icon off the disk. Nothing else beyond the standard library. Nothing is fetched at runtime, no page loads an external font, script or stylesheet, and the server listens on `127.0.0.1` and nowhere else.
 
 Chrome or Chromium is what gives a reading a window with nothing in it but the page, and a reading reads in a plain tab where neither is on the machine. Editing also wants a vim built with `+clientserver` and a GUI. The vim half of a reading is a `gvim --servername`, reached by `vim --servername` from the outside, and Ubuntu's plain `vim` package has neither the GUI nor `+clientserver`. `vim-gtk3` has both, and that is what `install.sh` installs. `vim --version | grep clientserver` says which one is on the machine.
-
-The desktop entry calls `mdeus` by name, so `~/.local/bin` has to be on the session path for it to resolve. Ubuntu's stock `~/.profile` puts it there at login when the directory exists, and `install.sh` creates it before the log out it already asks for.
 
 ## Tests
 
@@ -127,7 +136,7 @@ Run all of it after touching anything to do with the browser, the windows or vim
 16. Press the window's close button while editing. The whole reading ends: vim goes, the page's window goes, and the shell comes back. It is refused while anything in vim is unwritten, and nothing is taken away from under it.
 17. Press ctrl-c in the shell the command was run from, while editing. The same, and refused the same way.
 18. Close the page's window while editing, with `ctrl-w` in it. vim is asked to quit and the whole reading ends when it goes, since there is no page left to come back to.
-19. After every one of those: every other window of that browser is still open, on the same pages and in the same places, and no server and no gvim is left behind. `pgrep -af mdview` should say nothing.
+19. After every one of those: every other window of that browser is still open, on the same pages and in the same places, and no server and no gvim is left behind. `pgrep -af mdeus` should say nothing.
 20. With no browser running at all, press `Edit`. The reading starts one, and the browser it started goes when the reading does, since the page's window was the only window in it.
 
 ### The one window
@@ -146,7 +155,7 @@ Run all of it after touching anything to do with the browser, the windows or vim
 29. Put the pointer on the join between the two panes. It becomes an arrow pointing both ways, which is the whole of what says the join can be moved. Take the pointer a few pixels off the join and the arrow goes again.
 30. Drag the join left and right. Both panes follow the pointer and go on meeting exactly at every moment of the drag, and the seam lands on a whole character column of vim rather than exactly where you let go.
 31. Drag as far as it will go each way. It stops while there is still a pane worth reading in on both sides, at 15 percent of the window one way and 85 percent the other.
-32. Drag the join somewhere else, press `Edit` off, and press it on again. It opens where you left it. Change the theme in the page as well, and neither setting has put the other out of `~/.config/mdview/state.json`.
+32. Drag the join somewhere else, press `Edit` off, and press it on again. It opens where you left it. Change the theme in the page as well, and neither setting has put the other out of `~/.config/mdeus/state.json`.
 
 ### The three way sync
 
@@ -211,7 +220,7 @@ Handing that window back is the only thing here the older tools never did. Takin
 
 Where it comes back to is noted before it is taken, and asked for twice on the way out. The container fills the work area, so a page read in a small window grows as it goes in and has to shrink again as it comes out, or the reader puts it back by hand after every visit to vim. The second asking is a `_NET_MOVERESIZE_WINDOW` message naming static gravity, and the gravity is the whole point of it: an ordinary configure request names where the frame goes rather than where the window does, so a window put back that way walks down and to the right by the depth of its own title bar every time it makes the journey. A session opened with `--edit` had no window of its own before it started, so there is nowhere to put that one back to and it is left filling the work area.
 
-The reading waits for vim to have stopped changing size before it lays the two panes out, in `window.py`. gvim asks for a size of its own as it starts, and whether that asking lands before the reading has placed the pane or after it is a matter of a few hundredths of a second. The reading gives the page whatever width vim settles on, so an asking that landed late moved the seam: one session would open at the split the last was left at and the next at something else entirely. The wait is a short one, a few hundredths of a second of vim holding still, because it stands between the toggle being pressed and vim being on the screen. vim may still answer after it has passed, and then the seam opens within a character of where the split asks rather than exactly on it, which is the rounding the page is handed back whenever the window is resized. Anything in a vimrc that sets `lines` or `columns` in the GUI does the same thing on top of it, and the vimrc here leaves both alone while `$MDVIEW_URL` says vim is a pane of a reading.
+The reading waits for vim to have stopped changing size before it lays the two panes out, in `window.py`. gvim asks for a size of its own as it starts, and whether that asking lands before the reading has placed the pane or after it is a matter of a few hundredths of a second. The reading gives the page whatever width vim settles on, so an asking that landed late moved the seam: one session would open at the split the last was left at and the next at something else entirely. The wait is a short one, a few hundredths of a second of vim holding still, because it stands between the toggle being pressed and vim being on the screen. vim may still answer after it has passed, and then the seam opens within a character of where the split asks rather than exactly on it, which is the rounding the page is handed back whenever the window is resized. Anything in a vimrc that sets `lines` or `columns` in the GUI does the same thing on top of it, and the vimrc here leaves both alone while `$MDEUS_URL` says vim is a pane of a reading.
 
 The two panes are taken off the window manager before they are put in the window, by unmapping each one and telling the root window it is withdrawn. Reparenting a window the manager is still managing does not work: the manager reads its client leaving the frame as the window having gone, and the tidying up it does for a window that has gone hands the client back to the root. The withdrawal is what makes the manager let go first, and everything the reading does with its panes afterwards rests on it.
 

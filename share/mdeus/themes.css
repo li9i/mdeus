@@ -33,9 +33,8 @@
    </html>
 
    The theme keys are browser, report and github. Exactly one of them is on the
-   root element at any time. The reading page also carries reader there, which
-   the spec review tool does not, and github is sized off it. See that theme
-   below.
+   root element at any time. The reading page also carries reader there, and
+   github is sized off it. See that theme below.
 
    wide sits on the root beside the theme key while Full width is on, which it
    is until someone turns it off. browser and report read it, and only to drop
@@ -47,8 +46,8 @@
    choice between several. The word in that attribute is what says which, so
    each theme draws its own pressed face off it and no label ever moves.
 
-   .doc > .block > .prose > <content> is the same structure the spec review
-   tool renders, so a rule written as `.doc p` matches in both places. Anything
+   .doc > .block > .prose > <content> is the structure the renderer produces,
+   so a rule written as `.doc p` matches what is inside a block. Anything
    tighter than a descendant selector under .doc will not.
 
    The contents button is present only when the document has three or more
@@ -587,40 +586,27 @@
 /* ------------------------------------------------------------------
    github: GitHub's rendered markdown, reproduced
 
-   The document rules below came out of the spec review tool's own
-   stylesheet, which was already a careful reproduction of GitHub's rendered
-   markdown. They live here now and that tool loads this file, so there is
-   one copy and the two cannot drift apart.
+   A careful reproduction of GitHub's rendered markdown, down to the callout
+   icons and the spacing.
 
    THIS THEME IS SCOPED DIFFERENTLY FROM THE TWO ABOVE, in two ways, and
    both of them matter.
 
    It styles .doc, never body. The two above style `.browser body` and so on,
    because their controls size in units that resolve against the page font.
-   The spec review tool puts its whole application shell in the body: a
-   toolbar, an outline rail and the comment threads. A body rule carrying
-   GitHub's font stack, colour and 1012px measure would land on that shell
-   and change the page. Scoping to .doc gives the typography to the document
-   and to nothing else, which is the document pane in the review tool and
-   the document container here.
+   Scoping to .doc gives the typography to the document container and to
+   nothing else, which leaves the control row above it to be sized on its own
+   terms.
 
    The theme class is wrapped in :where(), which counts for nothing when the
    browser weighs one rule against another. So `:where(.github) .doc p` is
-   worth exactly what a plain `.doc p` is worth. That is deliberate. These
-   rules used to sit in the review tool's own stylesheet as `.doc p`, above
-   rules like `.comment-body p` and `blockquote.quoted` that are meant to
-   win. Those rules are worth no more than `.doc p` either and were winning
-   on nothing but coming later in the file. Written as `.github .doc p` the
-   theme would outweigh them and quietly restyle every comment body on the
-   page. :where() keeps the weights exactly as they were, and the review
-   tool loads this file before its own, so what came later still comes
-   later.
+   worth exactly what a plain `.doc p` is worth. That is what lets a page
+   put its own rules for the same elements after this file and have them
+   win on source order, rather than having to outweigh a theme class.
 
    Every colour is written as a variable with GitHub's own value as the
-   fallback. The review tool defines those variables, including a dark set
-   it switches to with the system colour scheme, so the rules keep behaving
-   there exactly as they did before they moved. Nothing defines them in this
-   file, so the fallbacks apply and the theme is GitHub's light palette.
+   fallback. Nothing defines those variables in this file, so the fallbacks
+   apply and the theme is GitHub's light palette.
 
    Three colours are written as values instead, and all three are translucent:
    the ground under inline code, the ground under the copy button while the
@@ -630,11 +616,11 @@
    opaque grey would need a value for each of those grounds and a second set
    for a dark palette. Each is marked where it appears.
 
-   One measurement is borrowed the same way. The heading rules below keep a
-   heading clear of the review tool's sticky toolbar by reading --bar-height,
-   which that tool defines as its own toolbar height. Nothing defines it here,
-   so the fallback of zero applies and the rule adds nothing wherever there is
-   no toolbar to clear.
+   One measurement is written the same way. The heading rules below read
+   --bar-height, so that a page with a sticky bar over the document can say
+   how tall it is and have its headings scroll clear of it. A reading has no
+   such bar and nothing defines the name here, so the fallback of zero applies
+   and the rule adds nothing.
    ------------------------------------------------------------------ */
 
 :where(.github) .doc {
@@ -649,11 +635,11 @@
   word-wrap: break-word;
 }
 
-/* The size above is the review tool's and has to stay at 16px, since that tool
-   is meant to look exactly as it always has. Reading a document is not the same
-   task as reviewing one and wants a smaller size, so the reading page carries
-   reader on the root beside the theme key and the smaller size hangs off that.
-   Nothing else carries it, so nothing else moves.
+/* The size above is github.com's own 16px, which is what this theme is a
+   reproduction of. Reading a document at length wants a smaller size than a
+   web page sets, so the reading page carries reader on the root beside the
+   theme key and the smaller size hangs off that. Nothing else carries it, so
+   nothing else moves.
 
    The marker goes inside the same :where() as the theme class, for the reason
    set out above: this rule has to weigh no more than a bare `.doc` does. It
@@ -823,8 +809,7 @@
 /* Every heading is sized against the document rather than in fixed steps, as
    GitHub sizes them, so the whole scale follows the reading size above and the
    ratios between the six hold at any size. The underline under the first two
-   is GitHub's translucent hairline, which lands a shade darker than the soft
-   border the review tool defines. */
+   is GitHub's translucent hairline, a shade darker than the plain border. */
 :where(.github) .doc h1 {
   border-bottom: 1px solid var(--border-soft, #d1d9e0b3);
   font-size: 2em;
@@ -1119,8 +1104,8 @@
   }
 
   /* The reading page takes the same one step down, from its own size rather
-     than from the review tool's. Without this it would read the 15px above and
-     come out larger on a narrow window than on a wide one. */
+     than from the 16px above. Without this it would read that 15px and come
+     out larger on a narrow window than on a wide one. */
   :where(.github.reader) .doc {
     font-size: 13px;
   }

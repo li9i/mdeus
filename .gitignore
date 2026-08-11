@@ -1,0 +1,6 @@
+# python bytecode
+__pycache__/
+
+# written by pytest, which nothing here needs but which will pick the tests up
+# if you point it at them
+.pytest_cache/

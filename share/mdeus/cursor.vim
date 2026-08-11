@@ -4,8 +4,8 @@
 " where the cursor is for the page to mark, and lights the block the page sends
 " it to.
 "
-" The two names it needs come from the environment the reading sets: MDVIEW_LINK
-" is the script that carries a line to the server, and MDVIEW_URL is where that
+" The two names it needs come from the environment the reading sets: MDEUS_LINK
+" is the script that carries a line to the server, and MDEUS_URL is where that
 " server is listening.
 
 " Say where the cursor is, for the page to mark the block holding it.
@@ -20,17 +20,17 @@
 " stepped through would stutter.
 let s:pending = 0
 
-function! s:MdviewReport(timer) abort
+function! s:MdeusReport(timer) abort
   let s:pending = 0
-  call job_start(['python3', $MDVIEW_LINK, 'cursor', $MDVIEW_URL, string(line('.'))])
+  call job_start(['python3', $MDEUS_LINK, 'cursor', $MDEUS_URL, string(line('.'))])
 endfunction
 
-function! s:MdviewMoved() abort
+function! s:MdeusMoved() abort
   if s:pending
     return
   endif
   let s:pending = 1
-  call timer_start(150, function('s:MdviewReport'))
+  call timer_start(150, function('s:MdeusReport'))
 endfunction
 
 " A double click is a jump rather than a move, so it is reported at once and as
@@ -38,14 +38,14 @@ endfunction
 " page was left. It is sent straight rather than through the timer, since the
 " throttled report of the same line follows within 150ms and would arrive as an
 " ordinary move that the page is right to sit still for.
-function! s:MdviewClicked() abort
+function! s:MdeusClicked() abort
   call job_start(
-    \ ['python3', $MDVIEW_LINK, 'cursor', $MDVIEW_URL, string(line('.')), 'click'])
+    \ ['python3', $MDEUS_LINK, 'cursor', $MDEUS_URL, string(line('.')), 'click'])
 endfunction
 
-augroup mdview
+augroup mdeus
   autocmd!
-  autocmd CursorMoved,CursorMovedI * call s:MdviewMoved()
+  autocmd CursorMoved,CursorMovedI * call s:MdeusMoved()
 augroup END
 
 " The same gesture as the page's, so one hand does the same thing in either
@@ -58,11 +58,11 @@ augroup END
 " instead would be counted as another click of the same gesture: vim would take
 " the word after all, and the colon that follows would open a command line with
 " the selection's range in it and the report would never be sent.
-nnoremap <silent> <2-LeftMouse> :call <SID>MdviewClicked()<CR>
+nnoremap <silent> <2-LeftMouse> :call <SID>MdeusClicked()<CR>
 
 " Where the cursor starts, so the page marks a block from the first moment
 " rather than waiting to be moved.
-call s:MdviewReport(0)
+call s:MdeusReport(0)
 
 " Where a clicked block lands. The page knows the source lines every block was
 " built from and sends both ends of them, so the whole block is lit rather than

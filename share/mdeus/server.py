@@ -34,8 +34,9 @@ from render import render_document
 from state import THEMES, load_state, save_state
 
 ASSET_DIR = Path(__file__).resolve().parent
-# One above the spec review tool's port, so a reading and a review opened at
-# the same time do not push each other onto a fallback port.
+# Where a reading starts looking. A port already taken sends the reading to
+# the next free one, so this is a starting point rather than a fixed address,
+# and several readings at once each end up somewhere of their own.
 DEFAULT_PORT = 8766
 # Where an image beside the document is served from. The page itself is served
 # at the root, so a document's own relative target would resolve against that
@@ -72,8 +73,8 @@ def build_server(reading, port=DEFAULT_PORT):
 def icon_path(size):
     """Return the file the reading's image of one size lives in.
 
-    The images sit one directory above this file inside the package, so a stowed
-    package and a checkout of it both find them. Both the panel and the page ask
+    The images sit one directory above this file, so the path is found from the
+    checkout however the command was reached. Both the panel and the page ask
     for them, so the tree is named here rather than again in each file that
     wants it.
     """
@@ -90,8 +91,8 @@ def page_html(title, state, head, body_tail=''):
     # Both settings the stylesheet reads are already on the root element here,
     # so that the first paint is the page the reader left rather than an
     # unstyled one for a moment, or one that rewraps as the script catches up.
-    # The reader marker beside them says this is a page for reading rather than
-    # the spec review tool, which shares the stylesheet and sizes github larger.
+    # The reader marker beside them says this is a page for reading, which is
+    # what drops the github theme below the size github.com itself sets.
     classes = f"{state['theme']} reader" + (' wide' if state['wide'] else '')
     return f"""<!doctype html>
 <html lang="en" class="{classes}">

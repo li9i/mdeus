@@ -93,7 +93,7 @@ MOVERESIZE = (1 << 8) | (1 << 9) | (1 << 10) | (1 << 11) | (1 << 12)
 # How often the two programs are looked in on, in seconds.
 POLL = 0.25
 # What vim is sourced from for as long as a session lasts. It sits beside this
-# file inside the package, so a stowed package and a checkout of it both find it.
+# file, so the path is found from the checkout however the command was reached.
 SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cursor.vim')
 # How long to wait between two looks at something that is still moving, and how
 # many looks are taken before it is left as it is. Every short wait in a session
@@ -333,8 +333,8 @@ def edit(reading, url, ending, opening=False, app_window=True):
         vim_command(reading.servername, reading.current, boxes[1], origin),
         env=dict(
             os.environ,
-            MDVIEW_LINK=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vimlink.py'),
-            MDVIEW_URL=url,
+            MDEUS_LINK=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vimlink.py'),
+            MDEUS_URL=url,
         ),
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )

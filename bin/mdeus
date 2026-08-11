@@ -40,9 +40,11 @@ import sys
 import threading
 from pathlib import Path
 
-# The modules this drives sit beside the script inside the package, so they are
-# found whether the package is stowed or run from a checkout of it.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'share' / 'mdview'))
+# The modules this drives sit under share/mdeus in the same checkout as this
+# script. The path is resolved through any symlink first, so the command works
+# whether it is run from the checkout or reached through the link the installer
+# leaves in ~/.local/bin.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'share' / 'mdeus'))
 
 import vimlink  # noqa: E402
 import window  # noqa: E402

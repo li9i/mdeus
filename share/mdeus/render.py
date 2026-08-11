@@ -1,10 +1,9 @@
 """
 Turn markdown source into blocks that carry the source lines they came from.
 
-This is the one renderer behind every tool here that draws markdown. A document
-becomes an ordered list of top level blocks, each tagged with the range of
-source lines it was built from, so a browser can map a click back to an exact
-line of the file. Alongside the blocks it reports the heading outline.
+A document becomes an ordered list of top level blocks, each tagged with the
+range of source lines it was built from, so a browser can map a click back to
+an exact line of the file. Alongside the blocks it reports the heading outline.
 
 The rendered HTML carries no heading ids. The outline is reported as data and
 whoever draws the page decides what the headings are called, so that a name

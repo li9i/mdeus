@@ -579,8 +579,8 @@ function setPressed(button, on) {
 }
 
 function slug(text, used) {
-  /* The same naming the spec review tool uses, so a link to a section reads
-     the same whichever tool rendered the document. */
+  /* GitHub's own naming for a heading anchor, so a link to a section reads
+     the same here as it does there. */
   const base =
     text
       .toLowerCase()

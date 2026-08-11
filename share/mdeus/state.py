@@ -24,7 +24,7 @@ DEFAULT_SPLIT = 0.44
 # pane alone, and never so far that the other one has nothing left to draw in.
 MAX_SPLIT = 0.85
 MIN_SPLIT = 0.15
-STATE_PATH = Path.home() / '.config' / 'mdview' / 'state.json'
+STATE_PATH = Path.home() / '.config' / 'mdeus' / 'state.json'
 THEMES = ('browser', 'report', 'github')
 
 

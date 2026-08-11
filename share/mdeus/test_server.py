@@ -37,7 +37,7 @@ from urllib.parse import urlencode
 # check at the end stays honest: a reading open on the same desktop writes the
 # real state file every time somebody picks a theme, which would otherwise be
 # read as a leak out of these tests.
-TEST_HOME = tempfile.mkdtemp(prefix='mdview-test-home-')
+TEST_HOME = tempfile.mkdtemp(prefix='mdeus-test-home-')
 os.environ['HOME'] = TEST_HOME
 
 import export
@@ -179,7 +179,7 @@ def start_export():
     are pointed into the temporary tree first, so that no test can write into
     the real ones however it is written.
     """
-    base = Path(tempfile.mkdtemp(prefix='mdview-test-')).resolve()
+    base = Path(tempfile.mkdtemp(prefix='mdeus-test-')).resolve()
     export.CACHE_DIR = base / 'cache'
     state.STATE_PATH = base / 'state.json'
     root = base / 'tree'
@@ -204,7 +204,7 @@ def start_reading(editable=False, editing=False):
     No vim answers to the name here, so only the routes that record something
     rather than send it on may be asked for under one.
     """
-    base = Path(tempfile.mkdtemp(prefix='mdview-test-')).resolve()
+    base = Path(tempfile.mkdtemp(prefix='mdeus-test-')).resolve()
     state.STATE_PATH = base / 'state.json'
     root = base / 'tree'
     (root / 'images').mkdir(parents=True)

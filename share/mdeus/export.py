@@ -31,7 +31,7 @@ from render import render_document
 from server import ASSET_DIR, page_html, resolve_inside
 from state import load_state
 
-CACHE_DIR = Path.home() / '.cache' / 'mdview'
+CACHE_DIR = Path.home() / '.cache' / 'mdeus'
 # Everything the reading page asks a server for, answered from the document
 # printed beside it. Nothing here reaches the network, and a request to store
 # the theme or the contents setting is refused rather than answered, because a
