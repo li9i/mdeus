@@ -2,6 +2,10 @@
 
 Read a markdown document in your browser, and edit it there when you want to.
 
+<p align="center">
+  <img src="docs/screenshot.png" alt="mdeus reading a markdown document in a window of its own" width="760">
+</p>
+
 `mdeus notes.md` opens the document in a browser window that carries the page and nothing else: no address bar, no tabs, no bookmarks. The page redraws whenever the file changes.
 
 Press `Edit` at the top of the page and vim opens beside it in the same window. Double click a block in the page and vim goes to the line it came from. Double click a line in vim and the page comes the other way. Press `Edit` again and vim goes, and the page is handed back to the desktop exactly where it was.
