@@ -21,9 +21,9 @@ where you had scrolled it to. --edit is that toggle pressed for you before you
 see the page.
 
 A reading is served from this machine and nowhere else, redrawn whenever the
-file changes. While it is only the page, it ends on ctrl-c or once the page has
-stopped saying it is still open, which is what ends a reading started from the
-file manager where there is no terminal to interrupt. While vim is up, the
+file changes. While it is only the page, it ends on ctrl-c or with the page,
+which says goodbye as it closes. That is what ends a reading started from the
+file manager, where there is no terminal to interrupt. While vim is up, the
 reading is held by vim: ctrl-c, the window's close button and the page being
 closed all ask vim to quit, and vim refuses while anything in it is unwritten,
 so nothing is taken away from under unsaved work.
@@ -53,8 +53,8 @@ from export import write_export  # noqa: E402
 from server import NAME, serve, start  # noqa: E402
 
 # How often a reading that is only the page looks up from waiting, in seconds.
-# Nothing is polled for: the wait ends the moment the page asks for anything,
-# and this is only so that a server that has stopped is noticed.
+# Nothing is polled for: the wait ends the moment the page asks for anything
+# and the moment the server stops, and this is the backstop behind both.
 WAKE = 1
 
 
@@ -156,8 +156,7 @@ def read(document, edit, tab):
     print(f'reading {document.name}')
     print(f'  {url}/{servername}')
     print('  ctrl-c to stop, or close the page', flush=True)
-    serving = threading.Thread(target=serve, args=(bound, reading), daemon=True)
-    serving.start()
+    threading.Thread(target=serve, args=(bound, reading), daemon=True).start()
 
     ending = threading.Event()
     signal.signal(signal.SIGINT, interrupt(reading, ending))
@@ -169,11 +168,17 @@ def read(document, edit, tab):
     else:
         window.open_page(url, servername, app_window)
 
-    while not ending.is_set() and serving.is_alive():
+    while not ending.is_set():
         # Cleared before the wish is read rather than after, so that a page
         # asking in the moment between the two is answered by the wait ending
         # at once rather than by a whole turn of waiting.
         reading.asked.clear()
+        # Read after the clearing above, for the same reason: the server
+        # stopping is said by the same event, and looking before the clearing
+        # would leave a reading whose page closed at that moment waiting out a
+        # turn it has no reason to wait.
+        if reading.over.is_set():
+            break
         if reading.wanted:
             if window.edit(reading, url, ending, app_window=app_window):
                 return

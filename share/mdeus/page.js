@@ -1,7 +1,7 @@
 /* The reading page: the theme dropdown, the Contents, Full width and Edit
    toggles beside it, the contents list, the sections a double click folds away,
-   the redraw when the file changes, and the heartbeat that ends a reading with
-   no terminal.
+   the redraw when the file changes, and the goodbye and heartbeat that end a
+   reading with no terminal.
 
    The page keeps nothing of its own. It draws what GET /doc sends and writes
    every change back through POST /api/state, so one reading and the next
@@ -380,6 +380,19 @@ function esc(text) {
   return String(text).replace(/[&<>"]/g, (character) => replacements[character]);
 }
 
+function farewell() {
+  /* Said as the page goes, so that closing the window ends the reading there
+     and then rather than ten seconds after the last heartbeat.
+
+     keepalive is what lets the request outlive the page that sent it. Without
+     it the browser drops the request as it takes the page down, and the page
+     leaves without a word.
+
+     A reload says this on its way out too, and the server holds the reading
+     open for a moment so that the page coming back can take it back. */
+  fetch('/api/closed', { keepalive: true, method: 'POST' }).catch(() => {});
+}
+
 function foldSection(heading, folded) {
   /* Put a section away or bring it back. Everything under the heading goes as
      far as the next top level heading, and the heading itself stays and is
@@ -600,6 +613,9 @@ async function start() {
      back to it names a path like every other entry does. */
   history.replaceState({ path: doc.name }, '');
   docNode.addEventListener('click', onClick);
+  /* pagehide rather than unload, since a browser may hold a page back from
+     firing unload at all, and this is the one message the reading ends on. */
+  window.addEventListener('pagehide', farewell);
   window.addEventListener('popstate', onPop);
   heartbeat();
   window.setInterval(heartbeat, HEARTBEAT_MS);

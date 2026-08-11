@@ -27,6 +27,7 @@ import threading
 import time
 from http.client import HTTPConnection
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import urlencode
 
 # The state file and the export cache both hang off the home directory, and
@@ -235,6 +236,27 @@ def start_reading(editable=False, editing=False):
     return root, bound.server_address[1], reading, stop
 
 
+def start_watching(reading):
+    """Run the watcher that ends a reading and return the flag it ends by setting.
+
+    The watcher is handed a stand in for the server rather than the server
+    itself, so that a test can see the reading being ended without the server
+    under it going away and taking the rest of the test's requests with it.
+
+    The thread is the caller's to join. It ends of its own accord once it has
+    ended the reading, and a test that leaves it running is caught by the check
+    for stray threads at the end of the run.
+    """
+    stopped = threading.Event()
+    watching = threading.Thread(
+        target=server.watch_heartbeat,
+        args=(SimpleNamespace(shutdown=stopped.set), reading),
+        daemon=True,
+    )
+    watching.start()
+    return stopped, watching
+
+
 def test_a_click_in_vim_is_counted_and_a_move_is_not():
     """The page is told how many clicks vim has reported, so it can follow every one.
 
@@ -258,6 +280,70 @@ def test_a_click_in_vim_is_counted_and_a_move_is_not():
         assert fetch_json(port, '/api/cursor')[1] == {'clicks': 2, 'line': 30}
     finally:
         stop()
+
+
+def test_a_closed_page_does_not_end_a_reading_vim_is_holding():
+    """A reading with vim up is held by vim, whatever the page it was opened beside says.
+
+    Closing the page of an editing reading is an asking for vim to quit, and vim
+    refuses while anything in it is unwritten. So the page going has no say here
+    until vim has gone too, or work vim is quite right to be holding on to would
+    be taken away a moment after the page was closed.
+    """
+    root, port, reading, stop = start_reading(editable=True, editing=True)
+    stopped, watching = start_watching(reading)
+    try:
+        fetch_json(port, '/api/closed', 'POST')
+        held = server.FAREWELL_GRACE * 3
+        assert not stopped.wait(held), 'a closed page ended a reading vim was holding'
+        # Vim gone, and nothing holding the reading up any longer.
+        reading.editing = False
+        assert stopped.wait(TIMEOUT), 'the reading outlived both its page and vim'
+    finally:
+        stop()
+        watching.join(timeout=TIMEOUT)
+
+
+def test_a_closed_page_ends_the_reading_at_once():
+    """A page says it is going as it goes, so the reading ends with it.
+
+    Without that the reading ends only once the page has been quiet for the
+    whole of the heartbeat timeout, which leaves the command sitting in the
+    terminal for ten seconds after the window it was serving has gone.
+    """
+    root, port, reading, stop = start_reading()
+    stopped, watching = start_watching(reading)
+    try:
+        assert fetch_json(port, '/api/heartbeat', 'POST') == (200, {'ok': True})
+        assert not stopped.wait(server.FAREWELL_GRACE), 'a reading being read was ended'
+        assert fetch_json(port, '/api/closed', 'POST') == (200, {'ok': True})
+        assert stopped.wait(TIMEOUT), 'a closed page left the reading running'
+    finally:
+        stop()
+        watching.join(timeout=TIMEOUT)
+
+
+def test_a_page_that_comes_straight_back_holds_the_reading():
+    """A reload says it is going on its way out, and the reading waits for it.
+
+    The page that comes back says it is here again well inside the wait, and
+    that takes the farewell back. A reading ended on the farewell alone would
+    leave every reload looking at a page with nothing behind it.
+    """
+    root, port, reading, stop = start_reading()
+    stopped, watching = start_watching(reading)
+    try:
+        fetch_json(port, '/api/heartbeat', 'POST')
+        fetch_json(port, '/api/closed', 'POST')
+        fetch_json(port, '/api/heartbeat', 'POST')
+        waited = server.FAREWELL_GRACE * 3
+        assert not stopped.wait(waited), 'a reloaded page ended the reading behind it'
+        # Ended the way a closed page ends it, so the watcher is not left running.
+        fetch_json(port, '/api/closed', 'POST')
+        assert stopped.wait(TIMEOUT), 'a closed page left the reading running'
+    finally:
+        stop()
+        watching.join(timeout=TIMEOUT)
 
 
 def test_a_link_is_followed_in_vim_only_while_editing():

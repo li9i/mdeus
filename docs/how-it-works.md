@@ -22,7 +22,7 @@ The ground a jump lights in vim is the `MdeusJump` highlight group. It is set as
 
 ## Ending a reading
 
-While a reading is only the page, ctrl-c ends it, and so does closing the page, which the server notices within ten seconds of the page going quiet.
+While a reading is only the page, ctrl-c ends it, and so does closing the page. The page says goodbye as it goes and the command is back within a second. A page that never got to say it, a browser killed outright or a machine put to sleep with the reading open, is noticed instead by its heartbeat stopping, and the reading ends ten seconds after the last one.
 
 While vim is up, vim is what holds the reading. Ctrl-c, the window's close button and the page's window being closed all ask vim to quit, and vim refuses while anything in it is unwritten, so nothing is ever taken away from under unsaved work. Those three end the whole reading once vim goes. Pressing `Edit` again and quitting vim yourself are the two that leave the page behind.
 

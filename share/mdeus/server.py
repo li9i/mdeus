@@ -42,9 +42,15 @@ DEFAULT_PORT = 8766
 # at the root, so a document's own relative target would resolve against that
 # and name nothing.
 FILE_ROUTE = '/file/'
-# Long enough that a page reloading or a machine pausing for a moment does not
-# end the reading, short enough that a closed window does not leave a server
-# behind.
+# How long a page that has said it is going is waited for, in seconds. A reload
+# says the same thing on its way out as a close does, so the wait is long enough
+# for the page that comes back to say it is here, and short enough that closing
+# the window ends the reading while the hand is still on the mouse.
+FAREWELL_GRACE = 1
+# How long a page that has said nothing at all is waited for, in seconds. This
+# is the backstop behind the farewell above, for the page that never got to say
+# it was going: a browser killed outright, a machine put to sleep with the
+# reading open, a page whose farewell was lost.
 HEARTBEAT_TIMEOUT = 10
 HOST = '127.0.0.1'
 # Where the image a reading wears is served from, and which of the sizes it
@@ -59,6 +65,9 @@ MAX_BODY = 256 * 1024
 # nothing else: a reading is titled by the document it is showing and says the
 # command nowhere.
 NAME = 'mdeus'
+# How often the watcher looks at the clock, in seconds. Short enough that it
+# adds little to the wait it is timing, long enough to cost nothing.
+WATCH_TICK = 0.25
 
 
 def build_server(reading, port=DEFAULT_PORT):
@@ -124,13 +133,19 @@ def resolve_inside(root, relative):
 
 
 def serve(server, reading):
-    """Serve until interrupted, or until the page stops answering."""
+    """Serve until interrupted, or until the page says it has gone."""
     threading.Thread(target=watch_heartbeat, args=(server, reading), daemon=True).start()
     with server:
         try:
             server.serve_forever()
         except KeyboardInterrupt:
             pass
+    # The reading is over, and whoever is waiting on it is told so twice: the
+    # flag is what the wait looks at, and the event is what wakes it to look.
+    # Without the waking it goes on waiting out the turn it was in, which is a
+    # second of a reading whose page closed a moment ago.
+    reading.over.set()
+    reading.asked.set()
 
 
 def start(document, servername, editable=False):
@@ -178,24 +193,34 @@ def wanted_state(body):
 
 
 def watch_heartbeat(server, reading):
-    """Stop the server once the page it was opened for has gone quiet.
+    """Stop the server once the page it was opened for has said goodbye, or gone quiet.
 
-    A reading opened from the file manager has no terminal to interrupt, so a
-    page that has stopped speaking is what ends it. The clock starts at the
-    first heartbeat, so a reading whose browser never opened keeps serving and
-    stays reachable by hand.
+    A reading opened from the file manager has no terminal to interrupt, so the
+    page going is what ends it. A page closing says so as it goes and the
+    reading ends a moment later. Behind that sits the longer wait for a page
+    that says nothing at all, which is what a browser killed outright leaves.
+    The quiet clock starts at the first heartbeat, so a reading whose browser
+    never opened keeps serving and stays reachable by hand.
+
+    A farewell is waited on rather than acted on at once, because a reload says
+    goodbye on its way out exactly as a close does. The page that comes back
+    says it is here again well inside the wait, which takes the farewell back.
 
     A reading that is editing is held up by vim instead, and the page is not
     asked to speak for it. Otherwise closing the page of a reading whose vim
-    has unsaved work would stop the server ten seconds later, from under work
-    vim is quite right to be refusing to let go of.
+    has unsaved work would stop the server from under work vim is quite right
+    to be refusing to let go of.
     """
     while True:
-        time.sleep(1)
+        time.sleep(WATCH_TICK)
         beat = reading.beat
+        gone = reading.gone
         if reading.editing:
             continue
-        if beat is not None and time.monotonic() - beat > HEARTBEAT_TIMEOUT:
+        now = time.monotonic()
+        if (gone is not None and now - gone > FAREWELL_GRACE) or (
+            beat is not None and now - beat > HEARTBEAT_TIMEOUT
+        ):
             server.shutdown()
             return
 
@@ -221,6 +246,10 @@ class Reading:
         # Whether vim is up. Written by the session that opens and closes it,
         # and read here to decide which routes answer.
         self.editing = False
+        # When the page said it was going, or nothing where it has not said so.
+        # A page that comes back, which is what a reload is, says it is here
+        # again and this goes back to nothing.
+        self.gone = None
         # The two ends of the pipe an asking is also said down, for a waiter
         # that cannot hear the event above. A reading with vim up is inside its
         # X event loop, waiting on a socket, and one wait can cover a socket and
@@ -231,6 +260,11 @@ class Reading:
         # Written to without waiting, so that a page asking many times over
         # while nobody is reading the other end cannot hold the server up.
         os.set_blocking(self.said, False)
+        # Whether the reading has ended, set when the server stops. Whoever is
+        # holding the reading up waits on this rather than on the serving
+        # thread, which is still tidying itself away for a moment after the
+        # last request has been answered.
+        self.over = threading.Event()
         # The tree is fixed by the document the reading started at. Following
         # a link moves the current document but never widens what is served.
         self.root = self.current.parent
@@ -311,7 +345,13 @@ class ReadingHandler(BaseHTTPRequestHandler):
         """Answer a write. Every refusal is caught here rather than dropped."""
         try:
             body = self.read_json()
-            if self.path == '/api/cursor' and self.reading.editing:
+            if self.path == '/api/closed':
+                # Said by the page as it goes, so that a closed window ends the
+                # reading at once rather than at the end of the long wait for a
+                # page that has simply gone quiet.
+                self.reading.gone = time.monotonic()
+                self.send_json({'ok': True})
+            elif self.path == '/api/cursor' and self.reading.editing:
                 self.reading.cursor = wanted_line(body)
                 if body.get('clicked'):
                     self.reading.clicks += 1
@@ -325,6 +365,11 @@ class ReadingHandler(BaseHTTPRequestHandler):
                 self.send_json({'editing': self.reading.editing})
             elif self.path == '/api/heartbeat':
                 self.reading.beat = time.monotonic()
+                # A page speaking is a page still here, which takes back any
+                # farewell said before it. That is what holds a reading open
+                # across a reload, where the goodbye and the page that comes
+                # back are a moment apart.
+                self.reading.gone = None
                 self.send_json({'ok': True})
             elif self.path == '/api/jump' and self.reading.editing:
                 vimlink.jump(self.reading.servername, *wanted_block(body))
