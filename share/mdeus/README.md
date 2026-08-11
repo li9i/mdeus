@@ -64,13 +64,13 @@ The three themes draw all of it. `GitHub` reproduces GitHub's own colours, icons
 | `page.js` | The theme dropdown, the three toggles beside it, the contents list, the copy button on every fence, the heading names, the folding of a section, which nothing calls for the moment, and the redraw. |
 | `sync.css`, `sync.js` | The two marks and the sync with vim. Loaded by every reading, and asleep until vim is up. |
 | `test_render.py`, `test_server.py` | The tests. |
-| `../icons/hicolor/*/apps/mdeus.png` | What a reading looks like on the panel while vim is up, and in the "Open With" menu. |
+| `../icons/hicolor/*/apps/mdeus.png` | What a reading looks like on the panel, in both of its states, and in the "Open With" menu. |
 
 The command itself is `mdeus`, and it lives in `~/.local/bin`.
 
 Its desktop entry is in the `caja` package. A reading is a browser, and a browser with vim beside it as soon as you ask, and an entry carries one icon, so its icon is one image of the two: the terminal behind at the top left and the browser in front at the bottom right, the pair overlapping inside one square. No theme has such an image, so it ships here, and the window an editing session opens wears it as well. It was cut from Buuf 3.46 at 128 pixels, `gnome/128x128/apps/utilities-terminal.png` behind `miscellaneous/128x128/apps/google-chrome.png`, each trimmed to what it draws and scaled to seven tenths of the square. The square is what matters more than the pair: everything else on the panel is square, and an icon wider than it is tall stands out for the wrong reason.
 
-That icon is worn only while vim is up. A reading that is only the page is a window of the browser's, so it wears whatever the browser wears, and there is no way round that short of giving up the borrowed window.
+A reading wears that icon in both of its states, and reaches it two different ways. While vim is up the window belongs to the reading, so the image is read off the disk and put on the window as pixels. While a reading is only the page the window belongs to the browser, and a browser window wears the icon its page names, so the page names one: `<link rel="icon">` pointing at `/icon.png`, which the server answers with the 128 pixel file. The images sit outside the directory the page's own files are served from, hence the route of its own. A printed copy names no icon, since it reaches for no file at all and an icon is not worth breaking that for.
 
 `render.py` and `themes.css` are read by the spec review tool in `~/.claude/scripts/spec_review` as well, so that tool will not start unless this package is stowed.
 
@@ -103,7 +103,7 @@ Run all of it after touching anything to do with the browser, the windows or vim
 
 ### The page on its own
 
-1. `mdeus doc.md` from a terminal, with a browser already running. One window on the desktop and one entry on the panel, both reading `mdeus: doc.md`, and the window carries the page and nothing else: no address bar, no tabs, no bookmarks. It is up within a moment of the command, since the browser you already had is the one that put it there. Every other window of that browser is left where it was.
+1. `mdeus doc.md` from a terminal, with a browser already running. One window on the desktop and one entry on the panel, both reading `mdeus: doc.md` and carrying the reading's own icon, and the window carries the page and nothing else: no address bar, no tabs, no bookmarks. It is up within a moment of the command, since the browser you already had is the one that put it there. Every other window of that browser is left where it was.
 2. `mdeus --tab doc.md`, and then `mdeus doc.md` with Chrome and Chromium both off `PATH`. Both open an ordinary tab of your default browser, address bar and all, and the reading works the same in it.
 3. Several readings at once, on different documents. Each prints its own address on its own port and each redraws its own file, and each window is named after the file it is showing.
 4. No browser reachable. `env -u DISPLAY -u BROWSER mdeus doc.md`. Nothing opens and nothing is said about it, since a browser asked for a window without a desktop to draw it on fails quietly. The address is printed anyway and the reading serves, so it can still be opened by hand. Fetch it with `curl` or paste it into a browser started later.
@@ -189,7 +189,7 @@ Run all of it after touching anything to do with the browser, the windows or vim
 60. `python3-xlib` missing. Put a directory on `PYTHONPATH` holding an `Xlib/__init__.py` that raises `ImportError`, then press `Edit`. There is no window to make one out of, so vim opens as an ordinary window of its own wherever the desktop puts it and the page stays where it is. It says so in one line and the sync works. Press it again and vim goes and the page is untouched, since it was never taken anywhere.
 61. Neither Chrome nor Chromium on the machine, or `--tab` asked for. The page is in a tab, so pressing `Edit` opens vim as a window of its own beside it and says so in one line. The sync works.
 62. The server killed mid-reading. `pkill -f mdeus` while a reading is editing. vim stays usable. Nothing it sends waits on an answer, so nothing it does can hang on a server that has stopped listening.
-63. `python3-pil` missing. Put a directory on `PYTHONPATH` holding a `PIL/__init__.py` that raises `ImportError`, then press `Edit`. The window opens and the reading works as ever. The one thing lost is the reading's own image on the panel and on the title bar, and the desktop draws whatever it gives a window carrying no image of its own.
+63. `python3-pil` missing. Put a directory on `PYTHONPATH` holding a `PIL/__init__.py` that raises `ImportError`, then press `Edit`. The window opens and the reading works as ever. The one thing lost is the reading's own image on the panel and on the title bar, and the desktop draws whatever it gives a window carrying no image of its own. A reading that is only the page keeps its icon throughout, since that one comes off the page rather than off the disk.
 
 ### Everything the markdown carries
 

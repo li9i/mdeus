@@ -46,7 +46,7 @@ import webbrowser
 
 import vimlink
 from browser import app_command, browser_path
-from server import NAME, TITLE
+from server import NAME, TITLE, icon_path
 from state import MAX_SPLIT, MIN_SPLIT, load_split, save_split
 
 try:
@@ -70,16 +70,10 @@ DIVIDER = 6
 # the glyph after it, which is its mask.
 DIVIDER_CURSOR = 108
 # The image the reading wears on the panel and on its title bar, in the two
-# sizes it ships in. It is the same image the desktop entry names, and it sits
-# beside this file inside the package, so a stowed package and a checkout of it
-# both find it.
-ICONS = tuple(
-    os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        '..', 'icons', 'hicolor', f'{size}x{size}', 'apps', 'mdeus.png',
-    )
-    for size in (24, 128)
-)
+# sizes it ships in. It is the same image the desktop entry names, and the same
+# one the page hands the browser for the window a reading opens in, so a reading
+# looks the same on the panel in both of its states.
+ICONS = tuple(icon_path(size) for size in (24, 128))
 IN_A_TAB = (
     f'{NAME}: the page is in a tab rather than a window of its own, so vim opens\n'
     f'{" " * len(NAME)}  beside it wherever the desktop puts it'

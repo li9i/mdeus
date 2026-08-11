@@ -45,6 +45,13 @@ FILE_ROUTE = '/file/'
 # behind.
 HEARTBEAT_TIMEOUT = 10
 HOST = '127.0.0.1'
+# Where the image a reading wears is served from, and which of the sizes it
+# ships goes down that route. The icons sit outside the directory the page's own
+# files are served from, so they come by a route of their own rather than as one
+# more asset. The larger size is the one sent, since it is the browser and the
+# panel that decide what they are drawing it at.
+ICON_ROUTE = '/icon.png'
+ICON_SIZE = 128
 MAX_BODY = 256 * 1024
 # What a reading is called, in front of the document it is showing. The page
 # writes it into its own title, and the window a reading is drawn in reads that
@@ -61,6 +68,17 @@ def build_server(reading, port=DEFAULT_PORT):
         return ThreadingHTTPServer((HOST, port), handler)
     except OSError:
         return ThreadingHTTPServer((HOST, 0), handler)
+
+
+def icon_path(size):
+    """Return the file the reading's image of one size lives in.
+
+    The images sit one directory above this file inside the package, so a stowed
+    package and a checkout of it both find them. Both the panel and the page ask
+    for them, so the tree is named here rather than again in each file that
+    wants it.
+    """
+    return ASSET_DIR.parent / 'icons' / 'hicolor' / f'{size}x{size}' / 'apps' / f'{NAME}.png'
 
 
 def page_html(title, state, head, body_tail=''):
@@ -260,6 +278,8 @@ class ReadingHandler(BaseHTTPRequestHandler):
             self.send_doc(parse_qs(parts.query).get('path', [''])[0])
         elif path.startswith(FILE_ROUTE):
             self.send_from(self.reading.root, unquote(path[len(FILE_ROUTE) :]))
+        elif path == ICON_ROUTE:
+            self.send_icon()
         elif path == '/mtime':
             self.send_mtime()
         else:
@@ -374,6 +394,19 @@ class ReadingHandler(BaseHTTPRequestHandler):
             return
         self.send_bytes(path.read_bytes(), mimetypes.guess_type(path)[0] or 'text/plain')
 
+    def send_icon(self):
+        """Send the image the reading wears, or say there is none where the file is gone.
+
+        A page that is served an error here is no worse off than one that named
+        no icon at all, so a missing file ends as a refusal rather than as a
+        reading that will not open.
+        """
+        path = icon_path(ICON_SIZE)
+        if not path.is_file():
+            self.send_json({'error': 'not found'}, code=404)
+            return
+        self.send_bytes(path.read_bytes(), 'image/png')
+
     def send_json(self, payload, code=200):
         """Send a JSON response."""
         self.send_bytes(json.dumps(payload).encode('utf-8'), 'application/json', code)
@@ -397,7 +430,12 @@ class ReadingHandler(BaseHTTPRequestHandler):
         # for the vim cursor only while editing, and its stylesheet marks blocks
         # that are never marked. They load after page.js, which draws the
         # document they mark.
+        # The icon is named by the page because the window a reading opens in
+        # belongs to the browser, and a browser window wears the icon its page
+        # names. It is linked by a served reading only: a printed copy reaches
+        # for no file of its own, and an icon is not worth breaking that for.
         head = [
+            f'    <link rel="icon" href="{ICON_ROUTE}" />',
             '    <link rel="stylesheet" href="/assets/themes.css" />',
             '    <link rel="stylesheet" href="/assets/sync.css" />',
             '    <script src="/assets/page.js" defer></script>',

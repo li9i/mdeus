@@ -507,6 +507,27 @@ def test_export_path_is_stable_and_differs_per_source():
         stop()
 
 
+def test_icon_is_named_by_the_page_and_served():
+    """The page names an icon and the server sends it, so the window has one to wear.
+
+    A reading that is only the page lives in a window the browser puts up, and
+    such a window wears whatever icon its page names. Nothing else names one for
+    it, so without this a reading stands on the panel under whatever the browser
+    gives a page that asked for nothing.
+    """
+    root, port, reading, stop = start_reading()
+    try:
+        page = fetch(port, '/')[2]
+        assert b'rel="icon"' in page, page[:400]
+        assert f'href="{server.ICON_ROUTE}"'.encode('utf-8') in page, page[:400]
+        status, content_type, data = fetch(port, server.ICON_ROUTE)
+        assert status == 200, status
+        assert content_type.startswith('image/png'), content_type
+        assert data.startswith(b'\x89PNG'), data[:16]
+    finally:
+        stop()
+
+
 def test_linked_document_inside_the_tree_is_rendered():
     """GET /doc?path= renders another document in the tree and the reading moves to it."""
     root, port, reading, stop = start_reading()
