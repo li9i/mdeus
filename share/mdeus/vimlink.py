@@ -8,7 +8,7 @@ The server imports this to reach vim, and the window imports it to ask vim to
 quit. The cursor report is reached from the command line instead, because vim
 reports its cursor by starting a process rather than by waiting on one.
 
-The windows a reading is drawn in are bmvim_window.py's, not this file's.
+The windows an editing session is drawn in are window.py's, not this file's.
 """
 
 import json
@@ -44,7 +44,7 @@ def jump(servername, first, last):
     remote(
         servername,
         '--remote-send',
-        f'{NORMAL_MODE}:call BmvimJumpTo({int(first)}, {int(last)})<CR>',
+        f'{NORMAL_MODE}:call MdeusJumpTo({int(first)}, {int(last)})<CR>',
     )
 
 

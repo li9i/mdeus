@@ -1,0 +1,183 @@
+#!/usr/bin/env python3
+"""
+Read a markdown document in your browser, and edit it there when you want to.
+
+    mdeus <document.md>           serve the document to a window of its own
+    mdeus --edit <document.md>    the same, with vim beside it from the start
+    mdeus --tab <document.md>     serve it to a tab of your default browser
+    mdeus --print <document.md>   write one self contained HTML file, print its
+                                  path, and open nothing
+
+A reading opens as the page and nothing else. The window it opens in carries
+the page and no more: no address bar, no tabs, no bookmarks. It comes from
+Chrome or Chromium, whichever is on the machine, and where neither is the
+reading opens in a tab as though --tab had been asked for.
+
+The Edit box at the top of the page brings vim in beside it. The page and vim
+are then one window, the page on the left and gvim on the right, with a seam
+between them you can drag. Untick the box, or quit vim, and vim goes and the
+page is handed back to the desktop, still open on the same document and still
+where you had scrolled it to. --edit is that box ticked for you before you see
+the page.
+
+A reading is served from this machine and nowhere else, redrawn whenever the
+file changes. While it is only the page, it ends on ctrl-c or once the page has
+stopped saying it is still open, which is what ends a reading started from the
+file manager where there is no terminal to interrupt. While vim is up, the
+reading is held by vim: ctrl-c, the window's close button and the page being
+closed all ask vim to quit, and vim refuses while anything in it is unwritten,
+so nothing is taken away from under unsaved work.
+
+Several readings run at once, each on its own port, each under a name of its
+own. The document is opened read only by this program and is never written to,
+which is what vim is for.
+"""
+
+import argparse
+import os
+import signal
+import sys
+import threading
+from pathlib import Path
+
+# The modules this drives sit beside the script inside the package, so they are
+# found whether the package is stowed or run from a checkout of it.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'share' / 'mdview'))
+
+import vimlink  # noqa: E402
+import window  # noqa: E402
+from browser import browser_path  # noqa: E402
+from export import write_export  # noqa: E402
+from server import NAME, serve, start  # noqa: E402
+
+# How often a reading that is only the page looks up from waiting, in seconds.
+# Nothing is polled for: the wait ends the moment the page asks for anything,
+# and this is only so that a server that has stopped is noticed.
+WAKE = 1
+
+
+def interrupt(reading, ending):
+    """Return the ctrl-c handler for one reading.
+
+    Ctrl-c means the reading is to end, in both of its states. Where vim is up
+    it is asked to quit first, and it refuses while anything in it is unwritten,
+    so the reading ends when vim does and not before. Where vim is not up there
+    is nothing to ask and the wait is simply woken.
+    """
+
+    def handler(number, frame):
+        """End the reading, asking vim first where vim is up."""
+        ending.set()
+        if reading.editing:
+            vimlink.quit_vim(reading.servername)
+        reading.asked.set()
+
+    return handler
+
+
+def main(argv=None):
+    """Run the command line entry point."""
+    args = parse_args(argv)
+    document = args.document
+    if not document.is_file():
+        print(f'{NAME}: no such file: {document}', file=sys.stderr)
+        return 1
+    if not os.access(document, os.R_OK):
+        print(f'{NAME}: cannot read: {document}', file=sys.stderr)
+        return 1
+    if args.print:
+        print(write_export(document))
+        return 0
+    if args.edit and not on_a_desktop():
+        print(f'{NAME}: --edit needs a desktop session', file=sys.stderr)
+        return 1
+    read(document, args.edit, args.tab)
+    return 0
+
+
+def on_a_desktop():
+    """Say whether there is a desktop to open vim into."""
+    return bool(os.environ.get('DISPLAY'))
+
+
+def parse_args(argv):
+    """Return the parsed command line."""
+    parser = argparse.ArgumentParser(
+        prog=NAME,
+        description='Read a markdown document in your browser, and edit it there.',
+    )
+    parser.add_argument('document', type=Path, help='markdown file to read')
+    # Printing opens nothing at all, so there is nothing for vim to sit beside.
+    # Refused rather than quietly dropped, since a flag that was typed and did
+    # nothing is worse than being told it cannot be had.
+    opening = parser.add_mutually_exclusive_group()
+    opening.add_argument(
+        '--edit',
+        action='store_true',
+        help='open with vim beside the page, rather than waiting for the Edit box',
+    )
+    opening.add_argument(
+        '--print',
+        action='store_true',
+        help='write one self contained HTML file and print its path, opening nothing',
+    )
+    parser.add_argument(
+        '--tab',
+        action='store_true',
+        help='open in a tab of your default browser rather than a window of its own',
+    )
+    return parser.parse_args(argv)
+
+
+def read(document, edit, tab):
+    """Serve one reading and hold it up until it ends.
+
+    The server runs on a thread of its own for the whole of a reading, because
+    the main thread is wanted for two things it cannot give up: the X event loop
+    that holds an editing session together, and the signal handler above, which
+    the interpreter will only run on the main thread.
+
+    What that main thread does is wait. A reading that is only the page waits
+    for the page to ask for vim, and a reading with vim waits inside the
+    session. Ending a session either ends the reading or drops it back to
+    waiting, and which of the two is the session's to say.
+    """
+    servername = f'{NAME.upper()}{os.getpid()}'
+    # Whether the page's window is one that can be taken into a container.
+    # A tab cannot be, and neither can a window of a browser that gives no
+    # window of its own, so vim opens beside such a page rather than within it.
+    app_window = bool(browser_path()) and not tab
+    bound, reading, url = start(document, servername, editable=on_a_desktop())
+    # The address carries the reading's own name, because the browser writes
+    # the name of the window it puts up out of the address it was given, and a
+    # page opened at any other address is one no session can find and take in.
+    print(f'reading {document.name}')
+    print(f'  {url}/{servername}')
+    print('  ctrl-c to stop, or close the page', flush=True)
+    serving = threading.Thread(target=serve, args=(bound, reading), daemon=True)
+    serving.start()
+
+    ending = threading.Event()
+    signal.signal(signal.SIGINT, interrupt(reading, ending))
+    if edit:
+        # The container is made before the page is asked for, so that neither
+        # half of the reading is seen standing on the desktop on its way in.
+        if window.edit(reading, url, ending, opening=True, app_window=app_window):
+            return
+    else:
+        window.open_page(url, servername, app_window)
+
+    while not ending.is_set() and serving.is_alive():
+        # Cleared before the wish is read rather than after, so that a page
+        # asking in the moment between the two is answered by the wait ending
+        # at once rather than by a whole turn of waiting.
+        reading.asked.clear()
+        if reading.wanted:
+            if window.edit(reading, url, ending, app_window=app_window):
+                return
+            continue
+        reading.asked.wait(WAKE)
+
+
+if __name__ == '__main__':
+    sys.exit(main())

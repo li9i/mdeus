@@ -1,5 +1,8 @@
-/* The two marks a reading with vim beside it adds to the page. Only that
-   reading loads this file.
+/* The two marks vim puts on the page, beside sync.js which puts them there.
+
+   Every reading loads this file, since vim may be asked for at any moment, and
+   it costs a reading with no vim nothing at all: the two marks below are
+   carried by no block until something marks one.
 
    THE TWO MARKS
    -------------
@@ -35,27 +38,28 @@
 
 .doc .block {
   /* The rule is positioned against the block it marks. Nothing else about
-     the block moves, so a page with no mark on it is the page bmv draws. */
+     the block moves, so a page with no mark on it is drawn exactly as a
+     reading with no vim draws it. */
   position: relative;
   /* The ground fades on the way out only. Arriving, the rule that sets it
      turns this off, so a click answers at once and then lets go slowly. */
   transition: background-color 0.4s ease-out;
 }
 
-.doc .block.bmvim-cursor::before {
+.doc .block.mdeus-cursor::before {
   /* The theme's own text colour, so no theme gains a colour it did not
      already have. */
   background: currentColor;
   bottom: 0;
   content: '';
-  left: var(--bmvim-rule);
+  left: var(--mdeus-rule);
   position: absolute;
   top: 0;
   width: 3px;
 }
 
-.doc .block.bmvim-click {
-  background-color: var(--bmvim-flash, #e6e6e6);
+.doc .block.mdeus-click {
+  background-color: var(--mdeus-flash, #e6e6e6);
   transition: none;
 }
 
@@ -68,11 +72,11 @@
    ------------------------------------------------------------------ */
 
 .browser .doc {
-  --bmvim-rule: -7px;
+  --mdeus-rule: -7px;
 }
 
 .report .doc {
-  --bmvim-rule: -13px;
+  --mdeus-rule: -13px;
 }
 
 /* github draws grounds of its own: #f6f8fa on a fenced block and on every
@@ -80,6 +84,6 @@
    steps well past all of them, so a block that is grey for a second is never
    read as furniture that is grey always. */
 .github .doc {
-  --bmvim-flash: #dbe2e9;
-  --bmvim-rule: -7px;
+  --mdeus-flash: #dbe2e9;
+  --mdeus-rule: -7px;
 }

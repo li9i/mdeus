@@ -68,36 +68,36 @@ call s:MdviewReport(0)
 " built from and sends both ends of them, so the whole block is lit rather than
 " the line it starts at. A pale ground for the eye to land on without hunting,
 " and gone again once the eye has had it: long enough to be seen, short enough
-" not to be read against. Set as a default, so that naming BmvimJump in .vimrc
+" not to be read against. Set as a default, so that naming MdeusJump in .vimrc
 " overrides it.
 let s:linger = 1500
-highlight default BmvimJump guifg=black guibg=#BDDFFF
+highlight default MdeusJump guifg=black guibg=#BDDFFF
 
 " The window and the mark are told to the moment that puts it out, rather than
 " left for it to find, since by the time it comes round the window it was lit in
 " may not be the one in hand. A mark already gone is no matter. The names are
 " plain ones, since a name held to this file cannot be called from the page and
 " cannot be handed to a timer.
-function! BmvimFadeMark(window, match, timer) abort
+function! MdeusFadeMark(window, match, timer) abort
   silent! call matchdelete(a:match, a:window)
 endfunction
 
-function! BmvimJumpTo(first, last) abort
+function! MdeusJumpTo(first, last) abort
   " Only the block last clicked is ever lit. The mark from the click before
   " goes, and so does the moment still counting down for it, which would
   " otherwise come round and put out the light this click has just lit.
-  if exists('w:bmvim_timer')
-    silent! call timer_stop(w:bmvim_timer)
-    unlet w:bmvim_timer
+  if exists('w:mdeus_timer')
+    silent! call timer_stop(w:mdeus_timer)
+    unlet w:mdeus_timer
   endif
-  if exists('w:bmvim_match')
-    silent! call matchdelete(w:bmvim_match)
-    unlet w:bmvim_match
+  if exists('w:mdeus_match')
+    silent! call matchdelete(w:mdeus_match)
+    unlet w:mdeus_match
   endif
   call cursor(a:first, 1)
   normal! zz
-  let w:bmvim_match = matchadd(
-    \ 'BmvimJump', '\%>' . (a:first - 1) . 'l\%<' . (a:last + 1) . 'l.\+')
-  let w:bmvim_timer =
-    \ timer_start(s:linger, function('BmvimFadeMark', [win_getid(), w:bmvim_match]))
+  let w:mdeus_match = matchadd(
+    \ 'MdeusJump', '\%>' . (a:first - 1) . 'l\%<' . (a:last + 1) . 'l.\+')
+  let w:mdeus_timer =
+    \ timer_start(s:linger, function('MdeusFadeMark', [win_getid(), w:mdeus_match]))
 endfunction

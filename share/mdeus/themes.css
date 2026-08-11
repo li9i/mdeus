@@ -10,6 +10,8 @@
          <select id="theme">…</select>
          <input type="checkbox" id="wide" />
          <label for="wide">Full width</label>
+         <input type="checkbox" id="edit" />     only where vim can be opened
+         <label for="edit">Edit</label>
          <button id="contents">Contents</button>
        </div>
        <nav class="toc">             present only while the list is open
@@ -17,7 +19,7 @@
          <ul>…nested <li><a href="#id">…</ul>
        </nav>
        <main class="doc">
-         <p class="meta">docs/bmvim.md</p>
+         <p class="meta">docs/notes.md</p>
          <div class="block" data-start="1" data-end="1">
            <div class="prose">         …the rendered block…
              <div class="code-block">  one of these around every fence

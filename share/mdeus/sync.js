@@ -1,5 +1,11 @@
-/* The browser half of the sync between the page and vim. Only a reading with
-   vim beside it loads this file.
+/* The browser half of the sync between the page and vim.
+
+   Every reading loads this file, because vim may be asked for at any moment
+   and a page that had to reload to gain the sync would lose its place in the
+   document. It does nothing at all until vim is there: page.js owns whether
+   vim is up, since page.js owns the poll that says so, and tells this file on
+   the mdeus:editing event. That one event is the whole of what passes between
+   the two.
 
    Double clicking a block sends vim to the first source line that block was
    built from, and double clicking in vim brings the page over the same way.
@@ -24,7 +30,7 @@
 
 const CURSOR_MS = 200;
 /* How long the ground on the block stays before it is let go. The fade itself
-   is in bmvim.css. */
+   is in sync.css. */
 const FLASH_MS = 1000;
 
 const pane = document.querySelector('.doc');
@@ -35,6 +41,9 @@ const pane = document.querySelector('.doc');
    flag the report behind it would take back. Nothing has been followed until
    the first reply has been read, and that reply is not a click. */
 let clicksAt = null;
+/* The interval asking after the vim cursor, running only while vim is up. Null
+   says the reading is only the page, and the sync is asleep. */
+let cursorTimer = null;
 let flashTimer = null;
 /* The line the last reply named, so a reply saying the cursor has not moved
    costs nothing more than reading it. */
@@ -45,11 +54,13 @@ let lineAt = null;
 let ruleAt = null;
 
 function begin() {
-  /* Both directions of the sync, started together. The double click is
-     listened for on the pane rather than on each block, because page.js builds
-     the blocks afresh on every redraw and a handler on one would go with it. */
+  /* Listening, and nothing more. The double click is listened for on the pane
+     rather than on each block, because page.js builds the blocks afresh on
+     every redraw and a handler on one would go with it, and it is registered
+     now rather than when vim arrives for the same reason: one handler for the
+     life of the page, which does nothing while there is no vim to send to. */
   pane.addEventListener('dblclick', onBlockDouble);
-  window.setInterval(pollCursor, CURSOR_MS);
+  document.addEventListener('mdeus:editing', onEditing);
 }
 
 function blockForLine(line) {
@@ -82,13 +93,27 @@ function blockForLine(line) {
 function flash(block) {
   /* The ground on the block that was pointed at. One block carries it at a
      time, and pointing at another starts the second over. */
-  const lit = pane.querySelector('.bmvim-click');
+  const lit = pane.querySelector('.mdeus-click');
   if (lit) {
-    lit.classList.remove('bmvim-click');
+    lit.classList.remove('mdeus-click');
   }
   window.clearTimeout(flashTimer);
-  block.classList.add('bmvim-click');
-  flashTimer = window.setTimeout(() => block.classList.remove('bmvim-click'), FLASH_MS);
+  block.classList.add('mdeus-click');
+  flashTimer = window.setTimeout(() => block.classList.remove('mdeus-click'), FLASH_MS);
+}
+
+function forget() {
+  /* Put the sync back as it was before vim arrived. Both marks go, since
+     neither means anything with no cursor behind it, and what the last reply
+     said is dropped, so that the next session starts from nothing rather than
+     from a line vim moved off an hour ago. */
+  pane.querySelectorAll('.mdeus-click, .mdeus-cursor').forEach((block) => {
+    block.classList.remove('mdeus-click', 'mdeus-cursor');
+  });
+  window.clearTimeout(flashTimer);
+  clicksAt = null;
+  lineAt = null;
+  ruleAt = null;
 }
 
 function markCursor(line, clicked) {
@@ -107,15 +132,15 @@ function markCursor(line, clicked) {
      one the page has folded away. The heading of the folded section stands in
      for it, since that is all the page is showing of it. */
   const block = shownFor(blockForLine(line));
-  const ruled = pane.querySelector('.bmvim-cursor');
+  const ruled = pane.querySelector('.mdeus-cursor');
   if (ruled && ruled !== block) {
-    ruled.classList.remove('bmvim-cursor');
+    ruled.classList.remove('mdeus-cursor');
   }
   if (!block) {
     ruleAt = null;
     return;
   }
-  block.classList.add('bmvim-cursor');
+  block.classList.add('mdeus-cursor');
   ruleAt = Number(block.dataset.start);
   if (clicked) {
     show(block);
@@ -136,8 +161,8 @@ function onBlockDouble(event) {
      document that highlights a word wherever you point at it reads as though
      something were being chosen. */
   const block = event.target.closest('.block');
-  if (!block) {
-    return;
+  if (!block || cursorTimer === null) {
+    return; // no vim to send to, so the two clicks are the browser's own
   }
   window.getSelection().removeAllRanges();
   flash(block);
@@ -149,6 +174,24 @@ function onBlockDouble(event) {
     headers: { 'Content-Type': 'application/json' },
     method: 'POST',
   }).catch(() => {});
+}
+
+function onEditing(event) {
+  /* vim has come or gone. The sync is the asking after the cursor, so it is
+     started and stopped rather than left running against a server that would
+     answer nothing, and the marks are cleared on the way out so that no rule
+     is left standing in a page with no vim behind it. */
+  if (event.detail.editing) {
+    if (cursorTimer === null) {
+      cursorTimer = window.setInterval(pollCursor, CURSOR_MS);
+    }
+    return;
+  }
+  if (cursorTimer !== null) {
+    window.clearInterval(cursorTimer);
+    cursorTimer = null;
+    forget();
+  }
 }
 
 async function pollCursor() {
@@ -181,7 +224,7 @@ function ruleStands() {
      builds the document again from scratch and the rule goes with the elements
      it was on, so this is what tells a report of an unchanged line that there
      is work to do after all. */
-  const ruled = pane.querySelector('.bmvim-cursor');
+  const ruled = pane.querySelector('.mdeus-cursor');
   return ruled === null ? ruleAt === null : Number(ruled.dataset.start) === ruleAt;
 }
 

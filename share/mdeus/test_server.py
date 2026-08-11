@@ -5,9 +5,9 @@ Each test builds a fixture tree in a temporary directory, binds a real server
 on a free port and speaks to it over HTTP. No browser, no vim, no test
 framework. Needs markdown_it, which render.py needs anyway.
 
-bmvim_window.py is imported for one string, the word a reading's window looks
-for at the front of the page's title. Nothing else here is that module's, and
-it asks for no display to be read this way.
+No test here opens vim. A reading is put into the editing state by hand, which
+is all the routes that speak to vim ask for, and the one test that would reach
+vim puts a stand in over the call.
 
 Nothing here may reach the state file or the export cache in the home
 directory, so both paths are pointed into the temporary tree before any request
@@ -39,11 +39,11 @@ from urllib.parse import urlencode
 TEST_HOME = tempfile.mkdtemp(prefix='mdview-test-home-')
 os.environ['HOME'] = TEST_HOME
 
-import bmvim_window
 import export
 import render
 import server
 import state
+import vimlink
 
 
 OTHER_MD = """\
@@ -69,6 +69,11 @@ This document sits above the directory the reading started in.
 """
 
 SECRET_PNG = b'\x89PNG\r\n\x1a\nsecret'
+
+# The name one test reading serves under. Every reading has one, since the page
+# is served under it and the browser writes the name of the page's window out
+# of the address.
+SERVERNAME = 'MDEUSTEST'
 
 START_BLOCKS = [
     ('heading', 1, 1),
@@ -179,15 +184,15 @@ def start_export():
     return root, stop
 
 
-def start_reading(servername=None):
-    """Serve a fixture tree on a free port and return its root, the port and a stop call.
+def start_reading(editable=False, editing=False):
+    """Serve a fixture tree on a free port and return its root, port, reading and a stop call.
 
     The state path is redirected here rather than in each test, so that no test
     can reach the real state file however it is written.
 
-    A servername turns on the routes a reading with vim beside it has, and no
-    vim ever answers to it here, so only the routes that do not speak to vim
-    may be asked for under one.
+    A reading put into the editing state answers the routes that speak to vim.
+    No vim answers to the name here, so only the routes that record something
+    rather than send it on may be asked for under one.
     """
     base = Path(tempfile.mkdtemp(prefix='mdview-test-')).resolve()
     state.STATE_PATH = base / 'state.json'
@@ -204,9 +209,9 @@ def start_reading(servername=None):
     # comparing the path before resolving it would hand both of these over.
     (root / 'escape.md').symlink_to('../outside/secret.md')
     (root / 'escape.png').symlink_to('../outside/secret.png')
-    bound = server.build_server(
-        server.Reading(root / 'start.md', servername=servername), port=0
-    )
+    reading = server.Reading(root / 'start.md', SERVERNAME, editable=editable)
+    reading.editing = editing
+    bound = server.build_server(reading, port=0)
     thread = threading.Thread(target=bound.serve_forever, daemon=True)
     thread.start()
 
@@ -217,7 +222,7 @@ def start_reading(servername=None):
         thread.join(timeout=TIMEOUT)
         shutil.rmtree(base, ignore_errors=True)
 
-    return root, bound.server_address[1], stop
+    return root, bound.server_address[1], reading, stop
 
 
 def test_a_click_in_vim_is_counted_and_a_move_is_not():
@@ -229,7 +234,7 @@ def test_a_click_in_vim_is_counted_and_a_move_is_not():
     carries the same line a moment later, and a flag would be taken back by it
     before the page had come round to look.
     """
-    root, port, stop = start_reading(servername='TESTVIM')
+    root, port, reading, stop = start_reading(editing=True)
     try:
         status, state = fetch_json(port, '/api/cursor')
         assert (status, state) == (200, {'clicks': 0, 'line': None}), state
@@ -245,9 +250,31 @@ def test_a_click_in_vim_is_counted_and_a_move_is_not():
         stop()
 
 
+def test_a_link_is_followed_in_vim_only_while_editing():
+    """Following a link takes vim with it while vim is up, and speaks to nobody otherwise.
+
+    Both halves of a reading have to be of the same file, or the sync marks a
+    document vim does not have open. A reading that is viewing has no vim to
+    tell, and must not go looking for one.
+    """
+    root, port, reading, stop = start_reading()
+    told = []
+    was = vimlink.edit
+    vimlink.edit = lambda servername, path: told.append((servername, Path(path).name))
+    try:
+        fetch_json(port, '/doc?' + urlencode({'path': 'notes/other.md'}))
+        assert told == [], told
+        reading.editing = True
+        fetch_json(port, '/doc?' + urlencode({'path': 'start.md'}))
+        assert told == [(SERVERNAME, 'start.md')], told
+    finally:
+        vimlink.edit = was
+        stop()
+
+
 def test_absolute_and_parent_paths_are_not_served():
     """A file named by ../ or by an absolute path is not found, on either route."""
-    root, port, stop = start_reading()
+    root, port, reading, stop = start_reading()
     try:
         secret_png = root.parent / 'outside' / 'secret.png'
         secret_md = root.parent / 'outside' / 'secret.md'
@@ -270,7 +297,7 @@ def test_absolute_and_parent_paths_are_not_served():
 
 def test_asset_inside_the_tree_is_served():
     """GET /file/ sends a file from inside the tree, bytes and type intact."""
-    root, port, stop = start_reading()
+    root, port, reading, stop = start_reading()
     try:
         status, content_type, data = fetch(port, '/file/images/pixel.png')
         assert status == 200, status
@@ -282,7 +309,7 @@ def test_asset_inside_the_tree_is_served():
 
 def test_blocks_carry_the_lines_render_gave_them():
     """GET /doc sends the blocks and the outline the renderer produced."""
-    root, port, stop = start_reading()
+    root, port, reading, stop = start_reading()
     try:
         status, doc = fetch_json(port, '/doc')
         assert status == 200, status
@@ -306,7 +333,7 @@ def test_document_image_is_reachable_where_the_page_is_told_to_look():
     be read against that and reach nothing. What the page is handed has to be an
     address the reading answers, and the only way to say so is to follow it.
     """
-    root, port, stop = start_reading()
+    root, port, reading, stop = start_reading()
     try:
         status, doc = fetch_json(port, '/doc')
         found = re.findall(r'src="([^"]*)"', ''.join(
@@ -320,9 +347,69 @@ def test_document_image_is_reachable_where_the_page_is_told_to_look():
         stop()
 
 
+def test_edit_is_recorded_and_answered_with_the_state_as_it_stands():
+    """POST /api/edit records what the page asked for and says what the reading is doing.
+
+    Opening vim takes a second and closing it may be refused outright by a vim
+    with unsaved work, so the answer cannot be the wish granted. It is the state
+    as it stands, and the page learns the outcome from the poll it already runs.
+    """
+    root, port, reading, stop = start_reading(editable=True)
+    try:
+        assert reading.wanted is False, reading.wanted
+        assert not reading.asked.is_set(), 'nobody asked yet'
+        status, reply = fetch_json(port, '/api/edit', 'POST', {'editing': True})
+        assert status == 200, status
+        # The wish is recorded and whoever acts on it is woken, and the reading
+        # is still doing what it was doing until that somebody has acted.
+        assert reading.wanted is True, reading.wanted
+        assert reading.asked.is_set(), 'nobody was woken'
+        assert reply == {'editing': False}, reply
+        # And once vim is up, the same route answers with the truth rather than
+        # with what was last asked for.
+        reading.editing = True
+        status, reply = fetch_json(port, '/api/edit', 'POST', {'editing': False})
+        assert reply == {'editing': True}, reply
+        assert reading.wanted is False, reading.wanted
+        # A body naming nothing reads as a request to stop, not as an error.
+        assert fetch_json(port, '/api/edit', 'POST', {})[0] == 200
+        assert reading.wanted is False, reading.wanted
+    finally:
+        stop()
+    # A reading with no desktop behind it has nowhere to open vim into. Its
+    # page carries no box to ask with, so an ask that reaches it came from
+    # somewhere else and is not recorded at all.
+    root, port, reading, stop = start_reading()
+    try:
+        assert fetch_json(port, '/api/edit', 'POST', {'editing': True})[1] == {
+            'editing': False}
+        assert reading.wanted is False, reading.wanted
+        assert not reading.asked.is_set(), 'an ask nobody can honour woke the reading'
+    finally:
+        stop()
+
+
+def test_editable_says_whether_the_edit_box_belongs_on_the_page():
+    """The document reply carries whether the reading could open vim at all.
+
+    The controls are built from the first reply, and a printed copy is answered
+    by no server, so a copy carries no box without having to be told not to.
+    """
+    root, port, reading, stop = start_reading()
+    try:
+        assert fetch_json(port, '/doc')[1]['editable'] is False
+    finally:
+        stop()
+    root, port, reading, stop = start_reading(editable=True)
+    try:
+        assert fetch_json(port, '/doc')[1]['editable'] is True
+    finally:
+        stop()
+
+
 def test_every_theme_is_accepted_and_a_fourth_is_not():
     """All three theme keys are stored and served back, and a name outside them is not."""
-    root, port, stop = start_reading()
+    root, port, reading, stop = start_reading()
     try:
         for theme in THEMES:
             status, reply = fetch_json(
@@ -422,7 +509,7 @@ def test_export_path_is_stable_and_differs_per_source():
 
 def test_linked_document_inside_the_tree_is_rendered():
     """GET /doc?path= renders another document in the tree and the reading moves to it."""
-    root, port, stop = start_reading()
+    root, port, reading, stop = start_reading()
     try:
         status, doc = fetch_json(
             port, '/doc?' + urlencode({'path': 'notes/other.md'}))
@@ -444,7 +531,7 @@ def test_full_width_is_on_until_it_is_unticked_and_lands_on_the_first_paint():
     lines would be drawn one way and rewrap the moment it did, so the setting
     has to arrive with the markup rather than after it.
     """
-    root, port, stop = start_reading()
+    root, port, reading, stop = start_reading()
     try:
         # Nothing stored yet, so the reading opens the way the very first one
         # did, which is with the box ticked.
@@ -475,7 +562,7 @@ def test_full_width_is_on_until_it_is_unticked_and_lands_on_the_first_paint():
 
 def test_missing_or_broken_state_falls_back_to_browser():
     """A state file that is absent, malformed or naming no theme is not an error."""
-    root, port, stop = start_reading()
+    root, port, reading, stop = start_reading()
     try:
         default = {'contents': False, 'theme': 'browser', 'wide': True}
         assert not state.STATE_PATH.exists(), state.STATE_PATH
@@ -498,7 +585,7 @@ def test_missing_or_broken_state_falls_back_to_browser():
 
 def test_mtime_moves_only_when_the_file_is_written():
     """/mtime holds still until the source file is written, and moves after it."""
-    root, port, stop = start_reading()
+    root, port, reading, stop = start_reading()
     try:
         status, first = fetch_json(port, '/mtime')
         assert status == 200, status
@@ -516,28 +603,41 @@ def test_mtime_moves_only_when_the_file_is_written():
         stop()
 
 
-def test_page_is_served_under_the_name_a_reading_with_vim_was_given():
-    """A reading with vim beside it answers at its own name as well as at the root.
+def test_mtime_carries_whether_vim_is_up():
+    """The poll the page already runs is what the Edit box follows.
+
+    The box has to follow the reading rather than lead it, so that a vim quitting
+    of its own accord unticks it. The page asks for the modification time twice
+    a second, so the answer carries both and the box needs no route of its own.
+    """
+    root, port, reading, stop = start_reading(editable=True)
+    try:
+        assert fetch_json(port, '/mtime')[1]['editing'] is False
+        reading.editing = True
+        assert fetch_json(port, '/mtime')[1]['editing'] is True
+        reading.editing = False
+        assert fetch_json(port, '/mtime')[1]['editing'] is False
+    finally:
+        stop()
+
+
+def test_page_is_served_under_the_reading_s_own_name():
+    """Every reading answers at its own name as well as at the root, and at no other name.
 
     The browser names the window it puts up after the address it was given, and
-    that name is how a reading with vim picks its own page's window out of the
-    desktop. So the name has to be in the address, and the address has to be
-    answered. A reading without vim has no window to find and no name to be
-    found by, and answers at the root alone.
+    that name is how a reading picks its own page's window out of the desktop
+    when it comes to take it into a container. The name has to be settled before
+    the page exists rather than when vim arrives, so a reading that is only
+    viewing serves under one too.
     """
-    root, port, stop = start_reading(servername='TESTVIM')
+    root, port, reading, stop = start_reading()
     try:
-        for path in ('/', '/TESTVIM'):
+        for path in ('/', f'/{SERVERNAME}'):
             status, content_type, page = fetch(port, path)
             assert status == 200, (path, status)
             assert content_type.startswith('text/html'), (path, content_type)
-            assert b'<title>bmvim: start.md</title>' in page, page[:200]
-        assert fetch_json(port, '/OTHERVIM')[0] == 404, 'another reading was answered for'
-    finally:
-        stop()
-    root, port, stop = start_reading()
-    try:
-        assert fetch_json(port, '/TESTVIM')[0] == 404, 'a reading without vim took a name'
+            assert b'<title>mdeus: start.md</title>' in page, page[:200]
+        assert fetch_json(port, '/MDEUSOTHER')[0] == 404, 'another reading was answered for'
     finally:
         stop()
 
@@ -545,37 +645,35 @@ def test_page_is_served_under_the_name_a_reading_with_vim_was_given():
 def test_page_title_says_the_command_and_the_document():
     """The title names the command and the file, and travels with the document.
 
-    The tab and, for a reading with vim beside it, the window on the panel both
-    read it. The page writes its own title as it draws, so that following a link
-    to another document takes the title along with it, and what it writes is the
+    The tab, and the window on the panel while a reading is editing, both read
+    it. The page writes its own title as it draws, so that following a link to
+    another document takes the title along with it, and what it writes is the
     title the server sent rather than one put together again there.
+
+    It reads the same in both states. The window a reading is drawn in tells a
+    title the page wrote from the address the pane carries before the page has
+    arrived, and it does so by the word in front, so a title that changed as vim
+    came and went would leave the window unable to name itself.
     """
-    root, port, stop = start_reading()
+    root, port, reading, stop = start_reading()
     try:
-        assert b'<title>bmv: start.md</title>' in fetch(port, '/')[2]
-        assert fetch_json(port, '/doc')[1]['title'] == 'bmv: start.md'
+        assert b'<title>mdeus: start.md</title>' in fetch(port, '/')[2]
+        assert fetch_json(port, '/doc')[1]['title'] == 'mdeus: start.md'
         moved = fetch_json(port, '/doc?' + urlencode({'path': 'notes/other.md'}))[1]
-        assert moved['title'] == 'bmv: notes/other.md', moved
-    finally:
-        stop()
-    # The window a reading with vim is drawn in reads the page's title off the
-    # browser and takes it for its own, and it tells such a title from the
-    # address the browser shows while the page is still on its way by the word
-    # in front. That word is written in two files that never meet, so the one
-    # here has to go on beginning the one there.
-    root, port, stop = start_reading(servername='TESTVIM')
-    try:
-        title = fetch_json(port, '/doc')[1]['title']
-        assert title.startswith(bmvim_window.TITLE), (title, bmvim_window.TITLE)
+        assert moved['title'] == 'mdeus: notes/other.md', moved
+        assert moved['title'].startswith(server.TITLE), (moved['title'], server.TITLE)
+        reading.editing = True
+        assert fetch_json(port, '/doc')[1]['title'] == 'mdeus: notes/other.md'
     finally:
         stop()
 
 
 def test_removed_file_gives_the_gone_reply_and_recovers():
     """A source file taken away gives the gone reply, and the reading survives it."""
-    root, port, stop = start_reading()
+    root, port, reading, stop = start_reading()
     try:
-        gone = {'name': 'start.md', 'gone': True, 'title': 'bmv: start.md',
+        gone = {'editable': False, 'editing': False, 'name': 'start.md',
+                'gone': True, 'title': 'mdeus: start.md',
                 'state': {'contents': False, 'theme': 'browser', 'wide': True}}
         source = root / 'start.md'
         source.unlink()
@@ -602,7 +700,7 @@ def test_removed_file_gives_the_gone_reply_and_recovers():
 
 def test_split_is_kept_beside_the_theme_and_falls_back():
     """The divider's share and the page's theme share a file and neither puts the other out."""
-    root, port, stop = start_reading()
+    root, port, reading, stop = start_reading()
     try:
         assert state.load_split() == state.DEFAULT_SPLIT, state.load_split()
         state.save_split(0.62)
@@ -628,7 +726,7 @@ def test_split_is_kept_beside_the_theme_and_falls_back():
 
 def test_state_file_is_never_read_half_written():
     """Somebody reading the state file only ever sees a whole and valid one."""
-    root, port, stop = start_reading()
+    root, port, reading, stop = start_reading()
     try:
         writes = 120
         last = {'contents': bool((writes - 1) % 2),
@@ -671,7 +769,7 @@ def test_state_file_is_never_read_half_written():
 
 def test_state_is_stored_and_reported_back():
     """POST /api/state writes the file, and the next /doc reports what it wrote."""
-    root, port, stop = start_reading()
+    root, port, reading, stop = start_reading()
     try:
         wanted = {'contents': True, 'theme': 'report', 'wide': False}
         status, reply = fetch_json(port, '/api/state', 'POST', wanted)
@@ -685,9 +783,40 @@ def test_state_is_stored_and_reported_back():
         stop()
 
 
+def test_the_vim_routes_answer_only_while_editing():
+    """The cursor and the jump are there while vim is, and are not found otherwise.
+
+    A reading that is viewing has no more of an API than a bare page needs. The
+    two page scripts are loaded either way, since editing may begin at any
+    moment, so the server is what keeps the sync from speaking into an empty
+    room rather than the markup.
+    """
+    root, port, reading, stop = start_reading(editable=True)
+    jumped = []
+    was = vimlink.jump
+    vimlink.jump = lambda servername, first, last: jumped.append((first, last))
+    try:
+        assert fetch_json(port, '/api/cursor')[0] == 404
+        assert fetch_json(port, '/api/cursor', 'POST', {'line': 3})[0] == 404
+        assert fetch_json(port, '/api/jump', 'POST', {'line': 3, 'last': 4})[0] == 404
+        assert jumped == [], jumped
+        reading.editing = True
+        assert fetch_json(port, '/api/cursor')[0] == 200
+        assert fetch_json(port, '/api/cursor', 'POST', {'line': 3})[0] == 200
+        assert fetch_json(port, '/api/jump', 'POST', {'line': 3, 'last': 4})[0] == 200
+        assert jumped == [(3, 4)], jumped
+        # And they close again when vim goes, rather than staying open for the
+        # rest of the reading because they were once needed.
+        reading.editing = False
+        assert fetch_json(port, '/api/cursor')[0] == 404
+    finally:
+        vimlink.jump = was
+        stop()
+
+
 def test_symlink_out_of_the_tree_is_not_followed():
     """A name inside the tree pointing out of it is not found, on either route."""
-    root, port, stop = start_reading()
+    root, port, reading, stop = start_reading()
     try:
         # If the targets were missing the server would refuse for the wrong
         # reason, so check both links really lead to readable files first.

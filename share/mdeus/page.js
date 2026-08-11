@@ -1,10 +1,19 @@
 /* The reading page: the theme dropdown, the full width box beside it, the
-   contents list, the sections a double click folds away, the redraw when the
-   file changes, and the heartbeat that ends a reading with no terminal.
+   Edit box that brings vim in, the contents list, the sections a double click
+   folds away, the redraw when the file changes, and the heartbeat that ends a
+   reading with no terminal.
 
    The page keeps nothing of its own. It draws what GET /doc sends and writes
    every change back through POST /api/state, so one reading and the next
    agree wherever they were opened from.
+
+   The Edit box is the exception to that: it is not a setting and is stored
+   nowhere. It is a fact about the reading in front of you, so it follows what
+   the server says rather than leading it, and every poll writes it again.
+
+   sync.js runs beside this file and owns the two marks a reading with vim
+   carries. One named event passes between them, mdeus:editing, dispatched here
+   whenever vim comes or goes. Nothing else is shared.
 
    The structure this builds is written out at the top of themes.css. */
 
@@ -35,6 +44,10 @@ const foldedAt = new Set();
 
 let contentsOpen = false;
 let doc = null;
+/* Whether vim is up, as the server last said. Never what this page asked for:
+   opening vim takes a moment and closing it is refused outright while anything
+   in vim is unwritten, so the box has to follow rather than lead. */
+let editing = false;
 let headingIds = [];
 let mtime = null;
 /* The source lines the top level headings start at, which is to say where every
@@ -60,6 +73,27 @@ function anchor() {
     }
   }
   return null;
+}
+
+function applyEditing(now) {
+  /* Say what the server says about vim: tick the box to match, and tell
+     sync.js when the answer has moved.
+
+     The box is written on every poll rather than only when the answer changes,
+     because the click that ticked it has already moved it. A tick the reading
+     could not honour, an untick a vim with unsaved work refused, and a vim that
+     quit of its own accord are all put right within half a second by this. */
+  const box = document.getElementById('edit');
+  if (box) {
+    box.checked = now;
+  }
+  if (now === editing) {
+    return;
+  }
+  editing = now;
+  document.dispatchEvent(
+    new CustomEvent('mdeus:editing', { detail: { editing } })
+  );
 }
 
 function applyFolds() {
@@ -122,6 +156,9 @@ function buildControls() {
   boxLabel.htmlFor = 'wide';
   boxLabel.textContent = 'Full width';
   controlsNode.append(label, select, box, boxLabel);
+  if (doc.editable) {
+    controlsNode.append(...editControl());
+  }
 }
 
 function contentsHtml() {
@@ -185,11 +222,13 @@ function copyFence(pre, button) {
   }
 }
 
-async function currentMtime() {
-  /* The modification time the server last saw. Null once the file is gone. */
+async function currentPoll() {
+  /* The modification time the server last saw, which is null once the file is
+     gone, and whether vim is up. Two answers on one question, because the page
+     asks this twice a second already and the Edit box needs nothing more than
+     somewhere to ride. */
   const response = await fetch('/mtime');
-  const payload = await response.json();
-  return payload.mtime;
+  return response.json();
 }
 
 function documentPath(href) {
@@ -298,6 +337,22 @@ function drawDocument() {
   applyFolds();
 }
 
+function editControl() {
+  /* The box that brings vim in, and its label. Built only where the reading
+     could open vim at all, which the server says with every document: a
+     printed copy is answered by nobody and carries no box, and neither does a
+     reading served where there is no desktop session to open vim into. */
+  const box = document.createElement('input');
+  box.checked = editing;
+  box.id = 'edit';
+  box.type = 'checkbox';
+  box.addEventListener('change', onEdit);
+  const label = document.createElement('label');
+  label.htmlFor = 'edit';
+  label.textContent = 'Edit';
+  return [box, label];
+}
+
 function esc(text) {
   /* Heading names and file names are put on the page as markup, and both come
      out of the file being read. Anything in them that reads as a tag has to
@@ -377,6 +432,10 @@ async function load() {
     applyWide();
     buildControls();
   }
+  /* After the controls are built rather than with them, so that a page
+     reloaded in the middle of a session ticks its box and tells sync.js in the
+     one movement, rather than opening ticked and telling nobody. */
+  applyEditing(Boolean(doc.editing));
   drawDocument();
   drawContents();
   restore(mark);
@@ -403,6 +462,18 @@ function onContents() {
   contentsOpen = !contentsOpen;
   drawContents();
   saveState();
+}
+
+function onEdit(event) {
+  /* Ask for vim, or ask for vim to go. Nothing here waits for an answer and
+     nothing here decides: opening vim takes a moment, and closing it is
+     refused outright while anything in vim is unwritten, so what became of the
+     asking arrives on the next poll like every other thing this page knows. */
+  fetch('/api/edit', {
+    body: JSON.stringify({ editing: event.target.checked }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  }).catch(() => {});
 }
 
 function onPop(event) {
@@ -435,17 +506,18 @@ function onWide(event) {
 }
 
 async function poll() {
-  /* Nothing tells the page the file was written, so it asks. The modification
-     time is the small question, and the document is fetched again only once
-     the answer has moved. */
+  /* Nothing tells the page the file was written or that vim has come or gone,
+     so it asks. The modification time is the small question, and the document
+     is fetched again only once the answer has moved. */
   let seen;
   try {
-    seen = await currentMtime();
+    seen = await currentPoll();
   } catch (error) {
     return; // the server has stopped answering and the reading is over
   }
-  if (seen !== mtime) {
-    mtime = seen;
+  applyEditing(Boolean(seen.editing));
+  if (seen.mtime !== mtime) {
+    mtime = seen.mtime;
     await load();
   }
 }

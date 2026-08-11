@@ -1,17 +1,27 @@
 """
-One window with both halves of a reading inside it.
+One editing session: the window both halves of a reading are drawn in.
 
-A reading with vim beside it is two programs, a browser and gvim, and the
-desktop would ordinarily give each of them a window of its own. This makes one
-window and puts both inside it, so that the reading is one entry on the panel,
-is moved as one, resized as one and closed as one.
+A reading that is editing is two programs, a browser and gvim, and the desktop
+would ordinarily give each of them a window of its own. This makes one window
+and puts both inside it, so that the reading is one entry on the panel, is
+moved as one, resized as one and closed as one.
+
+An editing session begins in the middle of a reading rather than at the start
+of one. The page is usually already open in a window of its own when the Edit
+box is ticked, so that window is taken in where it stands, and a session opened
+with --edit is the same work in the other order: the container is made first
+and the page asked for after it, so nothing of the reading is seen half drawn.
+Either way the session ends by putting the container away again, and the page's
+window is either handed back to the desktop or asked to close, according to
+whether the reading is going back to viewing or ending altogether.
 
 Taking a window off the window manager has an order to it. Reparenting a window
 the manager is still managing loses a race: the manager sees its client leave
 the frame it drew, runs the same tidying up it runs for a window that has gone,
 and that tidying up hands the client back to the root window. So each window is
 withdrawn first, in the way the ICCCM asks for, and reparented only once the
-manager has let go of it.
+manager has let go of it. Handing one back is the same journey the other way,
+and there the map is what asks the manager to take charge again.
 
 Nothing manages the two windows once they are inside, and the work a window
 manager would have done falls here. The panes are laid out again whenever the
@@ -22,19 +32,21 @@ the desktop can see none of the panes, so the reading takes the page's own
 title for its own, and following a link in the browser renames the window on
 the panel with it.
 
-Without python3-xlib there is no container to be made, so the reading opens in
-two ordinary windows wherever the desktop puts them. It says so and carries on.
+Without python3-xlib there is no container to be made, so vim opens as an
+ordinary window of its own beside the page. It says so and carries on.
 """
 
 import os
 import select
-import signal
 import subprocess
 import sys
+import threading
 import time
+import webbrowser
 
 import vimlink
 from browser import app_command, browser_path
+from server import NAME, TITLE
 from state import MAX_SPLIT, MIN_SPLIT, load_split, save_split
 
 try:
@@ -64,34 +76,40 @@ DIVIDER_CURSOR = 108
 ICONS = tuple(
     os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
-        '..', 'icons', 'hicolor', f'{size}x{size}', 'apps', 'bmvim.png',
+        '..', 'icons', 'hicolor', f'{size}x{size}', 'apps', 'mdeus.png',
     )
     for size in (24, 128)
 )
-# What the reading is called, on its title bar and on the panel, with the
-# document being read after it. The page writes the same pair in its own title,
-# and the reading takes its title from the page from then on, so this is also
-# what tells a title the page wrote from the address the pane carries before
-# the page has arrived.
-NAME = 'bmvim'
-TITLE = f'{NAME}: '
-NO_BROWSER = (
-    'bmvim: no chrome or chromium here, so the page opens in a tab of your\n'
-    '       usual browser, which is neither placed nor closed for you'
+IN_A_TAB = (
+    f'{NAME}: the page is in a tab rather than a window of its own, so vim opens\n'
+    f'{" " * len(NAME)}  beside it wherever the desktop puts it'
 )
+# How long to go on waiting for the window manager to take charge of a window
+# handed back to it, in seconds.
+MANAGE_WAIT = 5
+# What a request to move and resize a window carries: that all four of the
+# position and the size are given, and that an ordinary application is asking.
+# The gravity goes in the low byte and is the caller's, since it is what says
+# whether the numbers are the window's own or its frame's.
+MOVERESIZE = (1 << 8) | (1 << 9) | (1 << 10) | (1 << 11) | (1 << 12)
 # How often the two programs are looked in on, in seconds.
 POLL = 0.25
+# What vim is sourced from for as long as a session lasts. It sits beside this
+# file inside the package, so a stowed package and a checkout of it both find it.
+SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cursor.vim')
 SETTLE_TRIES = 20
 SETTLE_WAIT = 0.05
-UNPLACED = 'bmvim: the reading is in two windows of its own, wherever the desktop put them'
+UNPLACED = f'{NAME}: vim is in a window of its own, wherever the desktop put it'
 # How long to go on waiting for a program to put its window up, in seconds.
 WINDOW_WAIT = 15
 # How long to go on waiting for the window manager to let go of a window.
 WITHDRAW_WAIT = 5
 
-# The share of the window the browser pane takes. A reading opens at whatever
+# The share of the window the browser pane takes. A session opens at whatever
 # the last drag of the divider left, and every layout is measured from this, so
-# it is kept here rather than handed down through the events that read it.
+# it is kept here rather than handed down through the events that read it. It is
+# read again as each session begins, since a session may start an hour into a
+# reading and another reading may have moved the seam in the meantime.
 browser_share = load_split()
 
 
@@ -245,6 +263,126 @@ def drag(d, container, panes, divider, press):
     save_split(browser_share)
 
 
+def edit(reading, url, ending, opening=False, app_window=True):
+    """Hold one editing session up, and say whether the reading is to end with it.
+
+    The session makes the container, puts the page and gvim inside it, holds
+    the reading up for as long as vim is there, and puts the container away
+    again afterwards. It returns True where what ended it was somebody asking
+    for the whole reading to end, and False where the reading is going back to
+    viewing with the page alone.
+
+    Two ways in and one way through. Ticking the Edit box arrives here with the
+    page's window already on the desktop, and it is taken in where it stands.
+    Asking for --edit arrives here with no page yet, and the container is made
+    first and the page asked for after it, so that neither half is seen
+    standing on the desktop on its way in. Both funnel into the same loop,
+    which takes each window in as it appears in the desktop's list and finds
+    one that is already there on its first turn.
+
+    The split is read here rather than at import, because a session may begin
+    an hour into a reading and another reading may have moved the seam since.
+
+    Where the page's window was standing before the session took it is noted on
+    the way in, so that it can be put back exactly there on the way out. The
+    container fills the work area, so a page read in a small window grows as it
+    goes in, and it should shrink again as it comes out.
+    """
+    global browser_share
+    browser_share = load_split()
+    # Whatever brought us here, editing is what is wanted from this moment, so
+    # that the box being unticked later reads as the change it is.
+    reading.wanted = True
+    if not app_window:
+        print(IN_A_TAB, flush=True)
+    d = x_display() if app_window else None
+    container = make_container(d, reading.current.name) if d is not None else None
+    if app_window and container is None:
+        print(UNPLACED, flush=True)
+
+    if container is None:
+        boxes, divider, origin = (None, None), None, (0, 0)
+    else:
+        here = container.get_geometry()
+        boxes = pane_boxes(here.width, here.height)
+        divider = make_divider(d, container)
+        where = d.screen().root.translate_coords(container, 0, 0)
+        origin = (where.x, where.y)
+
+    # Where the page's window stands now, read before anything is done to it. A
+    # session opened with --edit has no page yet, so there is nowhere for one to
+    # go back to and the container's own place stands in.
+    was_at = None
+    if container is not None and app_window and not opening:
+        standing = page_window(d, client_list(d), reading.servername)
+        if standing is not None:
+            was_at = where_of(d, standing)
+
+    if opening:
+        open_page(url, reading.servername, app_window, boxes[0], origin)
+    vim = subprocess.Popen(
+        vim_command(reading.servername, reading.current, boxes[1], origin),
+        env=dict(
+            os.environ,
+            MDVIEW_LINK=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vimlink.py'),
+            MDVIEW_URL=url,
+        ),
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    # Said as soon as vim is started rather than once its window is in, so that
+    # the routes are open for the cursor vim reports the moment it has read the
+    # document, and the box on the page ticks without waiting for the layout.
+    reading.editing = True
+
+    panes = {}
+    try:
+        if container is not None:
+            # vim is the reading's own and is known by its process. The page's
+            # window is somebody else's and is known by the name the reading
+            # served it under.
+            wanted = [('vim', lambda listed: window_of(d, listed, vim.pid), boxes[1])]
+            if app_window:
+                wanted.append(
+                    ('browser',
+                     lambda listed: page_window(d, listed, reading.servername),
+                     boxes[0])
+                )
+            panes = take_in(d, container, wanted)
+            # vim asks for a size of its own as it starts, and whether that
+            # lands before the pane was placed or after it is a matter of a few
+            # hundredths of a second. So the session waits for vim to have
+            # finished asking and then lays both panes out again, and a session
+            # opens at the split the last one was left at rather than at
+            # whatever vim happened to settle on.
+            if 'vim' in panes:
+                settle(panes['vim'])
+                layout(d, container, panes, divider)
+            # The panes were mapped after the strip and are sitting over it, so
+            # the seam is laid again now that there is something to lay it on.
+            meet(d, container, panes, divider)
+            if 'browser' in panes:
+                # Asked for the page's own title from here on, since the title
+                # the reading carries is the page's and follows a link with it.
+                panes['browser'].change_attributes(event_mask=X.PropertyChangeMask)
+                follow_title(d, container, panes['browser'])
+            focus(d, panes.get('vim'))
+        hold(d, container, panes, divider, vim, reading, ending)
+    finally:
+        # Said before the container is put away, so that nothing on the page
+        # goes on asking after a vim that is already gone. The wish goes with
+        # it, since a vim that quit of its own accord leaves a session nobody
+        # asked to end, and a wish left standing would open another at once.
+        reading.editing = False
+        reading.wanted = False
+        release(d, container, panes, ending.is_set(), was_at)
+        if d is not None:
+            # One connection per session rather than one per reading, since a
+            # reading may edit as many times as somebody ticks the box, and a
+            # connection left open every time is a connection leaked every time.
+            d.close()
+    return ending.is_set()
+
+
 def focus(d, window):
     """Point the keyboard at one of the panes."""
     if window is None:
@@ -273,6 +411,136 @@ def follow_title(d, container, page):
         set_title(d, container, title)
 
 
+def hand_back(d, container, page, box):
+    """Give the page's window back to the desktop, at the size and place it had.
+
+    The window is the browser's and was only borrowed, so when vim goes it is
+    handed back rather than closed. This is the journey adopt() made, in
+    reverse: the grabs taken on it are let go, the session stops listening to
+    it, and it is unmapped, reparented to the root and mapped there. The map is
+    what asks the window manager to take charge of it again, and it comes back
+    framed and titled like any other window.
+
+    Letting the grabs go matters more than it looks. They were taken
+    synchronously, so that a click could be looked at and then let through, and
+    a window left grabbed by a session that is no longer watching for clicks is
+    a window nothing can be clicked in.
+
+    Where it goes is where it stood before the session took it. The container
+    fills the work area, so a page read in a small window grew as it went in,
+    and leaving it at that size would mean the reader had to put it back by hand
+    every time. A page that never had a place of its own, which is a session
+    opened with --edit, is given the container's.
+
+    Putting it back is asked for twice, because a request made before the
+    window manager has taken charge is a request to nobody. The first is the
+    configure below, which is what the manager reads as it frames the window,
+    and the second is place(), once the manager has answered, which corrects
+    whatever it decided to do instead.
+    """
+    for button in (1, 2, 3):
+        for modifiers in locked():
+            page.ungrab_button(button, modifiers)
+    page.change_attributes(event_mask=0)
+    page.unmap()
+    page.reparent(d.screen().root, box[0], box[1])
+    page.configure(x=box[0], y=box[1], width=box[2], height=box[3])
+    page.map()
+    d.sync()
+    deadline = time.monotonic() + MANAGE_WAIT
+    while time.monotonic() < deadline and page.id not in client_list(d):
+        time.sleep(SETTLE_WAIT)
+    place(d, page, box)
+
+
+def hold(d, container, panes, divider, vim, reading, ending):
+    """Hold the session up until vim goes.
+
+    It ends when vim quits, or when vim is killed outright, which comes to the
+    same thing here. Four things ask vim to quit, and vim refuses while
+    anything in it is unwritten, so a session is never taken away from under
+    unsaved work: the Edit box being unticked, the browser window being closed,
+    the container's close button, and an interrupt in the terminal the command
+    was typed into. The last three mean the whole reading is to end, and say so
+    by setting the flag they share with whoever called this. The first means
+    only that vim is to go.
+
+    The page's window belongs to a browser the reading borrowed, so its closing
+    is heard as the window being destroyed rather than as a process ending.
+    Where there is no container there is nothing watching it, and such a
+    session ends when vim quits and not before.
+
+    The keyboard reaches a pane by two roads, because the desktop only lends
+    the click on the first of them. A window that has just been clicked into
+    from elsewhere is one the desktop takes the click for, and it says only
+    that the container was clicked, so where the pointer is says which pane was
+    meant. Once the reading has the keyboard the desktop stops taking the
+    clicks, and from then on they arrive here and name their own pane.
+    """
+    focused = 'vim'
+    # The one property of the page's the session follows, asked for once rather
+    # than on every event a browser writes about itself.
+    named = d.intern_atom('_NET_WM_NAME') if d is not None else None
+    # What the page last asked for, so that unticking the box is heard as the
+    # change it is and vim is asked once rather than four times a second for as
+    # long as it goes on refusing.
+    was = reading.wanted
+    while vim.poll() is None:
+        if reading.wanted != was:
+            was = reading.wanted
+            if was is False:
+                vimlink.quit_vim(reading.servername)
+        if container is None:
+            time.sleep(POLL)
+            continue
+        keep_focus(d, container, panes, focused)
+        select.select([d], [], [], POLL)
+        while d.pending_events():
+            event = d.next_event()
+            if event.type == X.ButtonPress:
+                # A press on the strip over the seam is a drag and nothing
+                # else. It reaches the strip rather than the pane under it, so
+                # no click is owed to anybody and none is let through.
+                if event.window.id == divider.id:
+                    drag(d, container, panes, divider, event)
+                    continue
+                for name, window in panes.items():
+                    if window.id == event.window.id:
+                        focused = name
+                        focus(d, window)
+                # Let the click through to the pane it was meant for, now that
+                # the keyboard has been pointed at that pane.
+                d.allow_events(X.ReplayPointer, event.time)
+            elif event.type == X.ConfigureNotify:
+                if event.window.id == container.id:
+                    layout(d, container, panes, divider)
+                else:
+                    meet(d, container, panes, divider)
+            elif event.type == X.DestroyNotify:
+                # The page's window closed, by its own close button or with the
+                # browser it belongs to. There is no page to go back to, so the
+                # whole reading ends with it.
+                page = panes.get('browser')
+                if page is not None and event.window.id == page.id:
+                    panes.pop('browser')
+                    ending.set()
+                    vimlink.quit_vim(reading.servername)
+            elif event.type == X.FocusIn and event.window.id == container.id:
+                if event.mode == X.NotifyNormal:
+                    focused = under_pointer(container, panes) or focused
+                    focus_pane(d, panes, focused)
+            elif event.type == X.PropertyNotify and event.atom == named:
+                # The page has renamed itself, which is how a link followed in
+                # the browser reaches the title bar and the panel.
+                page = panes.get('browser')
+                if page is not None and event.window.id == page.id:
+                    follow_title(d, container, page)
+            elif event.type == X.ClientMessage:
+                if event.data[1][0] == d.intern_atom('WM_DELETE_WINDOW'):
+                    ending.set()
+                    vimlink.quit_vim(reading.servername)
+
+
 def ignore_gone(problem, request):
     """Say nothing when a window a request named has gone in the meantime.
 
@@ -283,7 +551,7 @@ def ignore_gone(problem, request):
     that is not a window having gone is still worth hearing about.
     """
     if not isinstance(problem, (error.BadWindow, error.BadDrawable, error.BadMatch)):
-        sys.stderr.write(f'bmvim: {problem}\n')
+        sys.stderr.write(f'{NAME}: {problem}\n')
 
 
 def keep_focus(d, container, panes, focused):
@@ -345,96 +613,6 @@ def locked():
     program holds any button on the window, and on this desktop one does.
     """
     return (0, X.LockMask, X.Mod2Mask, X.LockMask | X.Mod2Mask)
-
-
-def main(argv):
-    """Open a reading, hold it up, and put everything away when it ends."""
-    url, servername, script, document = argv
-    # The page is opened under the reading's own name rather than at the root,
-    # because the browser names the window it puts up after the address it was
-    # given, and that name is the whole of how one reading tells its own page's
-    # window from another reading's.
-    page = f'{url}/{servername}'
-    browser = browser_path()
-    if not browser:
-        print(NO_BROWSER, flush=True)
-    d = x_display() if browser else None
-    container = make_container(d, os.path.basename(document)) if d is not None else None
-    if browser and container is None:
-        print(UNPLACED, flush=True)
-
-    if container is None:
-        boxes, divider, origin = (None, None), None, (0, 0)
-    else:
-        here = container.get_geometry()
-        boxes = pane_boxes(here.width, here.height)
-        divider = make_divider(d, container)
-        where = d.screen().root.translate_coords(container, 0, 0)
-        origin = (where.x, where.y)
-
-    if browser:
-        # Started and not held on to. The command hands the asking to a browser
-        # already running and is gone within the moment, so what it leaves
-        # behind is a window rather than a process, and the window is what the
-        # reading holds the page by.
-        subprocess.Popen(
-            browser_command(browser, page, boxes[0], origin),
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
-    else:
-        subprocess.Popen(
-            ['xdg-open', page], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-    vim = subprocess.Popen(
-        vim_command(servername, script, document, boxes[1], origin),
-        env=dict(
-            os.environ,
-            MDVIEW_LINK=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vimlink.py'),
-            MDVIEW_URL=url,
-        ),
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
-
-    panes = {}
-    try:
-        if container is not None:
-            # vim is the reading's own and is known by its process. The page's
-            # window is somebody else's and is known by the name the reading
-            # served it under.
-            wanted = [('vim', lambda listed: window_of(d, listed, vim.pid), boxes[1])]
-            if browser:
-                wanted.append(
-                    ('browser', lambda listed: page_window(d, listed, servername), boxes[0])
-                )
-            panes = take_in(d, container, wanted)
-            # vim asks for a size of its own as it starts, and whether that
-            # lands before the pane was placed or after it is a matter of a few
-            # hundredths of a second. So the reading waits for vim to have
-            # finished asking and then lays both panes out again, and a reading
-            # opens at the split the last one was left at rather than at
-            # whatever vim happened to settle on.
-            if 'vim' in panes:
-                settle(panes['vim'])
-                layout(d, container, panes, divider)
-            # The panes were mapped after the strip and are sitting over it, so
-            # the seam is laid again now that there is something to lay it on.
-            meet(d, container, panes, divider)
-            if 'browser' in panes:
-                # Asked for the page's own title from here on, since the title
-                # the reading carries is the page's and follows a link with it.
-                panes['browser'].change_attributes(event_mask=X.PropertyChangeMask)
-                follow_title(d, container, panes['browser'])
-            focus(d, panes.get('vim'))
-        watch(d, container, panes, divider, vim, servername)
-    finally:
-        if 'browser' in panes:
-            # Asked to go before the container it sits in is taken away, so that
-            # the browser closes the window rather than losing it.
-            close_page(d, panes['browser'])
-        if container is not None:
-            container.destroy()
-            d.sync()
-    return 0
 
 
 def make_container(d, document):
@@ -529,6 +707,38 @@ def meet(d, container, panes, divider):
     d.sync()
 
 
+def open_page(url, servername, app_window=True, box=None, origin=(0, 0)):
+    """Open the reading's page, in a window of its own where a browser can give one.
+
+    The page is opened at the reading's own name rather than at the root,
+    because the browser names the window it puts up after the address it was
+    given, and that name is the whole of how a session picks the page's window
+    out of the desktop when it comes to take it in. Every reading opens this
+    way, whether or not it ever edits, since the name has to be settled before
+    the window exists.
+
+    Where the page is going to end up is worth saying only to a browser the
+    reading has to start, because a browser already running puts its own window
+    where it likes. It saves that one case a visible jump on the way in.
+    """
+    page = f'{url}/{servername}'
+    browser = browser_path() if app_window else None
+    if browser:
+        # Started and not held on to. The command hands the asking to a browser
+        # already running and is gone within the moment, so what it leaves
+        # behind is a window rather than a process to wait on, and the window is
+        # what a session holds the page by.
+        subprocess.Popen(
+            browser_command(browser, page, box, origin),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        return
+    # On a thread of its own: opening a browser can block until it exits. A
+    # desktop with nothing to open it with is not a failure either, since the
+    # address is already printed and the reading stays reachable by hand.
+    threading.Thread(target=webbrowser.open, args=(page, 2), daemon=True).start()
+
+
 def page_window(d, listed, servername):
     """Return the window the browser has put up for the page, or nothing while it has not.
 
@@ -559,6 +769,56 @@ def pane_boxes(width, height):
     """Return where each pane goes inside a container of this size."""
     left = round(width * browser_share)
     return ((0, 0, left, height), (left, 0, width - left, height))
+
+
+def place(d, window, box):
+    """Ask the desktop to put a window exactly where it is wanted, frame and all.
+
+    A plain configure request is read against the window's gravity, and under
+    the ordinary one the numbers name where the frame goes rather than where
+    the window does, so a window put back that way walks down and to the right
+    by the depth of its own title bar every time it makes the journey. This
+    says static gravity outright, which means the numbers are the window's own
+    and the manager works out where its frame has to go for them to be true.
+
+    It is a request and not an instruction. A manager that ignores it leaves
+    the window wherever the configure before it landed, which is close.
+    """
+    x, y, width, height = box
+    root = d.screen().root
+    root.send_event(
+        protocol.event.ClientMessage(
+            window=window,
+            client_type=d.intern_atom('_NET_MOVERESIZE_WINDOW'),
+            data=(32, [X.StaticGravity | MOVERESIZE, x, y, width, height]),
+        ),
+        event_mask=X.SubstructureRedirectMask | X.SubstructureNotifyMask,
+    )
+    d.sync()
+
+
+def release(d, container, panes, ending, was_at):
+    """Put the session's window away, and settle what becomes of the page's own.
+
+    A reading going back to viewing gets its page handed back to the desktop,
+    at the size and in the place it had before the session took it. A reading
+    that is ending has nowhere to hand it to, so the window is asked to close in
+    the way its close button asks, and asked before the container it sits in is
+    taken away, so that the browser closes the window rather than losing it.
+
+    The page's window is missing from the panes where it was closed by whoever
+    is reading, which is one of the ways a reading ends, and there is nothing
+    left to do about it either way.
+    """
+    page = panes.get('browser')
+    if page is not None:
+        if ending:
+            close_page(d, page)
+        else:
+            hand_back(d, container, page, was_at or where_of(d, container))
+    if container is not None:
+        container.destroy()
+        d.sync()
 
 
 def set_icon(d, container):
@@ -688,7 +948,7 @@ def under_pointer(container, panes):
     return None
 
 
-def vim_command(servername, script, document, box, origin):
+def vim_command(servername, document, box, origin):
     """Return the command that opens the vim the reading is read with.
 
     gvim rather than vim in a terminal of the reading's own. A terminal is a
@@ -724,84 +984,20 @@ def vim_command(servername, script, document, box, origin):
     return command + [
         '--cmd', 'set guiheadroom=0',
         '-c', 'set guioptions+=k guioptions-=m guioptions-=r',
-        '-S', script, '--', document,
+        '-S', SCRIPT, '--', str(document),
     ]
 
 
-def watch(d, container, panes, divider, vim, servername):
-    """Hold the reading up until it ends.
+def where_of(d, window):
+    """Return where a window stands on the screen and how big it is.
 
-    It ends when vim quits, or when vim is killed outright, which comes to the
-    same thing here. The browser window being closed asks vim to quit instead,
-    and vim refuses while anything in it is unwritten, so a reading is never
-    taken away from under unsaved work. The container's close button and an
-    interrupt in the terminal the command was typed into both ask the same
-    question.
-
-    That window belongs to a browser the reading borrowed, so its closing is
-    heard as the window being destroyed rather than as a process ending. Where
-    there is no container there is nothing watching it, and a reading opened in
-    two ordinary windows ends when vim quits and not before.
-
-    The keyboard reaches a pane by two roads, because the desktop only lends
-    the click on the first of them. A reading that has just been clicked into
-    from elsewhere is one the desktop takes the click for, and it says only
-    that the container was clicked, so where the pointer is says which pane was
-    meant. Once the reading has the keyboard the desktop stops taking the
-    clicks, and from then on they arrive here and name their own pane.
+    Read in root coordinates rather than in its parent's, since a window the
+    desktop is managing sits inside a frame the manager drew and its own
+    geometry is measured from the corner of that frame.
     """
-    signal.signal(signal.SIGINT, lambda number, frame: vimlink.quit_vim(servername))
-    focused = 'vim'
-    # The one property of the page's the reading follows, asked for once rather
-    # than on every event a browser writes about itself.
-    named = d.intern_atom('_NET_WM_NAME') if d is not None else None
-    while vim.poll() is None:
-        if container is None:
-            time.sleep(POLL)
-            continue
-        keep_focus(d, container, panes, focused)
-        select.select([d], [], [], POLL)
-        while d.pending_events():
-            event = d.next_event()
-            if event.type == X.ButtonPress:
-                # A press on the strip over the seam is a drag and nothing
-                # else. It reaches the strip rather than the pane under it, so
-                # no click is owed to anybody and none is let through.
-                if event.window.id == divider.id:
-                    drag(d, container, panes, divider, event)
-                    continue
-                for name, window in panes.items():
-                    if window.id == event.window.id:
-                        focused = name
-                        focus(d, window)
-                # Let the click through to the pane it was meant for, now that
-                # the keyboard has been pointed at that pane.
-                d.allow_events(X.ReplayPointer, event.time)
-            elif event.type == X.ConfigureNotify:
-                if event.window.id == container.id:
-                    layout(d, container, panes, divider)
-                else:
-                    meet(d, container, panes, divider)
-            elif event.type == X.DestroyNotify:
-                # The page's window closed, by its own close button or with the
-                # browser it belongs to. The reading goes with it.
-                page = panes.get('browser')
-                if page is not None and event.window.id == page.id:
-                    panes.pop('browser')
-                    vimlink.quit_vim(servername)
-            elif event.type == X.FocusIn and event.window.id == container.id:
-                if event.mode == X.NotifyNormal:
-                    focused = under_pointer(container, panes) or focused
-                    focus_pane(d, panes, focused)
-            elif event.type == X.PropertyNotify and event.atom == named:
-                # The page has renamed itself, which is how a link followed in
-                # the browser reaches the title bar and the panel.
-                page = panes.get('browser')
-                if page is not None and event.window.id == page.id:
-                    follow_title(d, container, page)
-            elif event.type == X.ClientMessage:
-                if event.data[1][0] == d.intern_atom('WM_DELETE_WINDOW'):
-                    vimlink.quit_vim(servername)
+    here = window.get_geometry()
+    where = d.screen().root.translate_coords(window, 0, 0)
+    return (where.x, where.y, here.width, here.height)
 
 
 def white(d, window):
@@ -895,7 +1091,3 @@ def x_display():
         # Xlib raises several unrelated errors for a display it cannot reach,
         # and none of them is worth stopping a reading for.
         return None
-
-
-if __name__ == '__main__':
-    sys.exit(main(sys.argv[1:]))
