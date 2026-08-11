@@ -59,4 +59,4 @@ Everything else is the standard library. Nothing is fetched at runtime, no page 
 
 [MIT](LICENSE), with one exception. The application icon under `share/icons` was cut from Buuf by Paul Davey, which is Creative Commons Attribution-NonCommercial-ShareAlike, so those two PNG files carry that licence instead and may not be used commercially. Nothing depends on them: delete them, or put your own image there, and everything left is MIT.
 
-The stylesheet embeds seven of GitHub's Octicons, which are MIT too. [LICENSE](LICENSE) carries their notice and the full detail on both.
+The stylesheet embeds seven of GitHub's Octicons, which are MIT too. [NOTICE](NOTICE) carries their notice and the full detail on both.
