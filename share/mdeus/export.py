@@ -9,9 +9,9 @@ whole from the ones a served reading uses.
 That last part is the whole design. A printed copy is the reading page with the
 document baked into it rather than fetched, so the themes, the contents list and
 the names the headings are given are the reading's own and are not written a
-second time here. The two requests the page draws from are answered from the
-baked document by the short script below, and everything else it would ask for
-is refused. Changing the theme or opening the contents list therefore affects
+second time here. The one request the page draws from is answered from the baked
+document by the short script below, and everything else it would ask for is
+refused. Changing the theme or opening the contents list therefore affects
 that one file and stores nothing.
 
 Links to other markdown documents are left exactly as they were written. There
@@ -39,7 +39,7 @@ CACHE_DIR = Path.home() / '.cache' / 'mdeus'
 # drawn.
 STUB = """\
 window.fetch = (path) => {
-  const answers = { '/doc': DOC, '/mtime': { mtime: 0 } };
+  const answers = { '/doc': DOC };
   const body = answers[path];
   return Promise.resolve({
     ok: body !== undefined,

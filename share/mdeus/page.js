@@ -1,7 +1,8 @@
 /* The reading page: the theme dropdown, the Contents, Full width and Edit
    toggles beside it, the contents list, the sections a double click folds away,
-   the redraw when the file changes, and the connection whose dropping ends a
-   reading with no terminal.
+   and the one connection that carries the rest. The server speaks down it
+   whenever the file is written or vim comes or goes, and its dropping is what
+   ends a reading with no terminal.
 
    The row those controls sit on stays at the top of the window while the
    document runs behind it, which the stylesheet does on its own. What this file
@@ -14,7 +15,8 @@
 
    The Edit toggle is the exception to that: it is not a setting and is stored
    nowhere. It is a fact about the reading in front of you, so it follows what
-   the server says rather than leading it, and every poll writes it again.
+   the server says rather than leading it, and every line the server sends
+   writes it again.
 
    sync.js runs beside this file and owns the two marks a reading with vim
    carries. One named event passes between them, mdeus:editing, dispatched here
@@ -24,18 +26,11 @@
 
 'use strict';
 
-/* How long the page goes on asking after a press of the Edit toggle, and how
-   often it asks while it does, in milliseconds. It gives up rather than asking
-   for ever, since a press a vim with unsaved work refuses has no answer coming
-   and the ordinary poll is enough to catch that vim when it does let go. */
-const CHASE_FOR = 3000;
-const CHASE_MS = 100;
 /* Three headings is the point at which a contents list starts to earn its
    place. Below it the button is absent rather than disabled. */
 const CONTENTS_MINIMUM = 3;
 /* How long a copy button says it copied before it offers to again. */
 const COPIED_MS = 1500;
-const MTIME_MS = 500;
 const THEMES = [
   ['browser', 'Browser default'],
   ['report', 'Mono headings'],
@@ -52,8 +47,6 @@ const docNode = document.querySelector('.doc');
    built again from scratch on every redraw and the elements go with it. */
 const foldedAt = new Set();
 
-/* The timer asking after a press of the Edit toggle, while one is unanswered. */
-let chasing = null;
 let contentsOpen = false;
 let doc = null;
 /* Whether vim is up, as the server last said. Never what this page asked for:
@@ -98,10 +91,10 @@ function applyEditing(now) {
   /* Say what the server says about vim: press the toggle to match, and tell
      sync.js when the answer has moved.
 
-     The toggle is written on every poll rather than only when the answer
-     changes. A press the reading could not honour, a press a vim with unsaved
-     work refused, and a vim that quit of its own accord are all put right
-     within half a second by this. */
+     The toggle is written on every line the server sends rather than only when
+     the answer changes. A press the reading could not honour, a press a vim with
+     unsaved work refused, and a vim that quit of its own accord are all put
+     right by the next line down the connection. */
   const button = document.getElementById('edit');
   if (button) {
     setPressed(button, now);
@@ -184,29 +177,6 @@ function buildControls() {
   }
 }
 
-function chase() {
-  /* Ask after the Edit toggle often for a moment, so that the button follows the
-     window rather than trailing it by half a second.
-
-     The page draws what the server says, and the server has nothing to say until
-     vim is up or vim has agreed to go, so the outcome of a press arrives at a
-     poll like everything else here and asking sooner is the whole of what can be
-     done about it. It stops as soon as the answer moves, and gives up after a few
-     seconds for the press a vim with unsaved work refuses, since that press has
-     no answer coming. */
-  const asked = editing;
-  const until = Date.now() + CHASE_FOR;
-  window.clearInterval(chasing);
-  chasing = window.setInterval(() => {
-    if (editing !== asked || Date.now() > until) {
-      window.clearInterval(chasing);
-      chasing = null;
-      return;
-    }
-    poll();
-  }, CHASE_MS);
-}
-
 function contentsHtml() {
   /* A nested list following the heading levels. A document may skip a level,
      so the open lists are tracked rather than counted. */
@@ -266,15 +236,6 @@ function copyFence(pre, button) {
   } else {
     bySelection();
   }
-}
-
-async function currentPoll() {
-  /* The modification time the server last saw, which is null once the file is
-     gone, and whether vim is up. Two answers on one question, because the page
-     asks this twice a second already and the Edit toggle needs nothing more than
-     somewhere to ride. */
-  const response = await fetch('/mtime');
-  return response.json();
 }
 
 function documentPath(href) {
@@ -419,8 +380,9 @@ function foldSection(heading, folded) {
 
 async function follow(relative, push) {
   /* Move the reading to another document inside the tree. The server moves
-     with it, so the file whose modification time is being watched moves too
-     and has to be read again before the next poll mistakes it for an edit. */
+     with it, so the file whose modification time is being watched moves too and
+     has to be read again before the server's next word mistakes it for an
+     edit. */
   const response = await fetch(`/doc?path=${encodeURIComponent(relative)}`);
   if (!response.ok) {
     return; // outside the tree, and the reading carries on where it is
@@ -440,7 +402,8 @@ async function follow(relative, push) {
 }
 
 async function hold() {
-  /* Hold the reading open for as long as this page is here.
+  /* Hold the reading open for as long as this page is here, and listen while it
+     is held.
 
      A reading opened from the file manager has no terminal to interrupt, so the
      page is what ends it. The page does that by asking for one thing it is
@@ -448,12 +411,14 @@ async function hold() {
      connection stays up until the window closes and the browser drops it, which
      is the moment the reading ends.
 
-     Nothing here is on a timer, and that is the whole point. A browser slows
-     the timers of a window that is not in front of you, and stops them
-     altogether while the machine sleeps, so a page that had to speak to stay
-     alive would lose the reading behind its own window while somebody had it
-     minimised. Nothing is asked of the clock, and a connection sleeps as
-     happily as the machine it is on.
+     What does come down it is a line whenever the file is written or vim comes
+     or goes. That is why nothing here is on a timer, and it is the whole point.
+     A browser slows the timers of a window that is not in front of you, and
+     stops them altogether while the machine sleeps, so a page that had to ask
+     would lose its reading behind its own window while somebody had it
+     minimised, or sit there showing a file as it was a minute ago. Nothing is
+     asked of the clock, and a connection sleeps as happily as the machine it is
+     on and wakes with the first thing said down it.
 
      Held again if the connection ends while the reading has not, which is what
      a browser dropping an idle socket of its own accord would look like. A
@@ -468,8 +433,24 @@ async function hold() {
   if (!response.ok) {
     return; // nobody is behind this page at all, which is what a printed copy is
   }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let rest = '';
   try {
-    await response.text(); // the body only ends when the connection does
+    for (;;) {
+      const arrived = await reader.read();
+      if (arrived.done) {
+        break; // the reply ended, which is the connection having gone
+      }
+      rest += decoder.decode(arrived.value, { stream: true });
+      const lines = rest.split('\n');
+      /* Whatever follows the last newline is a line still on its way, so it is
+         left where it is until the rest of it arrives. */
+      rest = lines.pop();
+      for (const line of lines) {
+        await told(JSON.parse(line));
+      }
+    }
   } catch (error) {
     // The connection went rather than the page, so it is taken again below.
   }
@@ -487,8 +468,8 @@ function isSection(block) {
 async function load() {
   /* Draw what the server has. Called again whenever the file changes, so it
      holds the reading position across a redraw. The document arrives with the
-     time it was last written, so the poll that follows compares against what
-     is on the screen rather than asking a second question. */
+     time it was last written, so what the server says next is measured against
+     what is on the screen. */
   const mark = anchor();
   const response = await fetch('/doc');
   doc = await response.json();
@@ -550,20 +531,15 @@ function onEdit() {
   /* Ask for vim, or ask for vim to go. Nothing here waits for an answer and
      nothing here decides: opening vim takes a moment, and closing it is
      refused outright while anything in vim is unwritten, so what became of the
-     asking arrives on the next poll like every other thing this page knows.
-     The toggle is not pressed here either, for the same reason: what is asked
-     for is the opposite of what the server last said, and the server is what
-     moves it.
-
-     The polls are made to come quicker for a moment, since the ordinary half
-     second is long enough that a button pressed here reads as a button that did
-     not take. */
+     asking comes down the held connection like every other thing this page
+     knows. The toggle is not pressed here either, for the same reason: what is
+     asked for is the opposite of what the server last said, and the server is
+     what moves it. */
   fetch('/api/edit', {
     body: JSON.stringify({ editing: !editing }),
     headers: { 'Content-Type': 'application/json' },
     method: 'POST',
   }).catch(() => {});
-  chase();
 }
 
 function onPop(event) {
@@ -594,23 +570,6 @@ function onWide(event) {
   setPressed(event.currentTarget, wide);
   restore(mark);
   saveState();
-}
-
-async function poll() {
-  /* Nothing tells the page the file was written or that vim has come or gone,
-     so it asks. The modification time is the small question, and the document
-     is fetched again only once the answer has moved. */
-  let seen;
-  try {
-    seen = await currentPoll();
-  } catch (error) {
-    return; // the server has stopped answering and the reading is over
-  }
-  applyEditing(Boolean(seen.editing));
-  if (seen.mtime !== mtime) {
-    mtime = seen.mtime;
-    await load();
-  }
 }
 
 function restore(mark) {
@@ -676,7 +635,6 @@ async function start() {
   new ResizeObserver(measureBar).observe(controlsNode, { box: 'border-box' });
   window.addEventListener('popstate', onPop);
   drawn();
-  window.setInterval(poll, MTIME_MS);
 }
 
 function toggleButton(id, text, pressed, handler) {
@@ -692,6 +650,26 @@ function toggleButton(id, text, pressed, handler) {
   button.type = 'button';
   setPressed(button, pressed);
   return button;
+}
+
+async function told(said) {
+  /* Take one line of what the server says: when the document was last written,
+     and whether vim is up. The document is fetched again only where that time
+     has moved, so a line carrying nothing new about the file costs nothing.
+
+     A line arriving before the page has drawn is let go. The first of them says
+     what the document reply the page is already waiting for will say, and acting
+     on it would fetch the same document twice. Whatever moves after that is
+     said again. */
+  if (doc === null) {
+    return;
+  }
+  applyEditing(Boolean(said.editing));
+  if (said.mtime === mtime) {
+    return;
+  }
+  mtime = said.mtime;
+  await load();
 }
 
 start();

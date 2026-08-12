@@ -141,6 +141,25 @@ def fetch_json(port, path, method='GET', body=None):
         raise AssertionError(f'{method} {path} did not answer with JSON: {data[:80]!r}')
 
 
+def heard_down(held):
+    """Return the next thing a reading says down a connection a page is holding.
+
+    The reply is never finished, so what comes down it is read one line at a
+    time, and whatever of the next line arrived with this one is kept for the
+    call after it.
+    """
+    while b'\n' not in held.rest:
+        try:
+            more = held.connection.recv(1024)
+        except TimeoutError:
+            raise AssertionError('the reading said nothing down the held connection')
+        if not more:
+            raise AssertionError('the connection ended rather than saying anything')
+        held.rest += more
+    line, held.rest = held.rest.split(b'\n', 1)
+    return json.loads(line)
+
+
 def home_cache_snapshot():
     """Return what the export cache under the run's own home holds, or None where there is none."""
     try:
@@ -197,12 +216,14 @@ def start_export():
 
 
 def start_holding(port):
-    """Take hold of a reading the way its page does, and return the letting go of it.
+    """Take hold of a reading the way its page does, and return what holds it.
 
     The page holds a reading open by one request it never lets finish, so this
     reads the reply's headers and then leaves the connection exactly where it is.
-    Closing it is what a page going away looks like from the server's side, and is
-    what the returned call does.
+    Closing it is what a page going away looks like from the server's side, and
+    `close` on what comes back is that. What the reading says down it is read with
+    heard_down above, so whatever of the first line arrived with the headers is
+    carried along rather than dropped.
 
     Spoken over a bare socket rather than through http.client, which hangs up on
     a reply that carries no length the moment it has read the headers, and so
@@ -217,7 +238,11 @@ def start_holding(port):
             raise AssertionError('GET /hold was dropped rather than answered')
         head += more
     assert head.startswith(b'HTTP/1.1 200 '), head.split(b'\r\n')[0]
-    return connection.close
+    return SimpleNamespace(
+        close=connection.close,
+        connection=connection,
+        rest=head.split(b'\r\n\r\n', 1)[1],
+    )
 
 
 def start_reading(editable=False, editing=False):
@@ -311,6 +336,72 @@ def test_a_click_in_vim_is_counted_and_a_move_is_not():
         stop()
 
 
+def test_a_held_page_is_told_nothing_while_nothing_moves():
+    """A reading speaks as the page takes hold and then holds its tongue.
+
+    Every line the page hears sends it to look at the document again, so a
+    reading with nothing to report says nothing rather than repeating itself down
+    a connection that stays open for the whole of a reading.
+    """
+    root, port, reading, stop = start_reading()
+    try:
+        held = start_holding(port)
+        first = heard_down(held)
+        assert isinstance(first['mtime'], int), first
+        held.connection.settimeout(server.TELL_TICK * 20)
+        try:
+            said = held.connection.recv(1024)
+        except TimeoutError:
+            said = b''
+        assert said == b'', said
+        held.close()
+    finally:
+        stop()
+
+
+def test_a_held_page_is_told_the_file_was_written():
+    """A write reaches the page down the connection the page is already holding.
+
+    Nothing is asked of the page's clock. A browser slows the timers of a window
+    it is not showing, so a page that had to ask would sit there showing a file as
+    it was a minute ago. The reading watches the file and says so instead.
+    """
+    root, port, reading, stop = start_reading()
+    try:
+        held = start_holding(port)
+        first = heard_down(held)
+        # File timestamps advance in steps of a few milliseconds, so a write
+        # landing in the same step as the reading above would carry the same time
+        # and say nothing about whether the server is watching the file.
+        time.sleep(0.05)
+        (root / 'start.md').write_text(START_MD + '\nA new paragraph.\n', encoding='utf-8')
+        later = heard_down(held)
+        assert later['mtime'] > first['mtime'], (later, first)
+        held.close()
+    finally:
+        stop()
+
+
+def test_a_held_page_is_told_whether_vim_is_up():
+    """What the Edit toggle follows arrives the same way everything else does.
+
+    The toggle has to follow the reading rather than lead it, so that a vim
+    quitting of its own accord unticks it and a press the reading could not
+    honour puts it back where it was.
+    """
+    root, port, reading, stop = start_reading(editable=True)
+    try:
+        held = start_holding(port)
+        assert heard_down(held)['editing'] is False
+        reading.editing = True
+        assert heard_down(held)['editing'] is True
+        reading.editing = False
+        assert heard_down(held)['editing'] is False
+        held.close()
+    finally:
+        stop()
+
+
 def test_a_link_is_followed_in_vim_while_vim_is_up():
     """Following a link takes vim with it while vim is up, and speaks to nobody otherwise.
 
@@ -351,10 +442,10 @@ def test_a_page_letting_go_does_not_end_a_reading_vim_is_holding():
     root, port, reading, stop = start_reading(editable=True, editing=True)
     stopped, watching = start_watching(reading)
     try:
-        let_go = start_holding(port)
-        let_go()
-        held = server.RETURN_GRACE * 3
-        assert not stopped.wait(held), 'a page let go ended a reading vim was holding'
+        held = start_holding(port)
+        held.close()
+        waited = server.RETURN_GRACE * 3
+        assert not stopped.wait(waited), 'a page let go ended a reading vim was holding'
         # Vim gone, and nothing holding the reading up any longer.
         reading.editing = False
         assert stopped.wait(TIMEOUT), 'the reading outlived both its page and vim'
@@ -373,9 +464,9 @@ def test_a_page_letting_go_ends_the_reading_at_once():
     root, port, reading, stop = start_reading()
     stopped, watching = start_watching(reading)
     try:
-        let_go = start_holding(port)
+        held = start_holding(port)
         assert not stopped.wait(server.RETURN_GRACE), 'a reading being read was ended'
-        let_go()
+        held.close()
         assert stopped.wait(TIMEOUT), 'a page let go left the reading running'
     finally:
         stop()
@@ -392,12 +483,12 @@ def test_a_page_that_comes_straight_back_holds_the_reading():
     root, port, reading, stop = start_reading()
     stopped, watching = start_watching(reading)
     try:
-        start_holding(port)()
-        let_go = start_holding(port)
+        start_holding(port).close()
+        held = start_holding(port)
         waited = server.RETURN_GRACE * 3
         assert not stopped.wait(waited), 'a reloaded page ended the reading behind it'
         # Ended the way a closed page ends it, so the watcher is not left running.
-        let_go()
+        held.close()
         assert stopped.wait(TIMEOUT), 'a page let go left the reading running'
     finally:
         stop()
@@ -415,12 +506,12 @@ def test_a_page_that_says_nothing_keeps_the_reading():
     root, port, reading, stop = start_reading()
     stopped, watching = start_watching(reading)
     try:
-        let_go = start_holding(port)
+        held = start_holding(port)
         # Long enough to have run out every wait the reading has, since nothing
         # is asked of the page in it at all.
         quiet = server.RETURN_GRACE * 5
         assert not stopped.wait(quiet), 'a silent page lost the reading behind it'
-        let_go()
+        held.close()
         assert stopped.wait(TIMEOUT), 'a page let go left the reading running'
     finally:
         stop()
@@ -767,44 +858,6 @@ def test_missing_or_broken_state_falls_back_to_browser():
         stop()
 
 
-def test_mtime_moves_only_when_the_file_is_written():
-    """/mtime holds still until the source file is written, and moves after it."""
-    root, port, reading, stop = start_reading()
-    try:
-        status, first = fetch_json(port, '/mtime')
-        assert status == 200, status
-        assert isinstance(first['mtime'], int), first
-        status, unchanged = fetch_json(port, '/mtime')
-        assert unchanged == first, (unchanged, first)
-        # File timestamps advance in steps of a few milliseconds, so a write
-        # landing in the same step as the reading above would report the same
-        # time and say nothing about whether the server is watching the file.
-        time.sleep(0.05)
-        (root / 'start.md').write_text(START_MD + '\nA new paragraph.\n', encoding='utf-8')
-        status, later = fetch_json(port, '/mtime')
-        assert later['mtime'] > first['mtime'], (later, first)
-    finally:
-        stop()
-
-
-def test_mtime_carries_whether_vim_is_up():
-    """The poll the page already runs is what the Edit toggle follows.
-
-    The toggle has to follow the reading rather than lead it, so that a vim quitting
-    of its own accord unticks it. The page asks for the modification time twice
-    a second, so the answer carries both and the box needs no route of its own.
-    """
-    root, port, reading, stop = start_reading(editable=True)
-    try:
-        assert fetch_json(port, '/mtime')[1]['editing'] is False
-        reading.editing = True
-        assert fetch_json(port, '/mtime')[1]['editing'] is True
-        reading.editing = False
-        assert fetch_json(port, '/mtime')[1]['editing'] is False
-    finally:
-        stop()
-
-
 def test_page_is_served_under_the_reading_s_own_name():
     """Every reading answers at its own name as well as at the root, and at no other name.
 
@@ -975,14 +1028,14 @@ def test_the_page_says_when_it_has_drawn():
     """
     root, port, reading, stop = start_reading()
     try:
-        let_go = start_holding(port)
+        held = start_holding(port)
         assert not reading.drawn.is_set(), 'drawn before the page had drawn anything'
         assert fetch_json(port, '/api/drawn', 'POST') == (200, {'ok': True})
         assert reading.drawn.is_set(), 'a drawn page did not say so'
         # A page reloaded says it again, and saying it again changes nothing.
         fetch_json(port, '/api/drawn', 'POST')
         assert reading.drawn.is_set()
-        let_go()
+        held.close()
     finally:
         stop()
 

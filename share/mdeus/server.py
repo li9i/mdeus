@@ -3,9 +3,9 @@ Serve one markdown document to a browser on this machine.
 
 The page is an empty shell. Everything in it is drawn from what this server
 sends: the document as blocks carrying their source lines, the heading outline
-the contents list is built from, and the stored theme. The page polls for the
-source file's modification time and redraws when it moves, so a write from any
-editor is picked up.
+the contents list is built from, and the stored theme. This server watches the
+source file and tells the page the moment it is written, so a write from any
+editor is on the screen as soon as it lands on the disk.
 
 A reading is either viewing, which is the page alone, or editing, which is the
 page with vim beside it. The page asks to move between the two through
@@ -14,12 +14,14 @@ state is: the window and vim are the session's business, not this file's. The
 routes that speak to vim answer only while editing.
 
 The page holds the reading open by one request that is never answered, and the
-reading ends a moment after that request's connection drops. Nothing is asked
-of the page's clock, because a browser is free to slow the timers of a window
-that is not in front of you and to stop them outright while the machine sleeps,
-and a reading resting on one of those ticks is a reading that dies behind its
-own window. A connection survives both, and a window closed or a browser killed
-drops it there and then.
+reading ends a moment after that request's connection drops. That connection is
+also how the page is told anything: down it goes a line whenever the document is
+written or vim comes or goes. Nothing is asked of the page's clock, because a
+browser is free to slow the timers of a window that is not in front of you and to
+stop them outright while the machine sleeps, and a reading resting on one of
+those ticks is a reading that dies behind its own window, or one that shows a
+file as it was a minute ago. A connection survives both, and a window closed or a
+browser killed drops it there and then.
 
 Images and links to other documents are served only from inside the directory
 tree the reading started in. Anything resolving outside it is not found. The
@@ -70,6 +72,10 @@ NAME = 'mdeus'
 # enough that closing the window ends the reading while the hand is still on the
 # mouse.
 RETURN_GRACE = 1
+# How often a held page's document is looked at, in seconds. This is the whole of
+# what stands between saving in vim and seeing it on the page, so it is short
+# enough to read as at once, and a look is one stat of one file.
+TELL_TICK = 0.05
 # How often the watcher looks at the clock, in seconds. Short enough that it
 # adds little to the wait it is timing, long enough to cost nothing.
 WATCH_TICK = 0.25
@@ -377,8 +383,6 @@ class ReadingHandler(BaseHTTPRequestHandler):
             self.hold_open()
         elif path == ICON_ROUTE:
             self.send_icon()
-        elif path == '/mtime':
-            self.send_mtime()
         else:
             self.send_json({'error': 'not found'}, code=404)
 
@@ -401,7 +405,7 @@ class ReadingHandler(BaseHTTPRequestHandler):
                 # Recorded and answered at once. Opening vim takes a second and
                 # closing it may be refused outright, so what comes back is the
                 # state as it stands rather than the state that was asked for,
-                # and the page learns the outcome from the poll it already runs.
+                # and the outcome reaches the page down the connection it holds.
                 self.reading.ask(bool(body.get('editing')))
                 self.send_json({'editing': self.reading.editing})
             elif self.path == '/api/jump' and self.reading.editing:
@@ -417,18 +421,28 @@ class ReadingHandler(BaseHTTPRequestHandler):
             self.send_json({'error': str(error)}, code=400)
 
     def hold_open(self):
-        """Answer the page's headers and then hold its connection for the reading's life.
+        """Answer the page's headers, then hold its connection and say what moves down it.
 
-        This is how a reading knows its page is still there. The reply is opened
-        and never finished, so the connection stays up for as long as the page
-        does, and the page is asked for nothing else: it holds the reading by
-        being there rather than by remembering to speak, which is what carries a
-        reading through a window left in the background and a machine put to
-        sleep.
+        This is how a reading knows its page is still there, and how the page
+        knows anything at all. The reply is opened and never finished, so the
+        connection stays up for as long as the page does, and the page is asked
+        for nothing: it holds the reading by being there rather than by
+        remembering to speak, which is what carries a reading through a window
+        left in the background and a machine put to sleep.
+
+        Down that connection goes one line for each of the two things the page
+        cannot see for itself: when the document was last written, and whether
+        vim is up. Both are sent as they stand the moment the page takes hold,
+        and again whenever either moves. A write is therefore on the screen as
+        soon as it is noticed, rather than whenever a page that had to ask
+        happened to ask next, and a browser slowing the timers of a window it is
+        not showing cannot leave a reading behind the file it is reading.
 
         The socket becoming readable is the page going. Nothing is ever sent up
         this connection, so there is nothing else it could be, and a browser
-        closing a window drops it in the same movement.
+        closing a window drops it in the same movement. A page that goes while a
+        line is being written to it is the same news arriving the other way
+        round.
 
         The wait is broken into turns so that the reading ending also lets go.
         Otherwise the last page of a reading stopped by ctrl-c would sit here
@@ -440,13 +454,24 @@ class ReadingHandler(BaseHTTPRequestHandler):
         # connection does. It is also what stops this connection being offered
         # back for another request afterwards.
         self.send_header('Connection', 'close')
-        self.send_header('Content-Type', 'text/plain; charset=utf-8')
+        self.send_header('Content-Type', 'application/x-ndjson; charset=utf-8')
+        # Nothing may be held back to see what kind of file this is. The lines
+        # come one at a time and minutes may pass between them, and a browser
+        # sniffing at the first would keep the page from hearing it.
+        self.send_header('X-Content-Type-Options', 'nosniff')
         self.end_headers()
         self.reading.hold()
+        told = None
         try:
             while not self.reading.over.is_set():
-                if select.select([self.connection], [], [], WATCH_TICK)[0]:
+                said = {'editing': self.reading.editing, 'mtime': self.mtime()}
+                if said != told:
+                    told = said
+                    self.wfile.write(json.dumps(said).encode('utf-8') + b'\n')
+                if select.select([self.connection], [], [], TELL_TICK)[0]:
                     return
+        except OSError:
+            pass  # the page went as it was being spoken to
         finally:
             self.reading.let_go()
 
@@ -546,16 +571,6 @@ class ReadingHandler(BaseHTTPRequestHandler):
         """Send a JSON response."""
         self.send_bytes(json.dumps(payload).encode('utf-8'), 'application/json', code)
 
-    def send_mtime(self):
-        """Send the time the page polls to decide whether to redraw.
-
-        Whether vim is up rides along with it. The page polls this twice a
-        second already, and the Edit toggle has to follow the reading rather than
-        lead it, so a vim that quit of its own accord brings the toggle up without
-        a route of its own to do it.
-        """
-        self.send_json({'editing': self.reading.editing, 'mtime': self.mtime()})
-
     def send_page(self):
         """Send the empty page, linking the stylesheets and the scripts it draws with."""
         # The two files behind the sync with vim are linked by every reading,
@@ -584,9 +599,8 @@ class ReadingHandler(BaseHTTPRequestHandler):
         # The state travels with the document because the page reads its theme
         # from the first reply it gets, which may well be the gone one. The
         # modification time travels with it for the same reason the blocks do:
-        # it is the time of the document the page is about to draw, so the poll
-        # that follows compares against what is on the screen without having to
-        # ask a second question.
+        # it is the time of the document the page is about to draw, so what the
+        # page is told next is measured against what is on the screen.
         # The document's name travels with it because the page writes its own
         # title as it draws, so that following a link to another document says
         # so on the tab and, in a reading with vim beside it, on the panel.
@@ -596,10 +610,10 @@ class ReadingHandler(BaseHTTPRequestHandler):
         # then carries no toggle without having to be told not to.
         common = {
             'editable': self.reading.editable,
-            # Whether vim is up travels with the document as well as with the
-            # poll, so that a page reloaded in the middle of a session draws
-            # its Edit toggle pressed on the first paint rather than half a second
-            # later, when the first poll comes round.
+            # Whether vim is up travels with the document as well as down the
+            # held connection, so that a page reloaded in the middle of a session
+            # draws its Edit toggle pressed on the first paint rather than a
+            # moment later, once it has been told.
             'editing': self.reading.editing,
             'mtime': self.mtime(),
             'name': self.name(),
