@@ -32,6 +32,8 @@ mdeus --print notes.md    write one self contained HTML file, print its path
 
 Markdown files gain an "Open With" entry too, so a reading starts from the file manager as well as from a shell.
 
+The three toggles at the top of the page answer to one letter each: `c` for the contents list, `f` for full width, `e` for `Edit`. It is the letter each label begins with, and it is underlined on the button.
+
 A reading ends on ctrl-c, or when you close the page. While vim is up, vim is what holds the reading, and it refuses to go while anything in it is unsaved.
 
 Several readings run at once, each on its own port. The document is opened read only and is never written to, which is what vim is for.

@@ -4,6 +4,11 @@
    whenever the file is written or vim comes or goes, and its dropping is what
    ends a reading with no terminal.
 
+   Each of the three toggles answers to one letter as well as to a click: c, f
+   and e, the letter each label begins with, which is why that letter is
+   underlined on the row. A letter reaching a control the reading is not showing
+   does nothing, since the button it would press is absent rather than disabled.
+
    The row those controls sit on stays at the top of the window while the
    document runs behind it, which the stylesheet does on its own. What this file
    owes it is its height, written to the root as --bar-height so that a heading
@@ -35,6 +40,10 @@ const CONTENTS_MINIMUM = 3;
 const COPIED_MS = 1500;
 /* Where the place a refresh left is kept, in the window's own store. */
 const PLACE_KEY = 'mdeus:place';
+/* The letter each toggle answers to, and the control it presses. Every one of
+   them is the first letter of that control's label, which is what the underline
+   on the row marks. */
+const SHORTCUTS = { c: 'contents', e: 'edit', f: 'wide' };
 const THEMES = [
   ['browser', 'Browser default'],
   ['report', 'Mono headings'],
@@ -588,6 +597,33 @@ function onEdit() {
   }).catch(() => {});
 }
 
+function onKey(event) {
+  /* One letter presses one toggle. The button is looked up as the letter is
+     pressed rather than held from when the row was built, because two of the
+     three come and go: the contents button with the headings of whatever
+     document is being read, and the Edit toggle with whether this reading could
+     open vim at all. A letter with no button behind it does nothing.
+
+     A letter is left alone while it is being typed into something. The theme
+     dropdown is the one such thing on the page, and f there jumps to an option
+     rather than dragging the lines of the document about.
+
+     Held with a modifier it is not a shortcut but a browser or window manager
+     command, and those are none of this page's business. */
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+    return;
+  }
+  if (event.target.closest && event.target.closest('input, select, textarea, [contenteditable]')) {
+    return;
+  }
+  const button = document.getElementById(SHORTCUTS[event.key] || '');
+  if (!button) {
+    return;
+  }
+  event.preventDefault();
+  button.click();
+}
+
 function onPop(event) {
   /* A jump to an anchor makes a history entry of its own. Going back over one
      must leave the reading where it is, or the browser's own jump back would
@@ -680,6 +716,11 @@ async function start() {
      back to it names a path like every other entry does. */
   history.replaceState({ path: doc.name }, '');
   docNode.addEventListener('click', onClick);
+  /* Listened for on the document rather than on the row, so that a letter works
+     wherever the reading has been clicked and whether the row has focus or not.
+     One handler for the life of the page, since the buttons it presses are built
+     again on every redraw. */
+  document.addEventListener('keydown', onKey);
   /* The row is measured as this starts watching it, so nothing has to say how
      tall it was to begin with. The border box is what is watched rather than
      the default: a theme change alters the padding round the row and leaves the
@@ -695,11 +736,19 @@ function toggleButton(id, text, pressed, handler) {
      state is what says it is on. The label stays put because a label that
      flips between Contents and Hide contents describes what a click will do,
      while the face describes what is already so, and a control that does both
-     at once leaves the reader working out which of the two it is looking at. */
+     at once leaves the reader working out which of the two it is looking at.
+
+     The first letter of the label is underlined, which is the old desktop mark
+     for the letter a control answers to, and the hover says it in words for
+     anyone who does not read the mark that way. The label itself is this file's
+     own text rather than anything out of the document, so it goes in as
+     markup. */
   const button = document.createElement('button');
+  const letter = text.slice(0, 1);
   button.addEventListener('click', handler);
   button.id = id;
-  button.textContent = text;
+  button.innerHTML = `<u>${letter}</u>${text.slice(1)}`;
+  button.title = `${text} (${letter.toLowerCase()})`;
   button.type = 'button';
   setPressed(button, pressed);
   return button;

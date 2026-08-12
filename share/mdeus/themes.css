@@ -8,9 +8,9 @@
        <div class="controls">        built by page.js, over the document
          <label for="theme">Theme</label>
          <select id="theme">…</select>
-         <button id="contents" aria-pressed="false">Contents</button>
-         <button id="wide" aria-pressed="true">Full width</button>
-         <button id="edit" aria-pressed="false">Edit</button>
+         <button id="contents" aria-pressed="false"><u>C</u>ontents</button>
+         <button id="wide" aria-pressed="true"><u>F</u>ull width</button>
+         <button id="edit" aria-pressed="false"><u>E</u>dit</button>
                                                 only where vim can be opened
        </div>
        <nav class="toc">             present only while the list is open
@@ -50,6 +50,11 @@
    aria-pressed, since each is one view state that is on or off rather than a
    choice between several. The word in that attribute is what says which, so
    each theme draws its own pressed face off it and no label ever moves.
+
+   The first letter of each of those labels is the letter that button answers to
+   from the keyboard, and the <u> round it is the mark that says so. No theme
+   styles it: the underline a browser gives that element is exactly the mark, and
+   nothing below takes it away.
 
    .doc > .block > .prose > <content> is the structure the renderer produces,
    so a rule written as `.doc p` matches what is inside a block. Anything
