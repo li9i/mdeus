@@ -188,18 +188,61 @@ def test_a_stop_asked_for_while_the_session_opens_is_still_honoured():
         stop()
 
 
-def test_vim_is_asked_to_go_once_however_long_it_refuses():
-    """A vim with unsaved work is asked once and then left alone.
+def test_a_vim_that_heard_nothing_is_asked_again():
+    """An ask that never reached vim is made again, so a press is not lost.
 
-    vim refuses to quit while anything in it is unwritten, and the session goes
-    on holding until it agrees. Asking again on every turn would be four asks a
-    second for as long as the reader takes to save, each of them a vim client
-    command started and waited on.
+    A vim waiting to be answered hears nothing until it has been, and what puts a
+    question up is the document being written by another program: vim asks whether
+    to load it and takes the next key as the answer. A press meant to end the
+    reading lands in the middle of that and goes nowhere.
+
+    A session that asks once has thrown that press away, and what the reader is
+    left with is a reading that will not close however often they press, with no
+    reason given for it.
     """
     reading, vim, stop = opening_session()
     asked = []
     was = vimlink.quit_vim
-    vimlink.quit_vim = asked.append
+
+    def deaf(name):
+        """Stand in for a vim that hears nothing until it has been asked twice."""
+        asked.append(name)
+        if len(asked) < 2:
+            return False
+        vim.terminate()
+        return True
+
+    vimlink.quit_vim = deaf
+    try:
+        reading.wanted = False
+        session = held(reading, vim)
+        session.join(ENDS_WITHIN)
+        assert asked == [SERVERNAME, SERVERNAME], asked
+        assert not session.is_alive(), 'the session held a vim that heard nothing'
+    finally:
+        vimlink.quit_vim = was
+        stop()
+
+
+def test_vim_is_asked_to_go_once_however_long_it_refuses():
+    """A vim with unsaved work is asked once and then left alone.
+
+    vim refuses to quit while anything in it is unwritten, and the session goes
+    on holding until it agrees. A vim that refuses has still heard the asking,
+    which is what tells the session to leave it alone: asking again on every turn
+    would be four asks a second for as long as the reader takes to save, each of
+    them a vim client command started and waited on.
+    """
+    reading, vim, stop = opening_session()
+    asked = []
+    was = vimlink.quit_vim
+
+    def heard(name):
+        """Stand in for a vim that hears the asking and refuses to go."""
+        asked.append(name)
+        return True
+
+    vimlink.quit_vim = heard
     try:
         reading.wanted = False
         session = held(reading, vim)

@@ -8,10 +8,11 @@ What to run after touching anything, and the manual list for the parts no test r
 cd share/mdeus
 python3 test_render.py
 python3 test_server.py
+python3 test_vimlink.py
 python3 test_window.py
 ```
 
-Plain asserts in functions named `test_*`, no framework. They cover the renderer, the server and the printed copy, and the two parts of an editing session that need neither a window nor a vim: how the panes are laid out, and how the session hears the page asking for vim to go. Everything else about the browser, the windows and vim has no automated cover, which is what the list below is for.
+Plain asserts in functions named `test_*`, no framework. They cover the renderer, the server and the printed copy, the two parts of an editing session that need neither a window nor a vim, which are how the panes are laid out and how the session hears that vim is to go, and what the link to vim settles before it sends anything. Everything else about the browser, the windows and vim has no automated cover, which is what the list below is for.
 
 ## The manual check
 
@@ -42,7 +43,7 @@ Run all of it after touching anything to do with the browser, the windows or vim
 
 ### Ending it from the editing side
 
-18. Press the window's close button while editing. The whole reading ends: vim goes, the page's window goes, and the shell comes back. It is refused while anything in vim is unwritten, and nothing is taken away from under it.
+18. Press the window's close button while editing. The whole reading ends: vim goes, the page's window goes, and the shell comes back. It is refused while anything in vim is unwritten, and nothing is taken away from under it. Then press it while vim is waiting to be answered, which item 45 is how to arrange: nothing happens at that moment, since a vim with a question up hears nothing else. Answer vim and the reading ends by itself within a second, with nothing more pressed. The same holds for ctrl-c and for closing the page.
 19. Press ctrl-c in the shell the command was run from, while editing. The same, and refused the same way.
 20. Close the page's window while editing, with `ctrl-w` in it. vim is asked to quit and the whole reading ends when it goes, since there is no page left to come back to.
 21. After every one of those: every other window of that browser is still open, on the same pages and in the same places, and no server and no gvim is left behind. `pgrep -af mdeus` should say nothing, and `pgrep -x gvim` should say nothing either, since a reading that ended while its vim was still waiting has to take that one with it as well.
@@ -78,7 +79,7 @@ Run all of it after touching anything to do with the browser, the windows or vim
 42. Bring the page over to a cursor it has been left behind by: double click that line in vim. It comes at once, as item 38 says. That double click is the only thing on the vim side that scrolls the page.
 43. Hold a movement key down and let the cursor run. The reports are throttled in vim to one every 150ms, so the mark keeps up without the page flickering and without vim stuttering. Watch the server's cursor route or the mark itself: nothing arrives closer together than 150ms.
 44. The two marks are never confusable. The cursor block carries a rule in the margin and stays marked. The block you double clicked flashes a light grey ground that fades after a second.
-45. Write the file in vim. The page redraws at once, close enough to the write that the two read as one action rather than as a page catching up. Change the file from somewhere else, with `git checkout` or a formatter, and the page redraws the same way. Then bury the page's window behind other windows, or leave the reading alone for ten minutes, write the file and come back to it: it is already redrawn, since nothing about the redraw rests on the page's own clock.
+45. Write the file in vim. The page redraws at once, close enough to the write that the two read as one action rather than as a page catching up. Change the file from somewhere else, with `git checkout` or a formatter, and the page redraws the same way. The vim half looks at the file for itself about once a second, so it notices the same change rather than waiting to be clicked into, and the two halves never sit on different documents. With nothing unwritten in vim it loads the file and says so on its last line. With something unwritten it asks there whether to load it, on the last line of the pane and not in a window of its own, and it waits: nothing answers that question but you. Check both, and check that a question standing there never opens a box anywhere on the desktop. Then bury the page's window behind other windows, or leave the reading alone for ten minutes, write the file and come back to it: it is already redrawn, since nothing about the redraw rests on the page's own clock.
 46. Click a relative link to another markdown document. The page renders it and vim opens it too, so both halves show the same file, and the title bar and the panel entry both take the new file's name. The browser's back button returns, and the name comes back with it. An absolute path, a path leading out of the starting tree, and an `http` link are all left alone. A double click on a link follows it as the first of the two clicks, so a block with a link in it is pointed at by double clicking the words around the link.
 47. Press `Edit` off while a block carries the cursor rule. The rule goes with vim rather than being left standing on a page with nothing behind it. Double click a block afterwards: nothing happens, no grey ground and no jump, since there is no vim to send to. Press it on again and the sync starts from where the new vim's cursor is rather than from where the last one left off.
 

@@ -74,6 +74,10 @@ try:
 except ImportError:  # python3-xlib is not installed
     X = Xatom = Xutil = display = error = protocol = None
 
+# How long to leave a vim that heard nothing before asking it again, in seconds.
+# A vim with a question of its own up hears nothing until the question has been
+# answered, and the reader takes as long over that as they take.
+ASK_AGAIN = 1
 # How long to wait for the browser to take its window away once it has been
 # asked to, in seconds.
 BROWSER_STOP = 5
@@ -560,6 +564,13 @@ def hold(d, container, panes, divider, vim, reading, ending):
     by setting the flag they share with whoever called this. The first means
     only that vim is to go.
 
+    An ask to quit does not always reach vim. A vim waiting to be answered hears
+    nothing until it has been, and what puts a question up is the document
+    having changed underneath the reading, so a press meant to end the reading
+    can land in the middle of one and go nowhere. Such a press is not thrown
+    away. The asking is made again, a second apart, and vim goes the moment the
+    reader has answered whatever vim was asking them.
+
     The page's window belongs to a browser the reading borrowed, so its closing
     is heard as the window being destroyed rather than as a process ending.
     Where there is no container there is nothing watching it, and such a
@@ -576,33 +587,37 @@ def hold(d, container, panes, divider, vim, reading, ending):
     # The one property of the page's the session follows, asked for once rather
     # than on every event a browser writes about itself.
     named = d.intern_atom('_NET_WM_NAME') if d is not None else None
-    # What the page last asked for, so that unticking the box is heard as the
-    # change it is and vim is asked once rather than four times a second for as
-    # long as it goes on refusing.
-    #
-    # It starts at editing being wanted rather than at whatever the wish says
-    # now, because a session exists at all only because editing was wanted, and
-    # a session takes a moment to open. The page is told vim is up as soon as
-    # vim is started, so a reader pressing the toggle again straight away
-    # unticks the box while the session is still opening, and reading the wish
-    # here would find it already unticked and go on waiting for it to move.
-    was = True
+    # Whether vim has heard that it is to go, and the moment a vim that heard
+    # nothing is worth telling again. It is told once and then left alone, since
+    # vim refuses while anything in it is unwritten and telling it four times a
+    # second would be four vim client commands a second for as long as the
+    # reader takes to save.
+    asked = False
+    again = 0.0
     while vim.poll() is None:
-        if reading.wanted != was:
-            was = reading.wanted
-            if was is False:
-                vimlink.quit_vim(reading.servername)
+        # Read from the reading as it stands rather than watched for a change,
+        # because a session takes a moment to open and the page is told vim is up
+        # as soon as vim is started. A reader pressing the toggle again straight
+        # away unticks the box while the session is still opening, so what a
+        # session watching for the wish to move would find is a wish that had
+        # already moved, and it would go on waiting for it to move again.
+        going = ending.is_set() or not reading.wanted
+        if not going:
+            asked = False
+        elif not asked and time.monotonic() >= again:
+            asked = vimlink.quit_vim(reading.servername)
+            again = time.monotonic() + ASK_AGAIN
         if container is None:
             # A session drawn in windows of their own has no desktop to hear
             # from, so what it waits on is the page asking for something, or vim
             # going once vim has been asked to go.
-            if was:
-                wait([reading.heard], POLL)
-            else:
+            if going:
                 try:
                     vim.wait(timeout=POLL)
                 except subprocess.TimeoutExpired:
                     pass
+            else:
+                wait([reading.heard], POLL)
             continue
         keep_focus(d, container, panes, focused)
         # vim's own pipe is waited on beside the desktop and the page, because
@@ -643,7 +658,6 @@ def hold(d, container, panes, divider, vim, reading, ending):
                 if page is not None and event.window.id == page.id:
                     panes.pop('browser')
                     ending.set()
-                    vimlink.quit_vim(reading.servername)
             elif event.type == X.FocusIn and event.window.id == container.id:
                 if event.mode == X.NotifyNormal:
                     focused = under_pointer(container, panes) or focused
@@ -657,7 +671,6 @@ def hold(d, container, panes, divider, vim, reading, ending):
             elif event.type == X.ClientMessage:
                 if event.data[1][0] == d.intern_atom('WM_DELETE_WINDOW'):
                     ending.set()
-                    vimlink.quit_vim(reading.servername)
 
 
 def ignore_gone(problem, request):
@@ -1188,6 +1201,25 @@ def vim_command(servername, document, box, origin):
     screen, and it costs the pane two rows it could have filled: the pane is
     inside the reading's window and nothing is drawn round it.
 
+    Questions vim asks are asked on the last line of the pane rather than in a
+    window of its own. A window of its own belongs to the pane, and the pane is a
+    window the desktop stopped managing when the reading took it in, so the
+    desktop has no parent to put the question beside and does not give it the
+    keyboard either. What the reader gets is a box standing over the reading that
+    the keyboard is not pointed at, a vim behind it that has stopped answering
+    anybody at all, and a reading that no longer closes. On the last line the
+    question is part of the pane they are already looking at, it takes the
+    keyboard that pane already has, and vim goes on hearing the reading while it
+    waits to be answered.
+
+    It is asked for twice, before the vimrc and again after it, because the two
+    questions that matter come at different moments. A swap file left by a vim
+    that was killed is found while the document is being read, which is before
+    anything after the vimrc has run, so the first is what puts that one in the
+    pane. The document being written by another program is asked about later, at
+    any point in a reading, and the second is what keeps a vimrc from having
+    taken the setting away again by then.
+
     The menu bar and the scrollbar go after the vimrc rather than before it, so
     that a vimrc asking for either does not win. The reading's own window
     carries a title bar and a close button for the pair of panes, and neither
@@ -1203,8 +1235,8 @@ def vim_command(servername, document, box, origin):
     if box is not None:
         command += ['-geometry', f'+{origin[0] + box[0]}+{origin[1] + box[1]}']
     return command + [
-        '--cmd', 'set guiheadroom=0',
-        '-c', 'set guioptions+=k guioptions-=m guioptions-=r',
+        '--cmd', 'set guiheadroom=0 guioptions+=c',
+        '-c', 'set guioptions+=c guioptions+=k guioptions-=m guioptions-=r',
         '-S', SCRIPT, '--', str(document),
     ]
 

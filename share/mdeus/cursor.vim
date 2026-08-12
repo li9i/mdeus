@@ -64,6 +64,24 @@ nnoremap <silent> <2-LeftMouse> :call <SID>MdeusClicked()<CR>
 " rather than waiting to be moved.
 call s:MdeusReport(0)
 
+" Look at the document on disk, so that one written by another program is
+" noticed in this half as soon as it is noticed in the other. The reading redraws
+" the page the moment the file changes, and vim of its own accord looks at the
+" file only when its pane is clicked into, so without this the two halves show
+" different documents until somebody happens to look at vim.
+"
+" What to do about it is vim's own business and the reader's. Where there is
+" nothing unwritten vim loads the file and says so, and where there is, vim asks
+" whether to load it, on the last line of the pane, since the reading starts vim
+" with console dialogs. Nothing here answers that question for them.
+let s:look = 1000
+
+function! s:MdeusLook(timer) abort
+  checktime
+endfunction
+
+call timer_start(s:look, function('s:MdeusLook'), {'repeat': -1})
+
 " Where a clicked block lands. The page knows the source lines every block was
 " built from and sends both ends of them, so the whole block is lit rather than
 " the line it starts at. A pale ground for the eye to land on without hunting,

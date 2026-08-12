@@ -16,6 +16,11 @@ import subprocess
 import sys
 import urllib.request
 
+# What vim says it is doing while it is waiting to be answered: a hit enter
+# prompt, the more prompt, or a question with choices in it. Which of the three
+# it is does not matter here, since in all of them vim is answering the person
+# in front of it and nothing else.
+ASKING = 'r'
 # Leaves whatever mode vim is in, and unlike Escape cannot be read as the
 # opening of the line that follows it.
 NORMAL_MODE = r'<C-\><C-n>'
@@ -48,6 +53,27 @@ def jump(servername, first, last):
     )
 
 
+def listening(servername):
+    """Say whether keys sent to vim would be acted on.
+
+    A vim with a question up is answering whoever is reading and nothing else.
+    Keys sent to it then are neither acted on nor kept: they are dropped, and
+    the sending looks as though it worked. The document having been written by
+    another program is the question this happens with, and an ask to quit
+    arriving while it stands is the press that appears to have been ignored.
+
+    A vim that answers nothing at all is read the same way. Either it has gone,
+    and there is nothing to send to, or it is held up in something that does not
+    listen, and there the sending waits out its own timeout for nothing.
+
+    Nothing here changes what vim does. It is how the reading knows an asking
+    landed, so that one that did not can be made again.
+    """
+    return not (remote(servername, '--remote-expr', 'mode(1)') or ASKING).startswith(
+        ASKING
+    )
+
+
 def main(argv):
     """Run the small job the reading asks for from the command line."""
     what = argv[0]
@@ -57,8 +83,16 @@ def main(argv):
 
 
 def quit_vim(servername):
-    """Ask vim to quit, which it refuses to do while anything in it is unwritten."""
-    remote(servername, '--remote-send', f'{NORMAL_MODE}:qa<CR>')
+    """Ask vim to quit, which it refuses to do while anything in it is unwritten.
+
+    What comes back says whether the asking was acted on at all, which is not the
+    same as vim agreeing to go: a vim that heard and refused because something in
+    it is unwritten has heard. Only a vim that would have dropped the asking says
+    False, and whoever wanted it to go asks again.
+    """
+    if not listening(servername):
+        return False
+    return remote(servername, '--remote-send', f'{NORMAL_MODE}:qa<CR>') is not None
 
 
 def remote(servername, *args):
