@@ -13,6 +13,14 @@ page with vim beside it. The page asks to move between the two through
 state is: the window and vim are the session's business, not this file's. The
 routes that speak to vim answer only while editing.
 
+The page holds the reading open by one request that is never answered, and the
+reading ends a moment after that request's connection drops. Nothing is asked
+of the page's clock, because a browser is free to slow the timers of a window
+that is not in front of you and to stop them outright while the machine sleeps,
+and a reading resting on one of those ticks is a reading that dies behind its
+own window. A connection survives both, and a window closed or a browser killed
+drops it there and then.
+
 Images and links to other documents are served only from inside the directory
 tree the reading started in. Anything resolving outside it is not found. The
 source document is opened read only and is never written to.
@@ -21,6 +29,7 @@ source document is opened read only and is never written to.
 import json
 import mimetypes
 import os
+import select
 import threading
 import time
 from functools import partial
@@ -42,16 +51,6 @@ DEFAULT_PORT = 8766
 # at the root, so a document's own relative target would resolve against that
 # and name nothing.
 FILE_ROUTE = '/file/'
-# How long a page that has said it is going is waited for, in seconds. A reload
-# says the same thing on its way out as a close does, so the wait is long enough
-# for the page that comes back to say it is here, and short enough that closing
-# the window ends the reading while the hand is still on the mouse.
-FAREWELL_GRACE = 1
-# How long a page that has said nothing at all is waited for, in seconds. This
-# is the backstop behind the farewell above, for the page that never got to say
-# it was going: a browser killed outright, a machine put to sleep with the
-# reading open, a page whose farewell was lost.
-HEARTBEAT_TIMEOUT = 10
 HOST = '127.0.0.1'
 # Where the image a reading wears is served from, and which of the sizes it
 # ships goes down that route. The icons sit outside the directory the page's own
@@ -65,6 +64,12 @@ MAX_BODY = 256 * 1024
 # nothing else: a reading is titled by the document it is showing and says the
 # command nowhere.
 NAME = 'mdeus'
+# How long a reading with no page holding it is left standing, in seconds. A
+# reload lets go on its way out and the page coming back takes hold before it
+# draws anything, so the wait is long enough to carry a reload across, and short
+# enough that closing the window ends the reading while the hand is still on the
+# mouse.
+RETURN_GRACE = 1
 # How often the watcher looks at the clock, in seconds. Short enough that it
 # adds little to the wait it is timing, long enough to cost nothing.
 WATCH_TICK = 0.25
@@ -133,8 +138,8 @@ def resolve_inside(root, relative):
 
 
 def serve(server, reading):
-    """Serve until interrupted, or until the page says it has gone."""
-    threading.Thread(target=watch_heartbeat, args=(server, reading), daemon=True).start()
+    """Serve until interrupted, or until no page is holding the reading."""
+    threading.Thread(target=watch_pages, args=(server, reading), daemon=True).start()
     with server:
         try:
             server.serve_forever()
@@ -192,35 +197,35 @@ def wanted_state(body):
     }
 
 
-def watch_heartbeat(server, reading):
-    """Stop the server once the page it was opened for has said goodbye, or gone quiet.
+def watch_pages(server, reading):
+    """Stop the server once no page is holding the reading open any longer.
 
     A reading opened from the file manager has no terminal to interrupt, so the
-    page going is what ends it. A page closing says so as it goes and the
-    reading ends a moment later. Behind that sits the longer wait for a page
-    that says nothing at all, which is what a browser killed outright leaves.
-    The quiet clock starts at the first heartbeat, so a reading whose browser
-    never opened keeps serving and stays reachable by hand.
+    page going is what ends it. Every page holds the reading by a request that is
+    never answered, so a window closed, a tab closed and a browser killed all
+    look the same from here: the connection drops and nothing holds the reading
+    any more.
 
-    A farewell is waited on rather than acted on at once, because a reload says
-    goodbye on its way out exactly as a close does. The page that comes back
-    says it is here again well inside the wait, which takes the farewell back.
+    The letting go is waited on rather than acted on at once, because a reload
+    lets go on its way out exactly as a close does. The page that comes back
+    takes hold well inside the wait.
+
+    Nothing is timed against the page's own clock, so a window left in the
+    background for an hour, or a machine asleep for a night, keeps its reading.
+    A reading no page has ever held keeps serving as well, so one whose browser
+    never opened stays reachable by hand.
 
     A reading that is editing is held up by vim instead, and the page is not
-    asked to speak for it. Otherwise closing the page of a reading whose vim
-    has unsaved work would stop the server from under work vim is quite right
-    to be refusing to let go of.
+    asked to hold it. Otherwise closing the page of a reading whose vim has
+    unsaved work would stop the server from under work vim is quite right to be
+    refusing to let go of.
     """
     while True:
         time.sleep(WATCH_TICK)
-        beat = reading.beat
-        gone = reading.gone
+        alone = reading.alone
         if reading.editing:
             continue
-        now = time.monotonic()
-        if (gone is not None and now - gone > FAREWELL_GRACE) or (
-            beat is not None and now - beat > HEARTBEAT_TIMEOUT
-        ):
+        if alone is not None and time.monotonic() - alone > RETURN_GRACE:
             server.shutdown()
             return
 
@@ -229,10 +234,14 @@ class Reading:
     """One document being read, and the tree it may serve files from."""
 
     def __init__(self, document, servername, editable=False):
+        # When the reading was left with no page holding it, or nothing while one
+        # holds it. It is nothing to begin with as well, since a reading no page
+        # has ever held is one whose browser has yet to open rather than one
+        # whose page has gone.
+        self.alone = None
         # Whoever is waiting on the page, woken whenever the page asks to move
         # between viewing and editing.
         self.asked = threading.Event()
-        self.beat = None
         # How many clicks vim has reported. A click there is the one thing that
         # brings the page along, and the throttled report of the same line
         # follows a moment later, so the page is told a running count rather
@@ -240,10 +249,10 @@ class Reading:
         self.clicks = 0
         self.current = document.resolve()
         self.cursor = None
-        # Set once the page has drawn the document it was sent, which is what
-        # its first heartbeat says. vim is started after that and not before, so
-        # that the browser has the machine to itself while it is doing the one
-        # thing the reader is waiting on.
+        # Set once the page has said it has drawn the document it was sent. vim
+        # is started after that and not before, so that the browser has the
+        # machine to itself while it is doing the one thing the reader is waiting
+        # on.
         self.drawn = threading.Event()
         # Whether the Edit toggle belongs on the page at all, which is to say
         # whether there is a desktop session to open vim into.
@@ -251,10 +260,12 @@ class Reading:
         # Whether vim is up. Written by the session that opens and closes it,
         # and read here to decide which routes answer.
         self.editing = False
-        # When the page said it was going, or nothing where it has not said so.
-        # A page that comes back, which is what a reload is, says it is here
-        # again and this goes back to nothing.
-        self.gone = None
+        # How many pages are holding the reading open, and the lock that count
+        # and the moment at the top of this are moved under together. A reload can
+        # have the page coming back taking hold before the one going has let go,
+        # so the two overlap and what is kept is a count rather than a flag.
+        self.holding = 0
+        self.holds = threading.Lock()
         # The two ends of the pipe an asking is also said down, for a waiter
         # that cannot hear the event above. A reading with vim up is inside its
         # X event loop, waiting on a socket, and one wait can cover a socket and
@@ -314,6 +325,23 @@ class Reading:
             # rather than being told it.
             pass
 
+    def hold(self):
+        """Take the reading into a page's keeping."""
+        with self.holds:
+            self.holding += 1
+            self.alone = None
+
+    def let_go(self):
+        """Give the reading back, and note the moment where the last page did.
+
+        The moment is what the reading is ended on, a grace later, so a reload is
+        not read as the window having been closed.
+        """
+        with self.holds:
+            self.holding -= 1
+            if not self.holding:
+                self.alone = time.monotonic()
+
 
 class ReadingHandler(BaseHTTPRequestHandler):
     """Serve the reading page and the small JSON API behind it."""
@@ -345,6 +373,8 @@ class ReadingHandler(BaseHTTPRequestHandler):
             self.send_doc(parse_qs(parts.query).get('path', [''])[0])
         elif path.startswith(FILE_ROUTE):
             self.send_from(self.reading.root, unquote(path[len(FILE_ROUTE) :]))
+        elif path == '/hold':
+            self.hold_open()
         elif path == ICON_ROUTE:
             self.send_icon()
         elif path == '/mtime':
@@ -356,16 +386,16 @@ class ReadingHandler(BaseHTTPRequestHandler):
         """Answer a write. Every refusal is caught here rather than dropped."""
         try:
             body = self.read_json()
-            if self.path == '/api/closed':
-                # Said by the page as it goes, so that a closed window ends the
-                # reading at once rather than at the end of the long wait for a
-                # page that has simply gone quiet.
-                self.reading.gone = time.monotonic()
-                self.send_json({'ok': True})
-            elif self.path == '/api/cursor' and self.reading.editing:
+            if self.path == '/api/cursor' and self.reading.editing:
                 self.reading.cursor = wanted_line(body)
                 if body.get('clicked'):
                     self.reading.clicks += 1
+                self.send_json({'ok': True})
+            elif self.path == '/api/drawn':
+                # Said by the page once the document is on the screen, which is
+                # where the reading learns that the window it opened is finished
+                # and the machine is free for the vim it warms behind it.
+                self.reading.drawn.set()
                 self.send_json({'ok': True})
             elif self.path == '/api/edit':
                 # Recorded and answered at once. Opening vim takes a second and
@@ -374,18 +404,6 @@ class ReadingHandler(BaseHTTPRequestHandler):
                 # and the page learns the outcome from the poll it already runs.
                 self.reading.ask(bool(body.get('editing')))
                 self.send_json({'editing': self.reading.editing})
-            elif self.path == '/api/heartbeat':
-                self.reading.beat = time.monotonic()
-                # A page speaking is a page still here, which takes back any
-                # farewell said before it. That is what holds a reading open
-                # across a reload, where the goodbye and the page that comes
-                # back are a moment apart.
-                self.reading.gone = None
-                # The page sends its first heartbeat once it has drawn the
-                # document, so this is also where the reading learns that the
-                # window it opened is finished and the machine is free again.
-                self.reading.drawn.set()
-                self.send_json({'ok': True})
             elif self.path == '/api/jump' and self.reading.editing:
                 vimlink.jump(self.reading.servername, *wanted_block(body))
                 self.send_json({'ok': True})
@@ -397,6 +415,40 @@ class ReadingHandler(BaseHTTPRequestHandler):
                 self.send_json({'error': 'not found'}, code=404)
         except ValueError as error:
             self.send_json({'error': str(error)}, code=400)
+
+    def hold_open(self):
+        """Answer the page's headers and then hold its connection for the reading's life.
+
+        This is how a reading knows its page is still there. The reply is opened
+        and never finished, so the connection stays up for as long as the page
+        does, and the page is asked for nothing else: it holds the reading by
+        being there rather than by remembering to speak, which is what carries a
+        reading through a window left in the background and a machine put to
+        sleep.
+
+        The socket becoming readable is the page going. Nothing is ever sent up
+        this connection, so there is nothing else it could be, and a browser
+        closing a window drops it in the same movement.
+
+        The wait is broken into turns so that the reading ending also lets go.
+        Otherwise the last page of a reading stopped by ctrl-c would sit here
+        holding a connection nobody is on the other end of.
+        """
+        self.send_response(200)
+        self.send_header('Cache-Control', 'no-store')
+        # Said outright, since the reply carries no length and ends where the
+        # connection does. It is also what stops this connection being offered
+        # back for another request afterwards.
+        self.send_header('Connection', 'close')
+        self.send_header('Content-Type', 'text/plain; charset=utf-8')
+        self.end_headers()
+        self.reading.hold()
+        try:
+            while not self.reading.over.is_set():
+                if select.select([self.connection], [], [], WATCH_TICK)[0]:
+                    return
+        finally:
+            self.reading.let_go()
 
     def image_src(self, target):
         """Return where this server answers for an image beside the current document.

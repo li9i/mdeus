@@ -9,10 +9,10 @@ whole from the ones a served reading uses.
 That last part is the whole design. A printed copy is the reading page with the
 document baked into it rather than fetched, so the themes, the contents list and
 the names the headings are given are the reading's own and are not written a
-second time here. The requests the page would make are answered from the baked
-document by the short script below, which refuses the two that write. Changing
-the theme or opening the contents list therefore affects that one file and
-stores nothing.
+second time here. The two requests the page draws from are answered from the
+baked document by the short script below, and everything else it would ask for
+is refused. Changing the theme or opening the contents list therefore affects
+that one file and stores nothing.
 
 Links to other markdown documents are left exactly as they were written. There
 is nothing behind the file to render a target, so following one is the
@@ -32,10 +32,11 @@ from server import ASSET_DIR, page_html, resolve_inside
 from state import load_state
 
 CACHE_DIR = Path.home() / '.cache' / 'mdeus'
-# Everything the reading page asks a server for, answered from the document
-# printed beside it. Nothing here reaches the network, and a request to store
-# the theme or the contents setting is refused rather than answered, because a
-# printed copy has nowhere to store it.
+# What the reading page draws from, answered from the document printed beside it.
+# Nothing here reaches the network. Every other request the page makes is
+# refused rather than answered, since there is nowhere to store a theme, no
+# reading to hold open and nobody waiting to hear that the document has been
+# drawn.
 STUB = """\
 window.fetch = (path) => {
   const answers = { '/doc': DOC, '/mtime': { mtime: 0 } };

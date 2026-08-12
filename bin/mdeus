@@ -22,8 +22,10 @@ see the page.
 
 A reading is served from this machine and nowhere else, redrawn whenever the
 file changes. While it is only the page, it ends on ctrl-c or with the page,
-which says goodbye as it closes. That is what ends a reading started from the
-file manager, where there is no terminal to interrupt. While vim is up, the
+which holds it open by a connection nothing but the page closing drops. That is
+what ends a reading started from the file manager, where there is no terminal to
+interrupt, and it asks nothing of the page while it is open, so a window left in
+the background keeps its reading. While vim is up, the
 reading is held by vim: ctrl-c, the window's close button and the page being
 closed all ask vim to quit, and vim refuses while anything in it is unwritten,
 so nothing is taken away from under unsaved work.

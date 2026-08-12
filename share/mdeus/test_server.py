@@ -21,6 +21,7 @@ import os
 import re
 import select
 import shutil
+import socket
 import sys
 import tempfile
 import threading
@@ -195,6 +196,30 @@ def start_export():
     return root, stop
 
 
+def start_holding(port):
+    """Take hold of a reading the way its page does, and return the letting go of it.
+
+    The page holds a reading open by one request it never lets finish, so this
+    reads the reply's headers and then leaves the connection exactly where it is.
+    Closing it is what a page going away looks like from the server's side, and is
+    what the returned call does.
+
+    Spoken over a bare socket rather than through http.client, which hangs up on
+    a reply that carries no length the moment it has read the headers, and so
+    could never hold anything.
+    """
+    connection = socket.create_connection((server.HOST, port), timeout=TIMEOUT)
+    connection.sendall(f'GET /hold HTTP/1.1\r\nHost: {server.HOST}\r\n\r\n'.encode('ascii'))
+    head = b''
+    while b'\r\n\r\n' not in head:
+        more = connection.recv(1024)
+        if not more:
+            raise AssertionError('GET /hold was dropped rather than answered')
+        head += more
+    assert head.startswith(b'HTTP/1.1 200 '), head.split(b'\r\n')[0]
+    return connection.close
+
+
 def start_reading(editable=False, editing=False):
     """Serve a fixture tree on a free port and return its root, port, reading and a stop call.
 
@@ -228,6 +253,10 @@ def start_reading(editable=False, editing=False):
 
     def stop():
         """Stop the server, wait for it, and remove the fixture tree."""
+        # Said before the server is stopped rather than after, because a page
+        # holding the reading open is waiting on this and nothing else, and a
+        # test that left one holding would leave the thread behind it running.
+        reading.over.set()
         bound.shutdown()
         bound.server_close()
         thread.join(timeout=TIMEOUT)
@@ -249,7 +278,7 @@ def start_watching(reading):
     """
     stopped = threading.Event()
     watching = threading.Thread(
-        target=server.watch_heartbeat,
+        target=server.watch_pages,
         args=(SimpleNamespace(shutdown=stopped.set), reading),
         daemon=True,
     )
@@ -282,70 +311,6 @@ def test_a_click_in_vim_is_counted_and_a_move_is_not():
         stop()
 
 
-def test_a_closed_page_does_not_end_a_reading_vim_is_holding():
-    """A reading with vim up is held by vim, whatever the page it was opened beside says.
-
-    Closing the page of an editing reading is an asking for vim to quit, and vim
-    refuses while anything in it is unwritten. So the page going has no say here
-    until vim has gone too, or work vim is quite right to be holding on to would
-    be taken away a moment after the page was closed.
-    """
-    root, port, reading, stop = start_reading(editable=True, editing=True)
-    stopped, watching = start_watching(reading)
-    try:
-        fetch_json(port, '/api/closed', 'POST')
-        held = server.FAREWELL_GRACE * 3
-        assert not stopped.wait(held), 'a closed page ended a reading vim was holding'
-        # Vim gone, and nothing holding the reading up any longer.
-        reading.editing = False
-        assert stopped.wait(TIMEOUT), 'the reading outlived both its page and vim'
-    finally:
-        stop()
-        watching.join(timeout=TIMEOUT)
-
-
-def test_a_closed_page_ends_the_reading_at_once():
-    """A page says it is going as it goes, so the reading ends with it.
-
-    Without that the reading ends only once the page has been quiet for the
-    whole of the heartbeat timeout, which leaves the command sitting in the
-    terminal for ten seconds after the window it was serving has gone.
-    """
-    root, port, reading, stop = start_reading()
-    stopped, watching = start_watching(reading)
-    try:
-        assert fetch_json(port, '/api/heartbeat', 'POST') == (200, {'ok': True})
-        assert not stopped.wait(server.FAREWELL_GRACE), 'a reading being read was ended'
-        assert fetch_json(port, '/api/closed', 'POST') == (200, {'ok': True})
-        assert stopped.wait(TIMEOUT), 'a closed page left the reading running'
-    finally:
-        stop()
-        watching.join(timeout=TIMEOUT)
-
-
-def test_a_page_that_comes_straight_back_holds_the_reading():
-    """A reload says it is going on its way out, and the reading waits for it.
-
-    The page that comes back says it is here again well inside the wait, and
-    that takes the farewell back. A reading ended on the farewell alone would
-    leave every reload looking at a page with nothing behind it.
-    """
-    root, port, reading, stop = start_reading()
-    stopped, watching = start_watching(reading)
-    try:
-        fetch_json(port, '/api/heartbeat', 'POST')
-        fetch_json(port, '/api/closed', 'POST')
-        fetch_json(port, '/api/heartbeat', 'POST')
-        waited = server.FAREWELL_GRACE * 3
-        assert not stopped.wait(waited), 'a reloaded page ended the reading behind it'
-        # Ended the way a closed page ends it, so the watcher is not left running.
-        fetch_json(port, '/api/closed', 'POST')
-        assert stopped.wait(TIMEOUT), 'a closed page left the reading running'
-    finally:
-        stop()
-        watching.join(timeout=TIMEOUT)
-
-
 def test_a_link_is_followed_in_vim_while_vim_is_up():
     """Following a link takes vim with it while vim is up, and speaks to nobody otherwise.
 
@@ -373,6 +338,93 @@ def test_a_link_is_followed_in_vim_while_vim_is_up():
     finally:
         vimlink.edit = was
         stop()
+
+
+def test_a_page_letting_go_does_not_end_a_reading_vim_is_holding():
+    """A reading with vim up is held by vim, whatever became of the page beside it.
+
+    Closing the page of an editing reading is an asking for vim to quit, and vim
+    refuses while anything in it is unwritten. So the page going has no say here
+    until vim has gone too, or work vim is quite right to be holding on to would
+    be taken away a moment after the page was closed.
+    """
+    root, port, reading, stop = start_reading(editable=True, editing=True)
+    stopped, watching = start_watching(reading)
+    try:
+        let_go = start_holding(port)
+        let_go()
+        held = server.RETURN_GRACE * 3
+        assert not stopped.wait(held), 'a page let go ended a reading vim was holding'
+        # Vim gone, and nothing holding the reading up any longer.
+        reading.editing = False
+        assert stopped.wait(TIMEOUT), 'the reading outlived both its page and vim'
+    finally:
+        stop()
+        watching.join(timeout=TIMEOUT)
+
+
+def test_a_page_letting_go_ends_the_reading_at_once():
+    """A page holds the reading by its connection, so the reading ends with it.
+
+    Nothing else is waited for. A reading whose window was closed leaves its
+    command sitting in the terminal for as long as it takes to notice, and what
+    the connection dropping gives is the shortest notice there is.
+    """
+    root, port, reading, stop = start_reading()
+    stopped, watching = start_watching(reading)
+    try:
+        let_go = start_holding(port)
+        assert not stopped.wait(server.RETURN_GRACE), 'a reading being read was ended'
+        let_go()
+        assert stopped.wait(TIMEOUT), 'a page let go left the reading running'
+    finally:
+        stop()
+        watching.join(timeout=TIMEOUT)
+
+
+def test_a_page_that_comes_straight_back_holds_the_reading():
+    """A reload lets go on its way out, and the reading waits for the page coming back.
+
+    The page takes hold again before it has drawn anything, so it is back well
+    inside the wait. A reading ended the moment its page let go would leave
+    every reload looking at a page with nothing behind it.
+    """
+    root, port, reading, stop = start_reading()
+    stopped, watching = start_watching(reading)
+    try:
+        start_holding(port)()
+        let_go = start_holding(port)
+        waited = server.RETURN_GRACE * 3
+        assert not stopped.wait(waited), 'a reloaded page ended the reading behind it'
+        # Ended the way a closed page ends it, so the watcher is not left running.
+        let_go()
+        assert stopped.wait(TIMEOUT), 'a page let go left the reading running'
+    finally:
+        stop()
+        watching.join(timeout=TIMEOUT)
+
+
+def test_a_page_that_says_nothing_keeps_the_reading():
+    """A page holding the reading keeps it, however long it goes without speaking.
+
+    A page that had to speak on a timer to stay alive would lose the reading
+    behind its own window: a browser slows the timers of a window that is not in
+    front of you, and stops them outright while the machine is asleep. What is
+    watched is the connection instead, which stays up through both.
+    """
+    root, port, reading, stop = start_reading()
+    stopped, watching = start_watching(reading)
+    try:
+        let_go = start_holding(port)
+        # Long enough to have run out every wait the reading has, since nothing
+        # is asked of the page in it at all.
+        quiet = server.RETURN_GRACE * 5
+        assert not stopped.wait(quiet), 'a silent page lost the reading behind it'
+        let_go()
+        assert stopped.wait(TIMEOUT), 'a page let go left the reading running'
+    finally:
+        stop()
+        watching.join(timeout=TIMEOUT)
 
 
 def test_absolute_and_parent_paths_are_not_served():
@@ -912,23 +964,25 @@ def test_state_is_stored_and_reported_back():
         stop()
 
 
-def test_the_first_heartbeat_says_the_page_has_drawn():
-    """A page speaking for the first time is a page that has finished drawing.
+def test_the_page_says_when_it_has_drawn():
+    """The page says so once the document is on the screen.
 
-    The page sends its first heartbeat once the document is on the screen, and
-    that is what the reading waits for before starting vim behind it. A reading
+    That is what the reading waits for before starting vim behind it. A reading
     that started vim earlier would have a browser and a gvim wanting the same
-    machine at the moment somebody is watching the page draw.
+    machine at the moment somebody is watching the page draw. Taking hold of the
+    reading is not the same thing and does not say it: a page takes hold before
+    it has drawn anything, which is what carries a reload across.
     """
     root, port, reading, stop = start_reading()
     try:
-        assert not reading.drawn.is_set(), 'drawn before the page said anything'
-        fetch_json(port, '/api/heartbeat', 'POST')
+        let_go = start_holding(port)
+        assert not reading.drawn.is_set(), 'drawn before the page had drawn anything'
+        assert fetch_json(port, '/api/drawn', 'POST') == (200, {'ok': True})
         assert reading.drawn.is_set(), 'a drawn page did not say so'
-        # Every heartbeat after the first says the same thing, and saying it
-        # again changes nothing.
-        fetch_json(port, '/api/heartbeat', 'POST')
+        # A page reloaded says it again, and saying it again changes nothing.
+        fetch_json(port, '/api/drawn', 'POST')
         assert reading.drawn.is_set()
+        let_go()
     finally:
         stop()
 

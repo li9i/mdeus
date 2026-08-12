@@ -1,6 +1,6 @@
 /* The reading page: the theme dropdown, the Contents, Full width and Edit
    toggles beside it, the contents list, the sections a double click folds away,
-   the redraw when the file changes, and the goodbye and heartbeat that end a
+   the redraw when the file changes, and the connection whose dropping ends a
    reading with no terminal.
 
    The row those controls sit on stays at the top of the window while the
@@ -35,7 +35,6 @@ const CHASE_MS = 100;
 const CONTENTS_MINIMUM = 3;
 /* How long a copy button says it copied before it offers to again. */
 const COPIED_MS = 1500;
-const HEARTBEAT_MS = 3000;
 const MTIME_MS = 500;
 const THEMES = [
   ['browser', 'Browser default'],
@@ -384,25 +383,20 @@ function drawDocument() {
   applyFolds();
 }
 
+function drawn() {
+  /* Said once, when the document is first on the screen. The reading waits for
+     it before starting the vim it keeps out of sight, so that a browser drawing
+     a page and a gvim starting are not after the same machine at the one moment
+     somebody is watching. */
+  fetch('/api/drawn', { method: 'POST' }).catch(() => {});
+}
+
 function esc(text) {
   /* Heading names and file names are put on the page as markup, and both come
      out of the file being read. Anything in them that reads as a tag has to
      stop reading as one first. */
   const replacements = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
   return String(text).replace(/[&<>"]/g, (character) => replacements[character]);
-}
-
-function farewell() {
-  /* Said as the page goes, so that closing the window ends the reading there
-     and then rather than ten seconds after the last heartbeat.
-
-     keepalive is what lets the request outlive the page that sent it. Without
-     it the browser drops the request as it takes the page down, and the page
-     leaves without a word.
-
-     A reload says this on its way out too, and the server holds the reading
-     open for a moment so that the page coming back can take it back. */
-  fetch('/api/closed', { keepalive: true, method: 'POST' }).catch(() => {});
 }
 
 function foldSection(heading, folded) {
@@ -445,10 +439,41 @@ async function follow(relative, push) {
   window.scrollTo(0, 0);
 }
 
-function heartbeat() {
-  /* A reading opened from the file manager has no terminal to interrupt, so
-     the server stops once this stops arriving. */
-  fetch('/api/heartbeat', { method: 'POST' }).catch(() => {});
+async function hold() {
+  /* Hold the reading open for as long as this page is here.
+
+     A reading opened from the file manager has no terminal to interrupt, so the
+     page is what ends it. The page does that by asking for one thing it is
+     never given: the reply's headers come back and the body never does, so the
+     connection stays up until the window closes and the browser drops it, which
+     is the moment the reading ends.
+
+     Nothing here is on a timer, and that is the whole point. A browser slows
+     the timers of a window that is not in front of you, and stops them
+     altogether while the machine sleeps, so a page that had to speak to stay
+     alive would lose the reading behind its own window while somebody had it
+     minimised. Nothing is asked of the clock, and a connection sleeps as
+     happily as the machine it is on.
+
+     Held again if the connection ends while the reading has not, which is what
+     a browser dropping an idle socket of its own accord would look like. A
+     server that has stopped answering refuses the next asking, and the page
+     lets the reading go rather than asking for ever. */
+  let response;
+  try {
+    response = await fetch('/hold');
+  } catch (error) {
+    return; // nothing is serving, so there is no reading left to hold
+  }
+  if (!response.ok) {
+    return; // nobody is behind this page at all, which is what a printed copy is
+  }
+  try {
+    await response.text(); // the body only ends when the connection does
+  } catch (error) {
+    // The connection went rather than the page, so it is taken again below.
+  }
+  hold();
 }
 
 function isSection(block) {
@@ -633,6 +658,11 @@ function slug(text, used) {
 }
 
 async function start() {
+  /* The reading is taken hold of before the document is asked for, so that a
+     reloaded page is holding it again within the moment rather than once it has
+     drawn, which on a long document is long enough for the reading to have ended
+     underneath it. */
+  hold();
   await load();
   /* The document the reading opened at is the first history entry, so going
      back to it names a path like every other entry does. */
@@ -644,12 +674,8 @@ async function start() {
      controls inside it the size they were, and that is a change in height the
      content box alone does not report. */
   new ResizeObserver(measureBar).observe(controlsNode, { box: 'border-box' });
-  /* pagehide rather than unload, since a browser may hold a page back from
-     firing unload at all, and this is the one message the reading ends on. */
-  window.addEventListener('pagehide', farewell);
   window.addEventListener('popstate', onPop);
-  heartbeat();
-  window.setInterval(heartbeat, HEARTBEAT_MS);
+  drawn();
   window.setInterval(poll, MTIME_MS);
 }
 
