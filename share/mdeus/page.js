@@ -3,6 +3,11 @@
    the redraw when the file changes, and the goodbye and heartbeat that end a
    reading with no terminal.
 
+   The row those controls sit on stays at the top of the window while the
+   document runs behind it, which the stylesheet does on its own. What this file
+   owes it is its height, written to the root as --bar-height so that a heading
+   jumped to lands below the row rather than behind it.
+
    The page keeps nothing of its own. It draws what GET /doc sends and writes
    every change back through POST /api/state, so one reading and the next
    agree wherever they were opened from.
@@ -69,14 +74,21 @@ let wide = null;
 function anchor() {
   /* The first block still on screen, and how far down the window it sits. A
      theme change alters every measurement on the page, so the reading
-     position has to be held by a block rather than by a pixel offset. */
+     position has to be held by a block rather than by a pixel offset.
+
+     The control row stands over the document, so a block behind it is not on
+     screen and the foot of the row is where the reading starts. The row is
+     measured rather than read out of --bar-height, since where its foot lands
+     moves as the page is scrolled to the very top and the height alone does not
+     say that. */
   const blocks = docNode.querySelectorAll('.block');
+  const barFoot = controlsNode.getBoundingClientRect().bottom;
   for (const block of blocks) {
     if (block.hidden) {
       continue; // folded away, so it has no place on the page to hold
     }
     const top = block.getBoundingClientRect().top;
-    if (top >= 0) {
+    if (top >= barFoot) {
       return { start: block.dataset.start, top };
     }
   }
@@ -473,6 +485,19 @@ async function load() {
   restore(mark);
 }
 
+function measureBar() {
+  /* Say how tall the control row is, for the stylesheet to hold a heading that
+     far clear of it when the contents list jumps to one.
+
+     It is asked again whenever the row changes rather than once at the start,
+     since the row wraps onto a second line on a narrow window and the contents
+     button comes and goes with the document being read. */
+  document.documentElement.style.setProperty(
+    '--bar-height',
+    `${controlsNode.offsetHeight}px`
+  );
+}
+
 function onClick(event) {
   /* A link to another document is followed in place, so the reading stays one
      page and the back button returns the way it would anywhere else. */
@@ -613,6 +638,12 @@ async function start() {
      back to it names a path like every other entry does. */
   history.replaceState({ path: doc.name }, '');
   docNode.addEventListener('click', onClick);
+  /* The row is measured as this starts watching it, so nothing has to say how
+     tall it was to begin with. The border box is what is watched rather than
+     the default: a theme change alters the padding round the row and leaves the
+     controls inside it the size they were, and that is a change in height the
+     content box alone does not report. */
+  new ResizeObserver(measureBar).observe(controlsNode, { box: 'border-box' });
   /* pagehide rather than unload, since a browser may hold a page back from
      firing unload at all, and this is the one message the reading ends on. */
   window.addEventListener('pagehide', farewell);
