@@ -88,6 +88,10 @@ DIVIDER = 6
 # The glyph in the cursor font that says a thing can be dragged sideways, and
 # the glyph after it, which is its mask.
 DIVIDER_CURSOR = 108
+# The grey the seam is drawn in. It is the hairline the page's own themes draw
+# their tables and their fences with, so the join between the two halves is of a
+# piece with the document beside it rather than a line of the reading's own.
+DIVIDER_LINE = 0xDCDCDC
 # How much of the pipe a wish arrives down is taken off it at a time. Every byte
 # in it says the same thing, that the page has asked for something, so one read
 # is enough however many are waiting.
@@ -265,14 +269,34 @@ def cool(reading, waiting):
 
 
 def divider_at(divider, seam, height):
-    """Lay the strip you drag over the seam between the two panes.
+    """Lay the line down the seam between the two panes, and the strip you drag it by.
 
-    It is put on top every time, since a pane mapped into the container after
-    it would otherwise sit over it and take the clicks meant for it.
+    Both are put above the panes every time, since a pane mapped into the
+    container after them would otherwise sit over them and hide the line and
+    take the clicks meant for the strip.
+
+    The strip is raised over everything and the line is put directly under it,
+    rather than each being raised in turn. Asked the second way round they would
+    never settle: raising either of them puts it over the other, so every layout
+    would be a real change to the stack, every change would be another event
+    saying so, and every event asks for the layout again. The reading would go
+    round that for as long as it was up. This way says the same thing about
+    where they belong and says it once, and a layout that asks for the order they
+    are already in changes nothing and is answered by nothing.
+
+    The line stands on the last column of the browser rather than the first of
+    vim. The panes meet exactly and leave no column of their own for it, so it
+    has to cover one of theirs, and the one it can have for nothing is the
+    page's: every theme leaves a margin down that edge, and vim draws the
+    document up to its own.
     """
-    divider.configure(
+    divider['grab'].configure(
         x=seam - DIVIDER // 2, y=0, width=DIVIDER, height=height,
         stack_mode=X.Above,
+    )
+    divider['line'].configure(
+        x=seam - 1, y=0, width=1, height=height,
+        sibling=divider['grab'], stack_mode=X.Below,
     )
 
 
@@ -290,7 +314,7 @@ def drag(d, container, panes, divider, press):
     stored, so the next reading opens at the same split.
     """
     global browser_share
-    divider.grab_pointer(
+    divider['grab'].grab_pointer(
         False, X.PointerMotionMask | X.ButtonReleaseMask,
         X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE, press.time,
     )
@@ -635,7 +659,7 @@ def hold(d, container, panes, divider, vim, reading, ending):
                 # A press on the strip over the seam is a drag and nothing
                 # else. It reaches the strip rather than the pane under it, so
                 # no click is owed to anybody and none is let through.
-                if event.window.id == divider.id:
+                if event.window.id == divider['grab'].id:
                     drag(d, container, panes, divider, event)
                     continue
                 for name, window in panes.items():
@@ -788,15 +812,30 @@ def make_container(d, document):
 
 
 def make_divider(d, container):
-    """Put a strip over the seam for the pointer to take hold of.
+    """Put a line down the seam between the two panes, and a strip to drag it by.
 
-    It draws nothing at all. The two panes meet exactly and there is no gap
-    between them to grab, so what is dragged is a window of its own laid over
-    the join, there for the pointer and for nothing else. The pointer changes
-    shape over it, which is the whole of what says the seam can be moved.
+    Two windows, because the one that is seen is not the one that is dragged.
+    The two panes meet exactly and leave no gap between them for either, so both
+    are windows of their own laid over the join.
+
+    The line is a single pixel of grey, which is what says there is a join there
+    at all: one pixel, so that it reads as the two halves meeting rather than as
+    a border drawn round either of them. It draws nothing but its own colour and
+    hears nothing.
+
+    The strip is six pixels wide and draws nothing whatever. It is there for the
+    pointer, which changes shape over it, and for the press that starts a drag.
+    Six pixels because one is not something a pointer can be asked to land on,
+    and the strip is what makes the join as easy to take hold of as it would be
+    if it were six pixels wide to look at.
     """
     font = d.open_font('cursor')
-    divider = container.create_window(
+    line = container.create_window(
+        0, 0, 1, 1, 0, X.CopyFromParent, X.InputOutput, X.CopyFromParent,
+        background_pixel=DIVIDER_LINE,
+    )
+    line.map()
+    grab = container.create_window(
         0, 0, DIVIDER, 1, 0, 0, X.InputOnly, X.CopyFromParent,
         cursor=font.create_glyph_cursor(
             font, DIVIDER_CURSOR, DIVIDER_CURSOR + 1,
@@ -804,8 +843,8 @@ def make_divider(d, container):
         ),
         event_mask=X.ButtonPressMask,
     )
-    divider.map()
-    return divider
+    grab.map()
+    return {'grab': grab, 'line': line}
 
 
 def meet(d, container, panes, divider):

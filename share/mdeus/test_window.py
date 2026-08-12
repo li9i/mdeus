@@ -108,6 +108,16 @@ def opening_session():
     return reading, vim, stop
 
 
+def seam(at, height):
+    """Return stand ins for the two windows the seam is shown and dragged by.
+
+    The line down the join and the strip laid over it, in the places a layout
+    would have left them, since a layout that touches either of them is a layout
+    that has decided to move the seam.
+    """
+    return {'grab': Pane(at - 3, 0, 6, height), 'line': Pane(at - 1, 0, 1, height)}
+
+
 def test_a_vim_pane_as_wide_as_the_window_leaves_the_panes_where_they_are():
     """A vim wider than the window it sits in is not answered with an impossible width.
 
@@ -127,9 +137,9 @@ def test_a_vim_pane_as_wide_as_the_window_leaves_the_panes_where_they_are():
     """
     container = Pane(0, 0, 800, 600)
     panes = {'browser': Pane(0, 0, 352, 600), 'vim': Pane(352, 0, 900, 600)}
-    divider = Pane(349, 0, 6, 600)
+    divider = seam(352, 600)
     window.meet(Display(), container, panes, divider)
-    for name, pane in dict(panes, divider=divider).items():
+    for name, pane in dict(panes, **divider).items():
         assert pane.asked == [], (name, pane.asked)
 
 
@@ -151,9 +161,9 @@ def test_a_pane_that_has_gone_does_not_take_the_reading_with_it():
     for closed in ('browser', 'vim'):
         panes = {'browser': Pane(0, 0, 563, 800), 'vim': Pane(563, 0, 717, 800)}
         panes[closed].gone = True
-        divider = Pane(560, 0, 6, 800)
+        divider = seam(563, 800)
         window.meet(Display(), container, panes, divider)
-        for name, pane in dict(panes, divider=divider).items():
+        for name, pane in dict(panes, **divider).items():
             assert pane.asked == [], (closed, name, pane.asked)
 
 

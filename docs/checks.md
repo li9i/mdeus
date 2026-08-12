@@ -62,8 +62,8 @@ Run all of it after touching anything to do with the browser, the windows or vim
 
 ### The divider
 
-31. Put the pointer on the join between the two panes. It becomes an arrow pointing both ways, which is the whole of what says the join can be moved. Take the pointer a few pixels off the join and the arrow goes again.
-32. Drag the join left and right. Both panes follow the pointer and go on meeting exactly at every moment of the drag, and the seam lands on a whole character column of vim rather than exactly where you let go.
+31. The join between the two panes carries a grey hairline down the whole height of the window, one pixel wide, the same grey the themes draw their tables and fences in. It is a line and not a band: neither pane is inset from it, and it never doubles or thickens. Put the pointer on it and it becomes an arrow pointing both ways, which says the join can be moved. Take the pointer a few pixels off the join and the arrow goes again while the line stays.
+32. Drag the join left and right. Both panes follow the pointer and go on meeting exactly at every moment of the drag, the hairline stays on the join throughout rather than lagging behind it or being left behind, and the seam lands on a whole character column of vim rather than exactly where you let go. Watch what the reading costs while you drag and once you stop: dragging is work, and a reading left alone afterwards should be doing nothing at all.
 33. Drag as far as it will go each way. It stops while there is still a pane worth reading in on both sides, at 15 percent of the window one way and 85 percent the other.
 34. Drag the join somewhere else, press `Edit` off, and press it on again. It opens where you left it. Change the theme in the page as well, and neither setting has put the other out of `~/.config/mdeus/state.json`.
 

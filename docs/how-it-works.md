@@ -4,7 +4,7 @@ The behaviour of a reading in detail, and what each file in the repository does.
 
 ## The Edit toggle
 
-The page carries an `Edit` toggle at the top of it, and pressing it brings vim in beside the page, in one window. The browser takes the left of that window and gvim takes the right, 44 percent against 56 until you drag the seam between them somewhere else. The window fills the work area, so the page moves and grows as it goes in, and vim opens on the document the page is showing rather than the one the reading started at: follow a link and then press it, and vim opens where you are looking.
+The page carries an `Edit` toggle at the top of it, and pressing it brings vim in beside the page, in one window. The browser takes the left of that window and gvim takes the right, 44 percent against 56 until you drag the seam between them somewhere else, with a grey hairline down the join. The window fills the work area, so the page moves and grows as it goes in, and vim opens on the document the page is showing rather than the one the reading started at: follow a link and then press it, and vim opens where you are looking.
 
 Press it again and vim goes, the window goes with it, and the page is handed back to the desktop at the size and in the place it had before, still open on the same document and still where you had scrolled it to. It never reloads. A reading opened with `--edit` had no window of its own to go back to, so that one is left filling the work area. Quitting vim does the same thing, and the toggle comes back up within half a second of vim going. The toggle follows the reading rather than leading it, so a press a vim with unsaved work refuses shows as the toggle going back down.
 
