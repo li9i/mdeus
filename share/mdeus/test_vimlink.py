@@ -11,7 +11,6 @@ import sys
 
 import vimlink
 
-# The name a stand in for vim answers to.
 SERVERNAME = 'MDEUSTEST'
 
 

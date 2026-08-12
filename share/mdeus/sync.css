@@ -1,54 +1,9 @@
-/* The two marks vim puts on the page, beside sync.js which puts them there.
-
-   Every reading loads this file, since vim may be asked for at any moment, and
-   it costs a reading with no vim nothing at all: the two marks below are
-   carried by no block until something marks one.
-
-   THE TWO MARKS
-   -------------
-
-   The block holding the vim cursor carries a solid rule in the margin to the
-   left of it, for as long as the cursor is in it. The block you sent vim to
-   carries a light grey ground, which fades once the jump is a second old.
-
-   They are given different shapes rather than different shades. Two of the
-   three themes are black on white with no accent to spend on this, so two
-   marks separated only by colour would read as one mark in two moods. A rule
-   beside the text and a ground behind it can never be mistaken for each
-   other, and they stay legible together on the same block, which is what
-   happens the moment you jump: vim reports back a beat later and the cursor
-   lands where you pointed.
-
-   The rule is drawn outside the block, in the margin the theme already leaves
-   to the left of the document, so it cannot land on the text and the text
-   never moves to make room for it. How much margin there is differs by theme,
-   which is the whole of the per theme section below.
-
-   THE SCOPING RULE
-   ----------------
-
-   As in themes.css, nothing here styles a bare element. Every rule is scoped
-   under .doc, so the two marks reach the document and nothing else on the
-   page. The theme classes appear only where a theme needs its own offset.
-*/
-
-/* ------------------------------------------------------------------
-   shared
-   ------------------------------------------------------------------ */
-
 .doc .block {
-  /* The rule is positioned against the block it marks. Nothing else about
-     the block moves, so a page with no mark on it is drawn exactly as a
-     reading with no vim draws it. */
   position: relative;
-  /* The ground fades on the way out only. Arriving, the rule that sets it
-     turns this off, so a click answers at once and then lets go slowly. */
   transition: background-color 0.4s ease-out;
 }
 
 .doc .block.mdeus-cursor::before {
-  /* The theme's own text colour, so no theme gains a colour it did not
-     already have. */
   background: currentColor;
   bottom: 0;
   content: '';
@@ -63,14 +18,6 @@
   transition: none;
 }
 
-/* ------------------------------------------------------------------
-   where each theme leaves room
-
-   browser and github hold the document 8px from the window edge and nothing
-   more, so the rule sits close in. report gives it a padding of over a rem and
-   the rule can stand clear of the text.
-   ------------------------------------------------------------------ */
-
 .browser .doc {
   --mdeus-rule: -7px;
 }
@@ -79,10 +26,6 @@
   --mdeus-rule: -13px;
 }
 
-/* github draws grounds of its own: #f6f8fa on a fenced block and on every
-   second row of a table, and a fainter grey on inline code. The clicked ground
-   steps well past all of them, so a block that is grey for a second is never
-   read as furniture that is grey always. */
 .github .doc {
   --mdeus-flash: #dbe2e9;
   --mdeus-rule: -7px;

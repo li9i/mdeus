@@ -16,12 +16,7 @@ import json
 import uuid
 from pathlib import Path
 
-# The share of the window the browser pane takes in a reading with vim beside
-# it, before the divider between them has ever been dragged. It matches the
-# split the same document read in a terminal already uses.
 DEFAULT_SPLIT = 0.44
-# How far the divider may be dragged either way. Far enough to read in either
-# pane alone, and never so far that the other one has nothing left to draw in.
 MAX_SPLIT = 0.85
 MIN_SPLIT = 0.15
 STATE_PATH = Path.home() / '.config' / 'mdeus' / 'state.json'
@@ -76,10 +71,6 @@ def save_state(state):
     beside it stores where the divider was left.
     """
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    # A name of its own for every write, beside the target so the rename stays
-    # on one filesystem. Several readings may run at once, and one fixed
-    # temporary name would let two of them fill the same file and each rename
-    # the other's content into place.
     temp = STATE_PATH.with_name(f'{STATE_PATH.name}.{uuid.uuid4().hex}.tmp')
     merged = dict(stored_state(), **state)
     temp.write_text(json.dumps(merged, indent=2) + '\n', encoding='utf-8')

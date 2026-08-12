@@ -16,16 +16,8 @@ import subprocess
 import sys
 import urllib.request
 
-# What vim says it is doing while it is waiting to be answered: a hit enter
-# prompt, the more prompt, or a question with choices in it. Which of the three
-# it is does not matter here, since in all of them vim is answering the person
-# in front of it and nothing else.
 ASKING = 'r'
-# Leaves whatever mode vim is in, and unlike Escape cannot be read as the
-# opening of the line that follows it.
 NORMAL_MODE = r'<C-\><C-n>'
-# Nothing here is worth waiting on. A vim busy enough not to answer, or a
-# server that has stopped listening, must not hold up whoever asked.
 TIMEOUT = 2
 
 

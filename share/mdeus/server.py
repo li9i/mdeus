@@ -45,39 +45,15 @@ from render import render_document
 from state import THEMES, load_state, save_state
 
 ASSET_DIR = Path(__file__).resolve().parent
-# Where a reading starts looking. A port already taken sends the reading to
-# the next free one, so this is a starting point rather than a fixed address,
-# and several readings at once each end up somewhere of their own.
 DEFAULT_PORT = 8766
-# Where an image beside the document is served from. The page itself is served
-# at the root, so a document's own relative target would resolve against that
-# and name nothing.
 FILE_ROUTE = '/file/'
 HOST = '127.0.0.1'
-# Where the image a reading wears is served from, and which of the sizes it
-# ships goes down that route. The icons sit outside the directory the page's own
-# files are served from, so they come by a route of their own rather than as one
-# more asset. The larger size is the one sent, since it is the browser and the
-# panel that decide what they are drawing it at.
 ICON_ROUTE = '/icon.png'
 ICON_SIZE = 128
 MAX_BODY = 256 * 1024
-# What the command is called. It names the icon files and the window class, and
-# nothing else: a reading is titled by the document it is showing and says the
-# command nowhere.
 NAME = 'mdeus'
-# How long a reading with no page holding it is left standing, in seconds. A
-# reload lets go on its way out and the page coming back takes hold before it
-# draws anything, so the wait is long enough to carry a reload across, and short
-# enough that closing the window ends the reading while the hand is still on the
-# mouse.
 RETURN_GRACE = 1
-# How often a held page's document is looked at, in seconds. This is the whole of
-# what stands between saving in vim and seeing it on the page, so it is short
-# enough to read as at once, and a look is one stat of one file.
 TELL_TICK = 0.05
-# How often the watcher looks at the clock, in seconds. Short enough that it
-# adds little to the wait it is timing, long enough to cost nothing.
 WATCH_TICK = 0.25
 
 
@@ -108,11 +84,6 @@ def page_html(title, state, head, body_tail=''):
     differs between them is how the stylesheet and the script arrive, which is
     the caller's to hand in: linked from this server, or inlined whole.
     """
-    # Both settings the stylesheet reads are already on the root element here,
-    # so that the first paint is the page the reader left rather than an
-    # unstyled one for a moment, or one that rewraps as the script catches up.
-    # The reader marker beside them says this is a page for reading, which is
-    # what drops the github theme below the size github.com itself sets.
     classes = f"{state['theme']} reader" + (' wide' if state['wide'] else '')
     return f"""<!doctype html>
 <html lang="en" class="{classes}">
@@ -151,10 +122,6 @@ def serve(server, reading):
             server.serve_forever()
         except KeyboardInterrupt:
             pass
-    # The reading is over, and whoever is waiting on it is told so twice: the
-    # flag is what the wait looks at, and the event is what wakes it to look.
-    # Without the waking it goes on waiting out the turn it was in, which is a
-    # second of a reading whose page closed a moment ago.
     reading.over.set()
     reading.asked.set()
 
@@ -240,69 +207,22 @@ class Reading:
     """One document being read, and the tree it may serve files from."""
 
     def __init__(self, document, servername, editable=False):
-        # When the reading was left with no page holding it, or nothing while one
-        # holds it. It is nothing to begin with as well, since a reading no page
-        # has ever held is one whose browser has yet to open rather than one
-        # whose page has gone.
         self.alone = None
-        # Whoever is waiting on the page, woken whenever the page asks to move
-        # between viewing and editing.
         self.asked = threading.Event()
-        # How many clicks vim has reported. A click there is the one thing that
-        # brings the page along, and the throttled report of the same line
-        # follows a moment later, so the page is told a running count rather
-        # than a flag the report behind it would take back.
         self.clicks = 0
         self.current = document.resolve()
         self.cursor = None
-        # Set once the page has said it has drawn the document it was sent. vim
-        # is started after that and not before, so that the browser has the
-        # machine to itself while it is doing the one thing the reader is waiting
-        # on.
         self.drawn = threading.Event()
-        # Whether the Edit toggle belongs on the page at all, which is to say
-        # whether there is a desktop session to open vim into.
         self.editable = editable
-        # Whether vim is up. Written by the session that opens and closes it,
-        # and read here to decide which routes answer.
         self.editing = False
-        # How many pages are holding the reading open, and the lock that count
-        # and the moment at the top of this are moved under together. A reload can
-        # have the page coming back taking hold before the one going has let go,
-        # so the two overlap and what is kept is a count rather than a flag.
         self.holding = 0
         self.holds = threading.Lock()
-        # The two ends of the pipe an asking is also said down, for a waiter
-        # that cannot hear the event above. A reading with vim up is inside its
-        # X event loop, waiting on a socket, and one wait can cover a socket and
-        # a pipe but not a socket and an event. Without this the box being
-        # unticked is not noticed until that wait times out, which is a quarter
-        # of a second of a session nobody wants any more.
         self.heard, self.said = os.pipe()
-        # Written to without waiting, so that a page asking many times over
-        # while nobody is reading the other end cannot hold the server up.
         os.set_blocking(self.said, False)
-        # Whether the reading has ended, set when the server stops. Whoever is
-        # holding the reading up waits on this rather than on the serving
-        # thread, which is still tidying itself away for a moment after the
-        # last request has been answered.
         self.over = threading.Event()
-        # The tree is fixed by the document the reading started at. Following
-        # a link moves the current document but never widens what is served.
         self.root = self.current.parent
-        # The name vim answers to and the name the page is served under. It is
-        # settled before the page exists, because the browser writes the name
-        # of the window it puts up out of the address it was given, and that
-        # name is the whole of how a reading finds its own page's window.
         self.servername = servername
-        # Whether a vim is up and waiting to be shown, which is a vim started
-        # ahead of the toggle so that pressing it has nothing left to wait for.
-        # It answers to the servername like any other, so anything the reading
-        # sends vim reaches it, and a link followed while it waits is followed
-        # by it too.
         self.waiting = False
-        # What the page last asked for. The truth is `editing` above; this is
-        # the wish, left where whoever acts on it will find it.
         self.wanted = False
 
     def ask(self, editing):
@@ -326,9 +246,6 @@ class Reading:
         try:
             os.write(self.said, b'.')
         except OSError:
-            # Nobody is reading, and the pipe is full of earlier askings. The
-            # wish is recorded either way, and a session opening later reads it
-            # rather than being told it.
             pass
 
     def hold(self):
@@ -358,19 +275,12 @@ class ReadingHandler(BaseHTTPRequestHandler):
         self.reading = reading
         super().__init__(*args, **kwargs)
 
-    def do_GET(self):  # noqa: N802 (name fixed by BaseHTTPRequestHandler)
+    def do_GET(self):
         """Answer a read. Even a refusal is JSON, so the page can decode every reply."""
         parts = urlsplit(self.path)
         path = parts.path
-        # A reading answers at its own name as well as at the root, because the
-        # browser names the window it puts up after the address it was given,
-        # and that name is what tells one reading's page window from another's.
-        # Several readings run at once and they all serve on the same host, so
-        # the host says nothing about which reading a window belongs to.
         if path == '/' or path[1:] == self.reading.servername:
             self.send_page()
-        # The routes that speak to vim are open only while vim is up, so a
-        # reading that is viewing has no more of an API than a bare page needs.
         elif path == '/api/cursor' and self.reading.editing:
             self.send_json({'clicks': self.reading.clicks, 'line': self.reading.cursor})
         elif path.startswith('/assets/'):
@@ -386,7 +296,7 @@ class ReadingHandler(BaseHTTPRequestHandler):
         else:
             self.send_json({'error': 'not found'}, code=404)
 
-    def do_POST(self):  # noqa: N802 (name fixed by BaseHTTPRequestHandler)
+    def do_POST(self):
         """Answer a write. Every refusal is caught here rather than dropped."""
         try:
             body = self.read_json()
@@ -396,16 +306,9 @@ class ReadingHandler(BaseHTTPRequestHandler):
                     self.reading.clicks += 1
                 self.send_json({'ok': True})
             elif self.path == '/api/drawn':
-                # Said by the page once the document is on the screen, which is
-                # where the reading learns that the window it opened is finished
-                # and the machine is free for the vim it warms behind it.
                 self.reading.drawn.set()
                 self.send_json({'ok': True})
             elif self.path == '/api/edit':
-                # Recorded and answered at once. Opening vim takes a second and
-                # closing it may be refused outright, so what comes back is the
-                # state as it stands rather than the state that was asked for,
-                # and the outcome reaches the page down the connection it holds.
                 self.reading.ask(bool(body.get('editing')))
                 self.send_json({'editing': self.reading.editing})
             elif self.path == '/api/jump' and self.reading.editing:
@@ -450,14 +353,8 @@ class ReadingHandler(BaseHTTPRequestHandler):
         """
         self.send_response(200)
         self.send_header('Cache-Control', 'no-store')
-        # Said outright, since the reply carries no length and ends where the
-        # connection does. It is also what stops this connection being offered
-        # back for another request afterwards.
         self.send_header('Connection', 'close')
         self.send_header('Content-Type', 'application/x-ndjson; charset=utf-8')
-        # Nothing may be held back to see what kind of file this is. The lines
-        # come one at a time and minutes may pass between them, and a browser
-        # sniffing at the first would keep the page from hearing it.
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.end_headers()
         self.reading.hold()
@@ -471,7 +368,7 @@ class ReadingHandler(BaseHTTPRequestHandler):
                 if select.select([self.connection], [], [], TELL_TICK)[0]:
                     return
         except OSError:
-            pass  # the page went as it was being spoken to
+            pass
         finally:
             self.reading.let_go()
 
@@ -533,10 +430,6 @@ class ReadingHandler(BaseHTTPRequestHandler):
                 self.send_json({'error': 'not found'}, code=404)
                 return
             self.reading.current = target
-            # vim follows the link too, so that both halves of a reading are
-            # always of the same file and the sync never marks a document vim
-            # does not have open. A vim still waiting to be shown follows it as
-            # well, so that it is already on the right document when it is.
             if self.reading.editing or self.reading.waiting:
                 vimlink.edit(self.reading.servername, target)
         self.send_json(self.snapshot())
@@ -573,17 +466,6 @@ class ReadingHandler(BaseHTTPRequestHandler):
 
     def send_page(self):
         """Send the empty page, linking the stylesheets and the scripts it draws with."""
-        # The two files behind the sync with vim are linked by every reading,
-        # whether or not vim is up, because editing may begin at any moment and
-        # a page that had to reload to gain them would lose its place in the
-        # document. They cost nothing while a reading is viewing: sync.js asks
-        # for the vim cursor only while editing, and its stylesheet marks blocks
-        # that are never marked. They load after page.js, which draws the
-        # document they mark.
-        # The icon is named by the page because the window a reading opens in
-        # belongs to the browser, and a browser window wears the icon its page
-        # names. It is linked by a served reading only: a printed copy reaches
-        # for no file of its own, and an icon is not worth breaking that for.
         head = [
             f'    <link rel="icon" href="{ICON_ROUTE}" />',
             '    <link rel="stylesheet" href="/assets/themes.css" />',
@@ -596,24 +478,8 @@ class ReadingHandler(BaseHTTPRequestHandler):
 
     def snapshot(self):
         """Return what the page draws, or the reply that says the file is gone."""
-        # The state travels with the document because the page reads its theme
-        # from the first reply it gets, which may well be the gone one. The
-        # modification time travels with it for the same reason the blocks do:
-        # it is the time of the document the page is about to draw, so what the
-        # page is told next is measured against what is on the screen.
-        # The document's name travels with it because the page writes its own
-        # title as it draws, so that following a link to another document says
-        # so on the tab and, in a reading with vim beside it, on the panel.
-        # Whether the Edit toggle belongs on the page travels with the document
-        # rather than with the markup, because the controls are built from the
-        # first reply and a printed copy, which is answered by no server at all,
-        # then carries no toggle without having to be told not to.
         common = {
             'editable': self.reading.editable,
-            # Whether vim is up travels with the document as well as down the
-            # held connection, so that a page reloaded in the middle of a session
-            # draws its Edit toggle pressed on the first paint rather than a
-            # moment later, once it has been told.
             'editing': self.reading.editing,
             'mtime': self.mtime(),
             'name': self.name(),

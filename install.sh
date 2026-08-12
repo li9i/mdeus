@@ -1,16 +1,4 @@
 #!/usr/bin/env bash
-#
-# Install mdeus for one user, on Ubuntu or anything close enough to it.
-#
-#   git clone https://github.com/li9i/mdeus.git ~/mdeus
-#   ~/mdeus/install.sh
-#
-# Nothing is copied. Five links are made into ~/.local, all of them pointing
-# back at this checkout, so pulling the repository is the whole of updating and
-# deleting the checkout after removing the links leaves nothing behind.
-#
-# Run it again whenever you like. Every step says what it found and does the
-# least it can, so a second run changes nothing.
 
 set -euo pipefail
 
@@ -34,11 +22,6 @@ link() {
 echo "Installing mdeus from $REPO"
 
 say "1. Packages"
-# markdown-it parses, mdit-py-plugins draws the task lists and the footnotes,
-# linkify-it finds the bare addresses and emoji answers the shortcodes. xlib
-# draws the one window an editing session lives in and pil reads that window's
-# icon off the disk. vim-gtk3 is a vim with a GUI and +clientserver, which is
-# what the Edit toggle opens; Ubuntu's plain vim package has neither.
 if command -v apt-get >/dev/null 2>&1; then
   echo "This needs root."
   sudo apt-get install -y python3-markdown-it python3-mdit-py-plugins \
@@ -57,8 +40,6 @@ link "$REPO/share/applications/mdeus.desktop" "$DESKTOP_DIR/mdeus.desktop"
 link "$REPO/share/bash-completion/completions/mdeus" "$COMPLETION_DIR/mdeus"
 
 say "3. The Open With menu"
-# The file manager reads the entry out of a cache rather than the directory, so
-# an entry nobody has told it about does not appear.
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database "$DESKTOP_DIR"
   echo "  markdown files now offer mdeus under Open With"

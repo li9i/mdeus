@@ -31,14 +31,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlencode
 
-# The state file and the export cache both hang off the home directory, and
-# where that is gets read once, when the modules below are imported. So it
-# is pointed at a temporary directory first, and the run is given a home of its
-# own that nothing else on the machine knows about. A test that forgets to
-# redirect either path then writes here rather than into the real home, and the
-# check at the end stays honest: a reading open on the same desktop writes the
-# real state file every time somebody picks a theme, which would otherwise be
-# read as a leak out of these tests.
 TEST_HOME = tempfile.mkdtemp(prefix='mdeus-test-home-')
 os.environ['HOME'] = TEST_HOME
 
@@ -55,13 +47,8 @@ OTHER_MD = """\
 Linked from the start.
 """
 
-# Not valid UTF-8, so a server sending this as text rather than as bytes shows
-# up as a decoding failure rather than as a quietly mangled image.
 PIXEL_PNG = b'\x89PNG\r\n\x1a\n\x00\x01\x02\x03'
 
-# Both captured before anything rebinds them, so the checks at the end of the
-# run look at exactly what a leaking test would have written. They sit under
-# the run's own home rather than the real one, see TEST_HOME above.
 HOME_CACHE_DIR = export.CACHE_DIR
 HOME_STATE_PATH = state.STATE_PATH
 
@@ -73,9 +60,6 @@ This document sits above the directory the reading started in.
 
 SECRET_PNG = b'\x89PNG\r\n\x1a\nsecret'
 
-# The name one test reading serves under. Every reading has one, since the page
-# is served under it and the browser writes the name of the page's window out
-# of the address.
 SERVERNAME = 'MDEUSTEST'
 
 START_BLOCKS = [
@@ -104,8 +88,6 @@ START_OUTLINE = [
     {'text': 'Second heading', 'level': 2, 'line': 7},
 ]
 
-# The three theme names, written out here rather than read from the server, so
-# that a theme quietly added or dropped there is caught instead of followed.
 THEMES = ('browser', 'report', 'github')
 
 TIMEOUT = 5
@@ -113,8 +95,6 @@ TIMEOUT = 5
 
 def fetch(port, path, method='GET', body=None):
     """Make one request and return the status, the content type and the body."""
-    # http.client sends the path exactly as given, which is what lets a test
-    # ask for ../ or an absolute path without the client tidying it away first.
     connection = HTTPConnection(server.HOST, port, timeout=TIMEOUT)
     try:
         headers = {'Connection': 'close'}
@@ -124,8 +104,6 @@ def fetch(port, path, method='GET', body=None):
         response = connection.getresponse()
         return response.status, response.headers.get('Content-Type', ''), response.read()
     except OSError as error:
-        # A request the server drops rather than answers is a failure of the
-        # test that made it, not of the run, so report it as one.
         raise AssertionError(f'{method} {path} went unanswered: {error}')
     finally:
         connection.close()
@@ -266,8 +244,6 @@ def start_reading(editable=False, editing=False):
     (root / 'notes' / 'other.md').write_text(OTHER_MD, encoding='utf-8')
     (base / 'outside' / 'secret.md').write_text(SECRET_MD, encoding='utf-8')
     (base / 'outside' / 'secret.png').write_bytes(SECRET_PNG)
-    # Two names inside the tree that lead out of it. A containment check
-    # comparing the path before resolving it would hand both of these over.
     (root / 'escape.md').symlink_to('../outside/secret.md')
     (root / 'escape.png').symlink_to('../outside/secret.png')
     reading = server.Reading(root / 'start.md', SERVERNAME, editable=editable)
@@ -278,9 +254,6 @@ def start_reading(editable=False, editing=False):
 
     def stop():
         """Stop the server, wait for it, and remove the fixture tree."""
-        # Said before the server is stopped rather than after, because a page
-        # holding the reading open is waiting on this and nothing else, and a
-        # test that left one holding would leave the thread behind it running.
         reading.over.set()
         bound.shutdown()
         bound.server_close()
@@ -370,9 +343,6 @@ def test_a_held_page_is_told_the_file_was_written():
     try:
         held = start_holding(port)
         first = heard_down(held)
-        # File timestamps advance in steps of a few milliseconds, so a write
-        # landing in the same step as the reading above would carry the same time
-        # and say nothing about whether the server is watching the file.
         time.sleep(0.05)
         (root / 'start.md').write_text(START_MD + '\nA new paragraph.\n', encoding='utf-8')
         later = heard_down(held)
@@ -446,7 +416,6 @@ def test_a_page_letting_go_does_not_end_a_reading_vim_is_holding():
         held.close()
         waited = server.RETURN_GRACE * 3
         assert not stopped.wait(waited), 'a page let go ended a reading vim was holding'
-        # Vim gone, and nothing holding the reading up any longer.
         reading.editing = False
         assert stopped.wait(TIMEOUT), 'the reading outlived both its page and vim'
     finally:
@@ -487,7 +456,6 @@ def test_a_page_that_comes_straight_back_holds_the_reading():
         held = start_holding(port)
         waited = server.RETURN_GRACE * 3
         assert not stopped.wait(waited), 'a reloaded page ended the reading behind it'
-        # Ended the way a closed page ends it, so the watcher is not left running.
         held.close()
         assert stopped.wait(TIMEOUT), 'a page let go left the reading running'
     finally:
@@ -507,8 +475,6 @@ def test_a_page_that_says_nothing_keeps_the_reading():
     stopped, watching = start_watching(reading)
     try:
         held = start_holding(port)
-        # Long enough to have run out every wait the reading has, since nothing
-        # is asked of the page in it at all.
         quiet = server.RETURN_GRACE * 5
         assert not stopped.wait(quiet), 'a silent page lost the reading behind it'
         held.close()
@@ -534,7 +500,6 @@ def test_absolute_and_parent_paths_are_not_served():
             status, reply = fetch_json(port, path)
             assert status == 404, (path, status)
             assert reply == {'error': 'not found'}, (path, reply)
-        # A refused path must not have moved the reading off its document.
         status, doc = fetch_json(port, '/doc')
         assert doc['name'] == 'start.md', doc['name']
     finally:
@@ -564,9 +529,6 @@ def test_blocks_carry_the_lines_render_gave_them():
                   for block in doc['blocks']]
         assert ranges == START_BLOCKS, ranges
         assert doc['outline'] == START_OUTLINE, doc['outline']
-        # The line ranges above say the numbers are right. This says the server
-        # hands the renderer's work over whole, with nothing changed in it but
-        # where an image is fetched from.
         assert doc['blocks'] == served_blocks(START_MD), doc['blocks']
     finally:
         stop()
@@ -612,26 +574,18 @@ def test_edit_is_recorded_and_answered_with_the_state_as_it_stands():
         assert not said_down(reading), 'nothing has been asked for yet'
         status, reply = fetch_json(port, '/api/edit', 'POST', {'editing': True})
         assert status == 200, status
-        # The wish is recorded and whoever acts on it is woken, both ways, and
-        # the reading is still doing what it was doing until somebody has acted.
         assert reading.wanted is True, reading.wanted
         assert reading.asked.is_set(), 'nobody was woken'
         assert said_down(reading), 'nothing was said down the pipe'
         assert reply == {'editing': False}, reply
-        # And once vim is up, the same route answers with the truth rather than
-        # with what was last asked for.
         reading.editing = True
         status, reply = fetch_json(port, '/api/edit', 'POST', {'editing': False})
         assert reply == {'editing': True}, reply
         assert reading.wanted is False, reading.wanted
-        # A body naming nothing reads as a request to stop, not as an error.
         assert fetch_json(port, '/api/edit', 'POST', {})[0] == 200
         assert reading.wanted is False, reading.wanted
     finally:
         stop()
-    # A reading with no desktop behind it has nowhere to open vim into. Its
-    # page carries no box to ask with, so an ask that reaches it came from
-    # somewhere else and is not recorded at all.
     root, port, reading, stop = start_reading()
     try:
         assert fetch_json(port, '/api/edit', 'POST', {'editing': True})[1] == {
@@ -696,11 +650,7 @@ def test_export_carries_the_reading_page_whole():
         for name in ('page.js', 'themes.css'):
             text = (server.ASSET_DIR / name).read_text(encoding='utf-8')
             assert text in printed, f'{name} was not inlined whole'
-        # The page builds its contents list from the outline, so the outline
-        # has to travel with the document rather than be worked out again here.
         assert json.dumps(START_OUTLINE) in printed, 'the outline was not carried over'
-        # A document holding the end of a script tag must not be able to close
-        # the one carrying it, or everything after it stops being the page.
         risky = root / 'risky.md'
         risky.write_text('# Risky\n\n<div>a </script> in raw html</div>\n', encoding='utf-8')
         carried = export.write_export(risky).read_text(encoding='utf-8')
@@ -717,17 +667,11 @@ def test_export_embeds_images_and_reaches_for_nothing():
         printed = export.write_export(root / 'start.md').read_text(encoding='utf-8')
         pixel = base64.b64encode(PIXEL_PNG).decode('ascii')
         assert f'data:image/png;base64,{pixel}' in printed, 'the image was not embedded'
-        # The inlined stylesheet draws the page structure in a comment, markup
-        # and all, so the markup and the scripts are what is read below. Both
-        # quoted forms are looked for, since the document travels as JSON and
-        # its own quotes are escaped there.
         rest = re.sub(r'<style>.*</style>', '', printed, flags=re.DOTALL)
         sources = re.findall(r'src=\\?"([^"\\]*)', rest)
         assert len(sources) == 1, sources
         for value in sources:
             assert value.startswith('data:'), value
-        # The fixture document has no links of its own, so the only ones left
-        # are the page's own to a heading inside the file.
         for value in re.findall(r'href=\\?"([^"\\]*)', rest):
             assert value.startswith('#'), value
         assert '<link' not in rest, 'the copy loads a file of its own'
@@ -745,8 +689,6 @@ def test_export_path_is_stable_and_differs_per_source():
         written = export.write_export(source)
         assert written == export.CACHE_DIR / f'start-{digest}.html', written
         assert written.is_file(), written
-        # Printing the same document again overwrites the copy rather than
-        # leaving a second one behind.
         assert export.write_export(source) == written, 'the path moved between runs'
         assert sorted(p.name for p in export.CACHE_DIR.iterdir()) == [written.name]
         twin = root / 'notes' / 'start.md'
@@ -791,8 +733,6 @@ def test_linked_document_inside_the_tree_is_rendered():
         assert status == 200, status
         assert doc['name'] == 'notes/other.md', doc['name']
         assert doc['blocks'] == served_blocks(OTHER_MD), doc['blocks']
-        # The reading is of that document from then on, so a plain /doc must
-        # now send it rather than the one the reading started at.
         status, again = fetch_json(port, '/doc')
         assert again['name'] == 'notes/other.md', again['name']
     finally:
@@ -808,8 +748,6 @@ def test_full_width_is_on_until_it_is_unticked_and_lands_on_the_first_paint():
     """
     root, port, reading, stop = start_reading()
     try:
-        # Nothing stored yet, so the reading opens the way the very first one
-        # did, which is with the box ticked.
         status, doc = fetch_json(port, '/doc')
         assert doc['state']['wide'] is True, doc['state']
         status, _, page = fetch(port, '/')
@@ -825,8 +763,6 @@ def test_full_width_is_on_until_it_is_unticked_and_lands_on_the_first_paint():
         status, _, page = fetch(port, '/')
         assert b'class="browser reader"' in page, page[:200]
 
-        # A state file written before the setting existed names no field for it,
-        # and reads as the setting being on rather than as a broken file.
         state.STATE_PATH.write_text(
             '{"theme": "browser", "contents": false}', encoding='utf-8')
         status, doc = fetch_json(port, '/doc')
@@ -913,16 +849,11 @@ def test_removed_file_gives_the_gone_reply_and_recovers():
         source.unlink()
         status, doc = fetch_json(port, '/doc')
         assert status == 200, status
-        # Equality rather than a lookup, so a reply still carrying stale blocks
-        # or an outline is caught. A file that is away has no time to report.
         assert doc == dict(gone, mtime=None), doc
         source.write_text(START_MD, encoding='utf-8')
         status, back = fetch_json(port, '/doc')
         assert 'gone' not in back, back
         assert back['blocks'] == served_blocks(START_MD), back['blocks']
-        # A file that cannot be decoded reads the same way as one that is away,
-        # except that it is still there and still has a time of its own, which
-        # is what lets the page see it put right again.
         source.write_bytes(b'# Start\n\n\xff\xfe not text at all\n')
         status, invalid = fetch_json(port, '/doc')
         assert status == 200, status
@@ -939,18 +870,14 @@ def test_split_is_kept_beside_the_theme_and_falls_back():
         assert state.load_split() == state.DEFAULT_SPLIT, state.load_split()
         state.save_split(0.62)
         assert state.load_split() == 0.62, state.load_split()
-        # The page stores through the route and knows nothing of the split.
         fetch_json(port, '/api/state', 'POST',
                    {'theme': 'github', 'contents': True, 'wide': False})
         stored = json.loads(state.STATE_PATH.read_text(encoding='utf-8'))
         assert stored == {'contents': True, 'theme': 'github', 'wide': False,
                           'split': 0.62}, stored
-        # And a reading storing the split knows nothing of the page's settings.
         state.save_split(0.5)
         assert state.load_state() == {'contents': True, 'theme': 'github',
                                       'wide': False}, stored
-        # A share the divider could not have left behind, whichever way it is
-        # wrong, opens the reading at the split the first one opened at.
         for share in ('sideways', None, 0.02, 0.99):
             state.save_state({'split': share})
             assert state.load_split() == state.DEFAULT_SPLIT, share
@@ -993,8 +920,6 @@ def test_state_file_is_never_read_half_written():
         writer.join(timeout=TIMEOUT)
         assert not writer.is_alive(), 'the writer never finished'
         assert seen > 10, f'only {seen} reads landed while the file was being written'
-        # Proof that every write went through, so the reads above were racing a
-        # writer rather than watching a file nobody was touching.
         final = json.loads(state.STATE_PATH.read_text(encoding='utf-8'))
         assert final == last, final
     finally:
@@ -1032,7 +957,6 @@ def test_the_page_says_when_it_has_drawn():
         assert not reading.drawn.is_set(), 'drawn before the page had drawn anything'
         assert fetch_json(port, '/api/drawn', 'POST') == (200, {'ok': True})
         assert reading.drawn.is_set(), 'a drawn page did not say so'
-        # A page reloaded says it again, and saying it again changes nothing.
         fetch_json(port, '/api/drawn', 'POST')
         assert reading.drawn.is_set()
         held.close()
@@ -1062,8 +986,6 @@ def test_the_vim_routes_answer_only_while_editing():
         assert fetch_json(port, '/api/cursor', 'POST', {'line': 3})[0] == 200
         assert fetch_json(port, '/api/jump', 'POST', {'line': 3, 'last': 4})[0] == 200
         assert jumped == [(3, 4)], jumped
-        # And they close again when vim goes, rather than staying open for the
-        # rest of the reading because they were once needed.
         reading.editing = False
         assert fetch_json(port, '/api/cursor')[0] == 404
     finally:
@@ -1075,8 +997,6 @@ def test_symlink_out_of_the_tree_is_not_followed():
     """A name inside the tree pointing out of it is not found, on either route."""
     root, port, reading, stop = start_reading()
     try:
-        # If the targets were missing the server would refuse for the wrong
-        # reason, so check both links really lead to readable files first.
         assert (root / 'escape.png').is_file(), 'the fixture symlink leads nowhere'
         assert (root / 'escape.md').is_file(), 'the fixture symlink leads nowhere'
         status, reply = fetch_json(port, '/file/escape.png')
@@ -1109,8 +1029,6 @@ if __name__ == '__main__':
     if home_state_snapshot() != home_before:
         failed += 1
         print(f'FAIL  the state file at {HOME_STATE_PATH} was written to')
-    # A handler finishes a moment after its response, so give the last ones
-    # time to go before counting what is left.
     for _ in range(50):
         if threading.active_count() == 1:
             break

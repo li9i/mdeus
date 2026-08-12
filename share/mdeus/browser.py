@@ -11,9 +11,6 @@ it beyond what the tab is wrapped in.
 
 import shutil
 
-# The browsers a reading can own a window of, in the order they are looked for.
-# Each of them gives a window with nothing in it but the page, and hands the
-# asking straight to a copy of itself already running where there is one.
 BROWSERS = ('google-chrome', 'chromium', 'chromium-browser')
 
 

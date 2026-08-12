@@ -1,15 +1,8 @@
-# Completion for mdeus.
-#
-# Installed as ~/.local/share/bash-completion/completions/mdeus, which is where
-# bash-completion looks for a command's rules the first time that command is
-# completed. Nothing sources this file, so nothing has to remember it exists.
-
 _mdeus_completion() {
     local cur=${COMP_WORDS[COMP_CWORD]}
     local opts="--edit --print --tab"
     COMPREPLY=()
 
-    # mdeus takes one document, with one flag allowed before it
     if [[ $cur == -* ]]; then
         COMPREPLY=($(compgen -W "$opts" -- "$cur"))
     elif [[ $COMP_CWORD -eq 1 || ( $COMP_CWORD -eq 2 && ${COMP_WORDS[1]} == -* ) ]]; then

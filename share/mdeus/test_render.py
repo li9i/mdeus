@@ -160,9 +160,6 @@ def test_only_images_beside_the_document_are_retargeted():
     )
     html = ''.join(block['html'] for block in document['blocks'])
     sources = re.findall(r'src="([^"]*)"', html)
-    # Only the first names a file the caller can answer for. An absolute path
-    # and a remote address are nobody here's to serve, and a link is not an
-    # image however relative it is.
     assert sources == [
         'served/images/diagram.png',
         '/usr/share/pixmaps/logo.png',
@@ -177,17 +174,12 @@ def test_alert_markers_become_callouts():
     note, warning, caution, unknown, inline, plain = blocks
     assert 'class="markdown-alert markdown-alert-note"' in note['html'], note
     assert '<p class="markdown-alert-title">Note</p>' in note['html'], note
-    # The marker line is the name of the callout and is not prose, so it does
-    # not survive into the body.
     assert '[!NOTE]' not in note['html'], note
     assert '<p>Something worth knowing.</p>' in note['html'], note
-    # Written in any case, and titled the way GitHub titles it either way.
     assert 'markdown-alert-warning' in warning['html'], warning
     assert '<p class="markdown-alert-title">Warning</p>' in warning['html'], warning
-    # A marker on its own is still a callout, with nothing under the title.
     assert 'markdown-alert-caution' in caution['html'], caution
     assert '<p class="markdown-alert-title">Caution</p>' in caution['html'], caution
-    # Everything else is left as the quote it was written as.
     for block in (unknown, inline, plain):
         assert '<blockquote>' in block['html'], block
         assert 'markdown-alert' not in block['html'], block
@@ -203,11 +195,7 @@ def test_bare_addresses_become_links():
     assert '<a href="https://example.com/a?b=1">https://example.com/a?b=1</a>' in html, html
     assert '<a href="http://www.example.org">www.example.org</a>' in html, html
     assert '<a href="mailto:mail@example.com">mail@example.com</a>' in html, html
-    # An address inside a code span is text and is not touched.
     assert '<code>https://example.com/code</code>' in html, html
-    # GitHub links an address and never guesses at one, so a file name ending
-    # in something a domain could end in stays a file name, and a bare host
-    # with no scheme and no www stays words.
     assert 'href="http://install.sh"' not in html, html
     assert 'run install.sh' in html, html
     assert '<a href="http://example.com">' not in html, html
@@ -218,8 +206,6 @@ def test_block_lines_name_their_source():
     """Every block reports the source lines it was built from."""
     blocks = [(block['type'], block['line_start'], block['line_end'])
               for block in render.render_blocks(LINE_FIXTURE)]
-    # The list runs to line 7, the blank line that closes it, because these
-    # ranges are the parser's own source map and not a count of the text.
     assert blocks == [
         ('heading', 1, 1),
         ('paragraph', 3, 3),
@@ -250,12 +236,9 @@ def test_emoji_shortcodes_become_characters():
     blocks = render.render_blocks(EMOJI_FIXTURE)
     prose, code_and_link, clock = blocks
     assert 'Shipped \N{PARTY POPPER} with a \N{THUMBS UP SIGN}' in prose['html'], prose
-    # Not a name anything answers to, so it is left as the words it was.
     assert ':nonesuch:' in prose['html'], prose
-    # A code span is text, and a link's words are prose like any other.
     assert '<code>:tada:</code>' in code_and_link['html'], code_and_link
     assert '>\N{PARTY POPPER}</a>' in code_and_link['html'], code_and_link
-    # Colons around something no shortcode names leave the text alone.
     assert '10:30:45' in clock['html'], clock
 
 
@@ -269,15 +252,11 @@ def test_footnotes_are_collected_and_name_their_source():
     assert 'class="footnotes"' in notes['html'], notes
     assert 'The first note.' in notes['html'], notes
     assert 'onto another line.' in notes['html'], notes
-    # The notes belong to the lines the definitions were written on, so a click
-    # on them reaches the definition rather than the end of the file.
     assert (notes['line_start'], notes['line_end']) == (5, 8), notes
 
 
 def test_heading_html_carries_no_id():
     """A rendered heading carries no id, whatever level or spelling it has."""
-    # Whoever draws the page names the headings from the outline. A second id
-    # put here would rename every anchor the page has already handed out.
     headings = [block['html']
                 for block in render.render_blocks(OUTLINE_FIXTURE)
                 if block['type'] == 'heading']
@@ -307,8 +286,6 @@ def test_multi_line_block_reports_its_whole_range():
 
 def test_outline_size_drives_the_contents_threshold():
     """Three headings reach the contents threshold and two fall short of it."""
-    # The page offers a contents list only from three headings up, and it
-    # counts them in the outline, so the outline has to report all of them.
     three = render.render_document(THREE_HEADING_FIXTURE)['outline']
     two = render.render_document(TWO_HEADING_FIXTURE)['outline']
     assert len(three) == 3, three
@@ -331,19 +308,13 @@ def test_task_list_items_become_checkboxes():
     assert 'checked' in ticked, ticked
     assert 'checked' not in empty, empty
     assert 'task-list-item-checkbox' in empty, empty
-    # A box is never something to be ticked on the page, only something read.
     assert 'disabled' in ticked and 'disabled' in empty, bullets
     assert 'task-list-item' not in ordinary, ordinary
-    # The brackets are the box, so none of them are left as words.
     assert '[x]' not in bullets['html'] and '[ ]' not in bullets['html'], bullets
     assert 'task-list-item-checkbox' in numbered['html'], numbered
-    # Brackets in a paragraph are brackets and nothing more.
     assert '[x]' in prose['html'] and '[ ]' in prose['html'], prose
 
 
-# The fixture below, and the blocks it has to produce, are frozen here in full.
-# Together they are the whole of the guard in the byte for byte test above, and
-# they sit at the end of the file only because of their length.
 FROZEN_SOURCE = """\
 # Heading level one
 

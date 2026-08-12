@@ -30,7 +30,6 @@ from markdown_it.tree import SyntaxTreeNode
 from mdit_py_plugins.footnote import footnote_plugin
 from mdit_py_plugins.tasklists import tasklists_plugin
 
-# The five callouts GitHub draws, and the word each one is titled with.
 ALERTS = {
     'caution': 'Caution',
     'important': 'Important',
@@ -38,12 +37,7 @@ ALERTS = {
     'tip': 'Tip',
     'warning': 'Warning',
 }
-# A callout is named on a line of its own at the head of a quote. Words after
-# the marker on that line make the whole of it prose and not a marker.
 ALERT_MARKER = re.compile(r'\[!([a-zA-Z]+)\][ \t]*(?:\n|$)')
-# A character with a name is written several ways in the emoji data and only
-# this one is the picture. The others carry the same name over a piece of
-# punctuation, which is not what a document asking for an emoji is after.
 FULLY_QUALIFIED = STATUS['fully_qualified']
 SHORTCODE = re.compile(r':[a-z0-9_+-]+:')
 
@@ -61,8 +55,6 @@ def alert_kind(tokens, index):
 
 def alert_title(opening, kind):
     """Return the tokens for the title GitHub puts at the head of a callout."""
-    # The icon beside the word is the stylesheet's, so the title is the word
-    # alone and the markup carries no drawing of its own.
     level = opening.level + 1
     return [
         Token(
@@ -109,8 +101,6 @@ def alerts(state):
             tokens.append(opening)
             index += 1
             continue
-        # GitHub's markup for a callout is a div, so the close goes with the
-        # open. Left as it was, the two would name different elements.
         opening.tag = 'div'
         opening.attrJoin('class', f'markdown-alert markdown-alert-{kind}')
         state.tokens[closing_index(state.tokens, index)].tag = 'div'
@@ -197,8 +187,6 @@ def heading_outline(root):
 
 def heading_text(node):
     """Return a heading's text with its inline markers dropped."""
-    # What the browser would read out of the rendered heading, so that a name
-    # derived from this matches a name derived from the page.
     return ''.join(
         child.content
         for child in node.children[0].walk()
@@ -236,20 +224,10 @@ def render_document(source, image_src=None):
         .use(footnote_plugin)
         .use(tasklists_plugin)
     )
-    # The callouts read a block's first line before that line is parsed, and
-    # the shortcodes are written over the words once everything else has had
-    # its say, so one rule goes in early and the other goes in last.
     md.core.ruler.after('block', 'alerts', alerts)
     md.core.ruler.push('emoji', emojis)
-    # GitHub links an address and never guesses at one. Left as it comes, the
-    # parser guesses at anything shaped like a host, and `install.sh` in a
-    # sentence is shaped like one, so the guessing is turned off and the one
-    # address GitHub links without a scheme is put back as a rule of its own.
     md.linkify.set({'fuzzy_link': False})
     md.linkify.add('www.', {'normalize': www_url, 'validate': www_address})
-    # One env for the whole document. Link reference definitions and footnotes
-    # are collected into it while parsing and read back out while rendering, so
-    # a fresh env per block would leave every reference and note unresolved.
     env = {}
     tokens = md.parse(source, env)
     if image_src is not None:

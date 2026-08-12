@@ -1,94 +1,3 @@
-/* The document themes, and the control row above the document.
-
-   THE PAGE STRUCTURE
-   ------------------
-
-   <html class="browser reader wide">  the theme key is the class on the root
-     <body>
-       <div class="controls">        built by page.js, over the document
-         <label for="theme">Theme</label>
-         <select id="theme">…</select>
-         <button id="contents" aria-pressed="false"><u>C</u>ontents</button>
-         <button id="wide" aria-pressed="true"><u>F</u>ull width</button>
-         <button id="edit" aria-pressed="false"><u>E</u>dit</button>
-                                                only where vim can be opened
-       </div>
-       <nav class="toc">             present only while the list is open
-         <p class="toc-title">Contents</p>
-         <ul>…nested <li><a href="#id">…</ul>
-       </nav>
-       <main class="doc">
-         <p class="meta">docs/notes.md</p>
-         <div class="block" data-start="1" data-end="1">
-           <div class="prose">         …the rendered block…
-             <div class="code-block">  one of these around every fence
-               <pre>…</pre>
-               <button class="copy">Copy</button>
-             </div>
-           </div>
-         </div>
-         …one .block per source block…
-       </main>
-     </body>
-   </html>
-
-   The theme keys are browser, report and github. Exactly one of them is on the
-   root element at any time. The reading page also carries reader there, and
-   github is sized off it. See that theme below.
-
-   wide sits on the root beside the theme key while Full width is on, which it
-   is until someone turns it off. browser and report read it, and only to drop
-   the cap on their measure. github holds its own measure whether it is there or
-   not, since that measure is github.com's rather than this theme's to choose.
-
-   That row stays at the top of the window wherever the document is scrolled to,
-   in every theme, and the document passes behind it. page.js writes how tall it
-   is into --bar-height on the root, which is what the headings hold themselves
-   clear of when the contents list jumps to one.
-
-   Every control on that row apart from the theme is a button carrying
-   aria-pressed, since each is one view state that is on or off rather than a
-   choice between several. The word in that attribute is what says which, so
-   each theme draws its own pressed face off it and no label ever moves.
-
-   The first letter of each of those labels is the letter that button answers to
-   from the keyboard, and the <u> round it is the mark that says so. No theme
-   styles it: the underline a browser gives that element is exactly the mark, and
-   nothing below takes it away.
-
-   .doc > .block > .prose > <content> is the structure the renderer produces,
-   so a rule written as `.doc p` matches what is inside a block. Anything
-   tighter than a descendant selector under .doc will not.
-
-   The contents button is present only when the document has three or more
-   headings, and the .toc node exists only while the list is open. The list is
-   a sibling above .doc, so it pushes the document down rather than floating
-   over it. When the source file is gone the document is replaced by a single
-   <p class="gone">.
-
-   The wrapper and the button around a fence are page.js's, put up again on
-   every redraw. The button carries .copied for as long as it says Copied, and
-   the github theme reads that to swap its icon for a tick. Nothing else
-   renders that wrapper, so the rules for it reach this page and no other.
-
-   THE SCOPING RULE
-   ----------------
-
-   Every rule below carries its theme class. Nothing styles a bare element at
-   the top level. Three themes restyle the same handful of elements in this one
-   file, so an unscoped rule would leak into the other two and the leak would
-   be hard to see. Keep each theme's rules in source order as well: several of
-   them override an earlier rule of equal specificity, `pre` under report being
-   the clearest case.
-
-   github wraps its class in :where(), so its rules weigh no more than a bare
-   `.doc p` does. The reason is set out where that theme begins.
-*/
-
-/* ------------------------------------------------------------------
-   shared
-   ------------------------------------------------------------------ */
-
 @media (prefers-reduced-motion: reduce) {
   .browser,
   .report,
@@ -102,14 +11,6 @@
   }
 }
 
-/* That the control row stays at the top of the window while the document runs
-   under it is the same in all three themes, so that much is written once. What
-   the row looks like, the ground it carries and the air it keeps round itself
-   are each theme's own and are set below with that theme's controls. The ground
-   has to be opaque in every one of them, since the document passes behind it.
-
-   page.js writes the height of the row into --bar-height, which is what holds a
-   heading clear of the row when the contents list jumps to one. */
 .browser .controls,
 .report .controls,
 :where(.github) .controls {
@@ -118,10 +19,6 @@
   z-index: 1;
 }
 
-/* That the copy button sits in the corner of a fence, and how it comes and
-   goes, is the same in all three themes, so that much is written once. What it
-   looks like, and how far in from the corner it sits, is each theme's own and
-   is set below with that theme's controls. */
 .browser .code-block,
 .report .code-block,
 :where(.github) .code-block {
@@ -138,9 +35,6 @@
   transition: opacity 0.15s;
 }
 
-/* A section folded away by a double click on its heading. Everything under the
-   heading goes and the heading stays, so the mark after it is the whole of
-   what says there is a section behind it to bring back. */
 .browser .doc .folded h1::after,
 .report .doc .folded h1::after,
 :where(.github) .doc .folded h1::after {
@@ -148,8 +42,6 @@
   opacity: 0.45;
 }
 
-/* The mouse finds it by hovering the fence and the keyboard by tabbing to it,
-   so it answers to both rather than to the mouse alone. */
 .browser .code-block:hover .copy,
 .browser .copy:focus,
 .report .code-block:hover .copy,
@@ -159,10 +51,6 @@
   opacity: 1;
 }
 
-/* A task list is a list whose markers are boxes, so the bullet or the number
-   beside each item goes and the box stands where it would have been. Where the
-   box sits is the shape of the list rather than a look, so the measurements are
-   GitHub's and all three themes take them. */
 .browser .doc .task-list-item,
 .report .doc .task-list-item,
 :where(.github) .doc .task-list-item {
@@ -176,10 +64,6 @@
   vertical-align: middle;
 }
 
-/* ------------------------------------------------------------------
-   browser: what the machine did before anyone styled anything
-   ------------------------------------------------------------------ */
-
 .browser body {
   background: #ffffff;
   color: #000000;
@@ -188,11 +72,6 @@
   max-width: 46em;
 }
 
-/* Full width, on. A browser with no stylesheet at all runs its lines to the
-   edge of the window, and this theme is what that looks like, so this is how it
-   opens. It also means the lines rewrap as the pane is resized, at every width
-   rather than only below the cap above. Turn it off and the cap comes back,
-   here and in report. */
 .browser.wide body {
   max-width: none;
 }
@@ -212,23 +91,12 @@
   font-size: 0.85em;
 }
 
-/* The controls are otherwise left to the browser here, but they still take
-   the theme's face. */
 .browser .controls select,
 .browser .controls button,
 .browser .code-block .copy {
   font-family: inherit;
 }
 
-/* A toggle that is on. Nothing else here restyles a button, so the pressed one
-   is drawn the way a machine with no stylesheet draws a button being held down:
-   the face a shade darker and its edge turned in rather than out.
-
-   Giving a button a face of its own is what takes the browser's own drawing of
-   it away, corners and all, so the radius has to be written back or the pressed
-   one is the only square corner on the row. The 2.5px is measured off the
-   corner Chrome draws beside it rather than guessed: at eight times the size,
-   2px reads visibly sharper than its neighbour and 3px visibly rounder. */
 .browser .controls button[aria-pressed='true'] {
   background: #d4d4d4;
   border-radius: 2.5px;
@@ -242,11 +110,6 @@
   outline-offset: 1px;
 }
 
-/* A browser's own button stands taller than one line of code and the fence's
-   padding come to, so a fence of a single line has no room to hold it the 10px
-   down from the top that the other themes leave. It comes in less from the top
-   than from the side, and that is what leaves the same air above it as below
-   it on a one line fence. */
 .browser .code-block .copy {
   top: 6px;
 }
@@ -274,10 +137,6 @@
   padding-left: 2em;
 }
 
-/* A heading jumped to from the contents list has to land below the control row
-   standing over the document rather than behind it. The row says how tall it is
-   in --bar-height, so the space held above a heading follows the row as it wraps
-   on a narrow window. */
 .browser .doc h1,
 .browser .doc h2,
 .browser .doc h3,
@@ -311,9 +170,6 @@
   padding-left: 40px;
 }
 
-/* The hairline is the same one the contents list, the tables and the rules
-   carry, so a fence is framed in the theme's own vocabulary rather than a
-   second one. The padding is what keeps the copy button off the first line. */
 .browser .doc pre {
   border: 1px solid #000000;
   font: 13px/1.2 'Courier New', monospace;
@@ -322,16 +178,11 @@
   padding: 8px;
 }
 
-/* A monospace face at the prose size reads larger than the Times around it,
-   since Times has the smaller x-height of the two. A step down puts inline
-   code at the size the fence above already uses. */
 .browser .doc code {
   font-family: 'Courier New', monospace;
   font-size: 0.85em;
 }
 
-/* The code inside a fence is already at the fence's size, so the step above is
-   taken back here rather than applied twice. */
 .browser .doc pre code {
   font-size: 100%;
 }
@@ -340,10 +191,6 @@
   margin: 1em 40px;
 }
 
-/* A callout is a quote GitHub gives a name to, and GitHub tells one from
-   another by colour. This theme has none to spend, so all five are framed the
-   same way, in the hairline the fences and the tables are drawn with, and the
-   name at the top is what says which one it is. */
 .browser .doc .markdown-alert {
   border-left: 4px solid #000000;
   margin: 1em 0;
@@ -372,10 +219,6 @@
   border-top: 1px solid #000000;
 }
 
-/* ------------------------------------------------------------------
-   report: monospace labels over a Georgia body
-   ------------------------------------------------------------------ */
-
 .report body {
   background: #ffffff;
   color: #141414;
@@ -385,9 +228,6 @@
   padding: 0 1.25rem;
 }
 
-/* Full width, on. The padding above is what keeps the lines off the edge of the
-   pane once the cap has gone, so this theme runs wide without ever running
-   right up against it. */
 .report.wide body {
   max-width: none;
 }
@@ -433,8 +273,6 @@
   text-transform: uppercase;
 }
 
-/* A toggle that is on. This theme sets its labels in ink on paper, so the one
-   that is pressed is the same stamp with the ink and the paper swapped. */
 .report .controls button[aria-pressed='true'] {
   background: #141414;
   color: #ffffff;
@@ -482,7 +320,6 @@
   margin: 0.15em 0;
 }
 
-/* The same clearance as the theme above leaves, for the same reason. */
 .report .doc h1,
 .report .doc h2,
 .report .doc h3,
@@ -569,8 +406,6 @@
   margin: 0;
 }
 
-/* A callout takes the same rule down its side as a quote, and its name is set
-   like every other label in this theme. */
 .report .doc .markdown-alert {
   border-left: 1px solid #141414;
   margin: 0 0 1.3em;
@@ -591,8 +426,6 @@
   margin-bottom: 0;
 }
 
-/* The notes at the foot of the document are an aside, and this theme sets its
-   asides small. */
 .report .doc .footnotes {
   color: #787878;
   font-size: 0.8em;
@@ -634,46 +467,6 @@
   text-transform: uppercase;
 }
 
-/* ------------------------------------------------------------------
-   github: GitHub's rendered markdown, reproduced
-
-   A careful reproduction of GitHub's rendered markdown, down to the callout
-   icons and the spacing.
-
-   THIS THEME IS SCOPED DIFFERENTLY FROM THE TWO ABOVE, in two ways, and
-   both of them matter.
-
-   It styles .doc, never body. The two above style `.browser body` and so on,
-   because their controls size in units that resolve against the page font.
-   Scoping to .doc gives the typography to the document container and to
-   nothing else, which leaves the control row above it to be sized on its own
-   terms.
-
-   The theme class is wrapped in :where(), which counts for nothing when the
-   browser weighs one rule against another. So `:where(.github) .doc p` is
-   worth exactly what a plain `.doc p` is worth. That is what lets a page
-   put its own rules for the same elements after this file and have them
-   win on source order, rather than having to outweigh a theme class.
-
-   Every colour is written as a variable with GitHub's own value as the
-   fallback. Nothing defines those variables in this file, so the fallbacks
-   apply and the theme is GitHub's light palette.
-
-   Three colours are written as values instead, and all three are translucent:
-   the ground under inline code, the ground under the copy button while the
-   pointer is on it, and the ring round that button once it has copied. GitHub
-   writes those translucent on purpose, so that one value darkens the page, a
-   fence and a shaded table row by the same amount. A variable holding an
-   opaque grey would need a value for each of those grounds and a second set
-   for a dark palette. Each is marked where it appears.
-
-   One measurement is written the same way. The heading rules below read
-   --bar-height, so that a page with a bar over the document can say how tall it
-   is and have its headings scroll clear of it. The reading page has such a bar
-   and page.js writes its height there. Anything else showing this theme defines
-   nothing, so the fallback of zero applies and the rule adds nothing.
-   ------------------------------------------------------------------ */
-
 :where(.github) .doc {
   color: var(--fg, #1f2328);
   font-family:
@@ -686,15 +479,6 @@
   word-wrap: break-word;
 }
 
-/* The size above is github.com's own 16px, which is what this theme is a
-   reproduction of. Reading a document at length wants a smaller size than a
-   web page sets, so the reading page carries reader on the root beside the
-   theme key and the smaller size hangs off that. Nothing else carries it, so
-   nothing else moves.
-
-   The marker goes inside the same :where() as the theme class, for the reason
-   set out above: this rule has to weigh no more than a bare `.doc` does. It
-   beats the size above on source order alone, so it has to stay after it. */
 :where(.github.reader) .doc {
   font-size: 14px;
 }
@@ -714,8 +498,6 @@
   padding: 0.8rem 0;
 }
 
-/* A GitHub button: a grey face, a hairline round it and a shadow the width of
-   the bottom edge. */
 :where(.github) .controls select,
 :where(.github) .controls button {
   background: var(--canvas-inset, #f6f8fa);
@@ -732,25 +514,11 @@
   cursor: pointer;
 }
 
-/* A toggle that is on, which GitHub draws by dropping the face a shade and
-   throwing a line of shadow in under the top edge, as though the button had
-   been pushed in. The shadow is a translucent black rather than a colour of its
-   own, so it darkens a dark palette as well as it darkens a light one. */
 :where(.github) .controls button[aria-pressed='true'] {
   background: var(--border, #d1d9e0);
   box-shadow: inset 0 1px 0 #1f232833;
 }
 
-/* The copy button on a fence is not one of those. GitHub gives it no word and
-   no face: a 28px square holding the 16px copy icon, 8px in from the corner of
-   the fence, and the icon becomes a green tick for as long as the button says
-   it copied.
-
-   Both icons are GitHub's own drawings. They are laid on as a mask over the
-   button's colour rather than as pictures with a colour of their own, so the
-   tick is the same drawing in another colour and a dark palette carries both.
-   The word the button carries stays in the markup at no size, and is what a
-   screen reader reads out. */
 :where(.github) .code-block .copy {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z'/%3E%3Cpath d='M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z'/%3E%3C/svg%3E");
   align-items: center;
@@ -777,18 +545,10 @@
   width: 16px;
 }
 
-/* The ground GitHub puts under the button while the pointer is on it. Theirs
-   is the opaque #eff2f5 of a button face; this is the translucent grey that
-   lands within a shade of it over a fence, and darkens a dark ground instead
-   of putting a light patch on it. The icon does not move with it: on GitHub
-   the icon keeps its own colour through a hover. */
 :where(.github) .code-block .copy:hover {
   background: #818b981a;
 }
 
-/* Copied: the tick, and the green ring GitHub throws round the button for as
-   long as it is showing. The ring is written in pixels because the button has
-   no font size of its own for an em to measure against. */
 :where(.github) .code-block .copy.copied {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z'/%3E%3C/svg%3E");
   box-shadow: 0 0 0 3px #34d05866;
@@ -858,10 +618,6 @@
   scroll-margin-top: calc(var(--bar-height, 0px) + 16px);
 }
 
-/* Every heading is sized against the document rather than in fixed steps, as
-   GitHub sizes them, so the whole scale follows the reading size above and the
-   ratios between the six hold at any size. The underline under the first two
-   is GitHub's translucent hairline, a shade darker than the plain border. */
 :where(.github) .doc h1 {
   border-bottom: 1px solid var(--border-soft, #d1d9e0b3);
   font-size: 2em;
@@ -891,8 +647,6 @@
   font-size: 0.85em;
 }
 
-/* Inline code in a heading keeps the heading's size, rather than dropping to
-   the 85% it takes in prose. */
 :where(.github) .doc h1 code,
 :where(.github) .doc h2 code,
 :where(.github) .doc h3 code,
@@ -912,9 +666,6 @@
   margin: 0 0 16px;
 }
 
-/* GitHub leaves no space above the first thing in a document, nor below the
-   last. The document is drawn a block at a time here, so the first and the last
-   of those are what the rule has to reach rather than a child of .doc. */
 :where(.github) .doc .block:first-child .prose > :first-child {
   margin-top: 0;
 }
@@ -932,9 +683,6 @@
   margin-top: 0.25em;
 }
 
-/* A list inside a list closes right up against the item holding it, and takes
-   a marker of its own: roman numerals at the second level, letters at the
-   third. */
 :where(.github) .doc ul ul,
 :where(.github) .doc ul ol,
 :where(.github) .doc ol ol,
@@ -955,17 +703,10 @@
   list-style-type: lower-alpha;
 }
 
-/* An item written with blank lines around it comes out as a paragraph, and
-   GitHub spaces those away from the line above. */
 :where(.github) .doc li > p {
   margin-top: 16px;
 }
 
-/* The one ground in this theme written as a colour rather than as a variable.
-   GitHub's inline code sits on a translucent grey, which is the point of it:
-   the same value darkens the page, a fence and a shaded table row by the same
-   amount, and needs no second value for a dark palette. A variable holding an
-   opaque grey could not do that. */
 :where(.github) .doc code {
   background: #818b981f;
   border-radius: 6px;
@@ -976,8 +717,6 @@
   white-space: break-spaces;
 }
 
-/* A fence reads at 85% of the document, as it does on GitHub, so it is a step
-   smaller than the prose around it rather than the same size. */
 :where(.github) .doc pre {
   background: var(--canvas-inset, #f6f8fa);
   border-radius: 6px;
@@ -990,9 +729,6 @@
   word-wrap: normal;
 }
 
-/* Inside a fence the code is already at the fence's size and keeps its lines
-   as they were written. The wrapping the rule above allows inline code is
-   turned off again here. */
 :where(.github) .doc pre code {
   background: none;
   font-size: 100%;
@@ -1015,15 +751,6 @@
   margin-bottom: 0;
 }
 
-/* GitHub's five callouts. In GitHub's own markup a callout is a div and not a
-   blockquote, and it is written that way here too, so none of the quote rules
-   above reach it. What separates one of the five from the others is a colour and
-   a drawing, and each carries both in two custom properties the title inherits.
-
-   The icons are GitHub's own drawings, laid on as a mask over the title's
-   colour the way the copy button's icon is, so the drawing needs no colour of
-   its own. GitHub draws the rule down the side a shade off the title's colour;
-   here the two are the same value, which is the one visible difference. */
 :where(.github) .doc .markdown-alert {
   border-left: 0.25em solid var(--alert, #d1d9e0);
   margin: 0 0 16px;
@@ -1081,9 +808,6 @@
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.47.22A.749.749 0 0 1 5 0h6c.199 0 .389.079.53.22l4.25 4.25c.141.14.22.331.22.53v6a.749.749 0 0 1-.22.53l-4.25 4.25A.749.749 0 0 1 11 16H5a.749.749 0 0 1-.53-.22L.22 11.53A.749.749 0 0 1 0 11V5c0-.199.079-.389.22-.53Zm.84 1.28L1.5 5.31v5.38l3.81 3.81h5.38l3.81-3.81V5.31L10.69 1.5ZM8 4a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z'/%3E%3C/svg%3E");
 }
 
-/* The notes at the foot of the document. The parser puts a rule above them and
-   GitHub does not, drawing a hairline along the top of the notes themselves, so
-   the rule goes and the hairline takes its place. */
 :where(.github) .doc .footnotes-sep {
   display: none;
 }
@@ -1095,7 +819,6 @@
   padding-top: 16px;
 }
 
-/* GitHub's rule is a 4px bar rather than a hairline. */
 :where(.github) .doc hr {
   background: var(--border, #d1d9e0);
   border: 0;
@@ -1118,9 +841,6 @@
   padding: 6px 13px;
 }
 
-/* GitHub leaves the header row on the document's own ground and shades every
-   second row of the body instead. A row is counted within the head or the body
-   holding it, so the header is never one of the shaded ones. */
 :where(.github) .doc th {
   font-weight: 600;
 }
@@ -1147,17 +867,11 @@
   font-weight: 600;
 }
 
-/* The base size drops on a narrow window, as it did where these rules came
-   from. It has to stay after the rule above, which sets the size it drops
-   from. */
 @media (max-width: 800px) {
   :where(.github) .doc {
     font-size: 15px;
   }
 
-  /* The reading page takes the same one step down, from its own size rather
-     than from the 16px above. Without this it would read that 15px and come
-     out larger on a narrow window than on a wide one. */
   :where(.github.reader) .doc {
     font-size: 13px;
   }

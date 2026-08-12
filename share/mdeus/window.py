@@ -66,77 +66,35 @@ from state import MAX_SPLIT, MIN_SPLIT, load_split, save_split
 
 try:
     from PIL import Image
-except ImportError:  # python3-pil is not installed
+except ImportError:
     Image = None
 
 try:
     from Xlib import X, Xatom, Xutil, display, error, protocol
-except ImportError:  # python3-xlib is not installed
+except ImportError:
     X = Xatom = Xutil = display = error = protocol = None
 
-# How long to leave a vim that heard nothing before asking it again, in seconds.
-# A vim with a question of its own up hears nothing until the question has been
-# answered, and the reader takes as long over that as they take.
 ASK_AGAIN = 1
-# How long to wait for the browser to take its window away once it has been
-# asked to, in seconds.
 BROWSER_STOP = 5
-# How wide a strip of the reading you can take hold of the seam by. It lies
-# over the join rather than between the panes, so the two go on meeting exactly
-# and the reading looks no different for being draggable.
 DIVIDER = 6
-# The glyph in the cursor font that says a thing can be dragged sideways, and
-# the glyph after it, which is its mask.
 DIVIDER_CURSOR = 108
-# The grey the seam is drawn in. It is the hairline the page's own themes draw
-# their tables and their fences with, so the join between the two halves is of a
-# piece with the document beside it rather than a line of the reading's own.
 DIVIDER_LINE = 0xDCDCDC
-# How much of the pipe a wish arrives down is taken off it at a time. Every byte
-# in it says the same thing, that the page has asked for something, so one read
-# is enough however many are waiting.
 DRAIN = 1024
-# The image the reading wears on the panel and on its title bar, in the two
-# sizes it ships in. It is the same image the desktop entry names, and the same
-# one the page hands the browser for the window a reading opens in, so a reading
-# looks the same on the panel in both of its states.
 ICONS = tuple(icon_path(size) for size in (24, 128))
 IN_A_TAB = (
     f'{NAME}: the page is in a tab rather than a window of its own, so vim opens\n'
     f'{" " * len(NAME)}  beside it wherever the desktop puts it'
 )
-# How long to go on waiting for the window manager to take charge of a window
-# handed back to it, in seconds.
 MANAGE_WAIT = 5
-# What a request to move and resize a window carries: that all four of the
-# position and the size are given, and that an ordinary application is asking.
-# The gravity goes in the low byte and is the caller's, since it is what says
-# whether the numbers are the window's own or its frame's.
 MOVERESIZE = (1 << 8) | (1 << 9) | (1 << 10) | (1 << 11) | (1 << 12)
-# How often the two programs are looked in on, in seconds.
 POLL = 0.25
-# What vim is sourced from for as long as a session lasts. It sits beside this
-# file, so the path is found from the checkout however the command was reached.
 SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cursor.vim')
-# How long to wait between two looks at something that is still moving, and how
-# many looks are taken before it is left as it is. Every short wait in a session
-# is measured in these: a window settling on a size, a window manager letting go
-# of one window or taking charge of another. It is a hundredth of a second
-# because two of these waits stand between the Edit toggle and vim on the screen,
-# and each of them costs at least two looks however quickly the thing settles.
 SETTLE_TRIES = 100
 SETTLE_WAIT = 0.01
 UNPLACED = f'{NAME}: vim is in a window of its own, wherever the desktop put it'
-# How long to go on waiting for a program to put its window up, in seconds.
 WINDOW_WAIT = 15
-# How long to go on waiting for the window manager to let go of a window.
 WITHDRAW_WAIT = 5
 
-# The share of the window the browser pane takes. A session opens at whatever
-# the last drag of the divider left, and every layout is measured from this, so
-# it is kept here rather than handed down through the events that read it. It is
-# read again as each session begins, since a session may start an hour into a
-# reading and another reading may have moved the seam in the meantime.
 browser_share = load_split()
 
 
@@ -159,12 +117,7 @@ class Waiting:
     def __init__(self, d, container, vim, pane):
         self.container = container
         self.d = d
-        # The gvim process, which is what says whether there is still a vim
-        # here at all. One that was killed while it waited leaves this holding
-        # nothing, and the session that finds it that way starts its own.
         self.vim = vim
-        # vim's window, already inside the container and already the size of a
-        # pane, so that showing the container is the whole of showing vim.
         self.pane = pane
 
     def gone(self):
@@ -318,10 +271,6 @@ def drag(d, container, panes, divider, press):
         False, X.PointerMotionMask | X.ButtonReleaseMask,
         X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE, press.time,
     )
-    # The window cannot be resized or moved while the pointer is held, so both
-    # are read once rather than on every move. Every move carries where the
-    # pointer is on the screen, and the left edge is what turns that into where
-    # it is across the reading.
     width = container.get_geometry().width
     edge = d.screen().root.translate_coords(container, 0, 0).x
     try:
@@ -330,16 +279,10 @@ def drag(d, container, panes, divider, press):
             if event.type == X.ButtonRelease:
                 break
             if event.type == X.ConfigureNotify:
-                # vim answering with the width it settled on. The browser is
-                # given the remainder now rather than after the drag, so the
-                # seam stays under the pointer as it moves.
                 meet(d, container, panes, divider)
             elif event.type == X.MotionNotify:
                 here = (event.root_x - edge) / width
                 wanted = min(MAX_SPLIT, max(MIN_SPLIT, here))
-                # Only where the seam would actually move. A pointer crossing a
-                # pixel that rounds to the column it is already on asks for a
-                # layout that changes nothing and costs both panes a redraw.
                 if round(wanted * width) != round(browser_share * width):
                     browser_share = wanted
                     layout(d, container, panes, divider)
@@ -385,34 +328,22 @@ def edit(reading, url, ending, opening=False, app_window=True, waiting=None):
     """
     global browser_share
     browser_share = load_split()
-    # Whatever brought us here, editing is what is wanted from this moment, so
-    # that the box being unticked later reads as the change it is.
     reading.wanted = True
     if not app_window:
         print(IN_A_TAB, flush=True)
 
-    # A vim warmed behind the page is the session's to take over, connection,
-    # container and all. One that has gone in the meantime leaves nothing to
-    # take over, so it is put away here and the session opens vim the long way
-    # as though none had been warmed at all.
     if waiting is not None and waiting.gone():
         cool(reading, waiting)
         waiting = None
     reading.waiting = False
     d = waiting.d if waiting is not None else (x_display() if app_window else None)
 
-    # Where the page's window stands now, read before anything is done to it. A
-    # session opened with --edit has no page yet, so there is nowhere for one to
-    # go back to and the container's own place stands in.
     was_at = None
     if d is not None and app_window and not opening:
         standing = page_window(d, client_list(d), reading.servername)
         if standing is not None:
             was_at = where_of(d, standing)
 
-    # The hint each half is started with, taken from the work area the container
-    # is about to fill. There is no container yet to measure, and there is
-    # nothing to measure for a reading with no desktop behind it.
     if d is None:
         boxes, origin = (None, None), (0, 0)
     else:
@@ -423,16 +354,8 @@ def edit(reading, url, ending, opening=False, app_window=True, waiting=None):
     if opening:
         open_page(url, reading.servername, app_window, boxes[0], origin)
     vim = waiting.vim if waiting is not None else start_vim(reading, url, boxes[1], origin)
-    # Said as soon as vim is started rather than once its window is in, so that
-    # the routes are open for the cursor vim reports the moment it has read the
-    # document, and the box on the page ticks without waiting for the layout.
     reading.editing = True
 
-    # Made while gvim is starting, and the panes measured against it rather than
-    # against the work area they were hinted with, since the window manager takes
-    # what its own border needs out of that. A warmed session has both already:
-    # the container was made when the page finished drawing and vim has been
-    # sitting in it ever since, so all that is left is to put it up.
     if waiting is not None:
         container = waiting.container
     else:
@@ -450,11 +373,6 @@ def edit(reading, url, ending, opening=False, app_window=True, waiting=None):
     panes = {}
     try:
         if container is not None:
-            # A warmed vim is already in and there is nothing to wait for. A
-            # cold one names its own window down a pipe while the page's window
-            # is found in the desktop's list, and since both were started before
-            # either is waited on, the two half seconds are spent at the same
-            # time and the session costs the longer of them rather than the sum.
             pane = waiting.pane if waiting is not None else vim_window(
                 d, container, vim, boxes[1]
             )
@@ -466,40 +384,20 @@ def edit(reading, url, ending, opening=False, app_window=True, waiting=None):
                     lambda listed: page_window(d, listed, reading.servername),
                     boxes[0],
                 )]))
-            # vim asks for a size of its own as it starts, and whether that
-            # lands before the pane was placed or after it is a matter of a few
-            # hundredths of a second. So the session waits for vim to stop
-            # moving and then lays both panes out again, and a session opens at
-            # the split the last one was left at rather than at whatever vim
-            # happened to settle on. The wait is short enough that vim may still
-            # answer after it, and what that costs is the seam standing within a
-            # character of where the split asks rather than exactly on it, since
-            # meet() hands whatever vim rounds off its width to the page.
             if 'vim' in panes:
                 settle(panes['vim'])
                 layout(d, container, panes, divider)
-            # The panes were mapped after the strip and are sitting over it, so
-            # the seam is laid again now that there is something to lay it on.
             meet(d, container, panes, divider)
             if 'browser' in panes:
-                # Asked for the page's own title from here on, since the title
-                # the reading carries is the page's and follows a link with it.
                 panes['browser'].change_attributes(event_mask=X.PropertyChangeMask)
                 follow_title(d, container, panes['browser'])
             focus(d, panes.get('vim'))
         hold(d, container, panes, divider, vim, reading, ending)
     finally:
-        # Said before the container is put away, so that nothing on the page
-        # goes on asking after a vim that is already gone. The wish goes with
-        # it, since a vim that quit of its own accord leaves a session nobody
-        # asked to end, and a wish left standing would open another at once.
         reading.editing = False
         reading.wanted = False
         release(d, container, panes, ending.is_set(), was_at)
         if d is not None:
-            # One connection per session rather than one per reading, since a
-            # reading may edit as many times as somebody ticks the box, and a
-            # connection left open every time is a connection leaked every time.
             d.close()
     return ending.is_set()
 
@@ -608,23 +506,10 @@ def hold(d, container, panes, divider, vim, reading, ending):
     clicks, and from then on they arrive here and name their own pane.
     """
     focused = 'vim'
-    # The one property of the page's the session follows, asked for once rather
-    # than on every event a browser writes about itself.
     named = d.intern_atom('_NET_WM_NAME') if d is not None else None
-    # Whether vim has heard that it is to go, and the moment a vim that heard
-    # nothing is worth telling again. It is told once and then left alone, since
-    # vim refuses while anything in it is unwritten and telling it four times a
-    # second would be four vim client commands a second for as long as the
-    # reader takes to save.
     asked = False
     again = 0.0
     while vim.poll() is None:
-        # Read from the reading as it stands rather than watched for a change,
-        # because a session takes a moment to open and the page is told vim is up
-        # as soon as vim is started. A reader pressing the toggle again straight
-        # away unticks the box while the session is still opening, so what a
-        # session watching for the wish to move would find is a wish that had
-        # already moved, and it would go on waiting for it to move again.
         going = ending.is_set() or not reading.wanted
         if not going:
             asked = False
@@ -632,9 +517,6 @@ def hold(d, container, panes, divider, vim, reading, ending):
             asked = vimlink.quit_vim(reading.servername)
             again = time.monotonic() + ASK_AGAIN
         if container is None:
-            # A session drawn in windows of their own has no desktop to hear
-            # from, so what it waits on is the page asking for something, or vim
-            # going once vim has been asked to go.
             if going:
                 try:
                     vim.wait(timeout=POLL)
@@ -644,21 +526,10 @@ def hold(d, container, panes, divider, vim, reading, ending):
                 wait([reading.heard], POLL)
             continue
         keep_focus(d, container, panes, focused)
-        # vim's own pipe is waited on beside the desktop and the page, because
-        # it is the one thing that says vim has gone. The desktop says its
-        # window was destroyed, which happens a moment before the process
-        # itself ends, so a session waiting on the desktop alone hears the
-        # window go, finds vim still running, and then sits out a whole quarter
-        # of a second before looking again. gvim writes nothing down this pipe
-        # after naming its window, so it is quiet until it closes, and it closes
-        # when vim goes.
         wait([d, reading.heard, vim.stdout], POLL)
         while d.pending_events():
             event = d.next_event()
             if event.type == X.ButtonPress:
-                # A press on the strip over the seam is a drag and nothing
-                # else. It reaches the strip rather than the pane under it, so
-                # no click is owed to anybody and none is let through.
                 if event.window.id == divider['grab'].id:
                     drag(d, container, panes, divider, event)
                     continue
@@ -666,8 +537,6 @@ def hold(d, container, panes, divider, vim, reading, ending):
                     if window.id == event.window.id:
                         focused = name
                         focus(d, window)
-                # Let the click through to the pane it was meant for, now that
-                # the keyboard has been pointed at that pane.
                 d.allow_events(X.ReplayPointer, event.time)
             elif event.type == X.ConfigureNotify:
                 if event.window.id == container.id:
@@ -675,9 +544,6 @@ def hold(d, container, panes, divider, vim, reading, ending):
                 else:
                     meet(d, container, panes, divider)
             elif event.type == X.DestroyNotify:
-                # The page's window closed, by its own close button or with the
-                # browser it belongs to. There is no page to go back to, so the
-                # whole reading ends with it.
                 page = panes.get('browser')
                 if page is not None and event.window.id == page.id:
                     panes.pop('browser')
@@ -687,8 +553,6 @@ def hold(d, container, panes, divider, vim, reading, ending):
                     focused = under_pointer(container, panes) or focused
                     focus_pane(d, panes, focused)
             elif event.type == X.PropertyNotify and event.atom == named:
-                # The page has renamed itself, which is how a link followed in
-                # the browser reaches the title bar and the panel.
                 page = panes.get('browser')
                 if page is not None and event.window.id == page.id:
                     follow_title(d, container, page)
@@ -892,8 +756,6 @@ def meet(d, container, panes, divider):
     left = here.width - there.width
     if left < 1:
         return
-    # Asked for only where it is wrong, since a request answered by no change
-    # still arrives back here and would otherwise go round for ever.
     if there.x != left:
         vim.configure(x=left)
     if browser is not None and beside != left:
@@ -919,18 +781,11 @@ def open_page(url, servername, app_window=True, box=None, origin=(0, 0)):
     page = f'{url}/{servername}'
     browser = browser_path() if app_window else None
     if browser:
-        # Started and not held on to. The command hands the asking to a browser
-        # already running and is gone within the moment, so what it leaves
-        # behind is a window rather than a process to wait on, and the window is
-        # what a session holds the page by.
         subprocess.Popen(
             browser_command(browser, page, box, origin),
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
         return
-    # On a thread of its own: opening a browser can block until it exits. A
-    # desktop with nothing to open it with is not a failure either, since the
-    # address is already printed and the reading stays reachable by hand.
     threading.Thread(target=webbrowser.open, args=(page, 2), daemon=True).start()
 
 
@@ -953,7 +808,6 @@ def page_window(d, listed, servername):
         try:
             classes = window.get_wm_class()
         except Exception:
-            # The window has gone in the moment since the desktop listed it.
             continue
         if classes and any(name.endswith(servername) for name in classes):
             return window
@@ -1014,9 +868,6 @@ def put_in(d, container, window, box):
     window.map()
     for button in (1, 2, 3):
         for modifiers in locked():
-            # Synchronous, so that the click can be looked at and then let
-            # through to the pane it was meant for. The wheel is left alone,
-            # since a pane scrolled through is a pane already under the pointer.
             window.grab_button(
                 button, modifiers, False, X.ButtonPressMask,
                 X.GrabModeSync, X.GrabModeAsync, X.NONE, X.NONE,
@@ -1147,8 +998,6 @@ def take_in(d, container, wanted):
     left = list(wanted)
     deadline = time.monotonic() + WINDOW_WAIT
     while left and time.monotonic() < deadline:
-        # The desktop's list is asked for once a turn rather than once a pane,
-        # since every pane is looked for in the same list.
         listed = client_list(d)
         for pane in list(left):
             name, find, box = pane
@@ -1185,8 +1034,6 @@ def top_level(d, window_id):
             if window is None:
                 return None
     except Exception:
-        # The window belongs to another program and may go at any moment,
-        # including between two of the questions asked about it here.
         return None
     return None
 
@@ -1352,8 +1199,6 @@ def warm(reading, url):
         container.destroy()
         d.close()
         return None
-    # Said only once vim is in, so that a link followed from here on is followed
-    # by vim as well and the two are never of different documents.
     reading.waiting = True
     return Waiting(d, container, vim, pane)
 
@@ -1393,7 +1238,6 @@ def window_name(d, window):
     try:
         said = window.get_full_property(d.intern_atom('_NET_WM_NAME'), X.AnyPropertyType)
     except Exception:
-        # The window belongs to the browser and may go at any moment.
         return None
     return said.value.decode('utf-8', 'replace') if said else None
 
@@ -1444,6 +1288,4 @@ def x_display():
         d.set_error_handler(ignore_gone)
         return d
     except Exception:
-        # Xlib raises several unrelated errors for a display it cannot reach,
-        # and none of them is worth stopping a reading for.
         return None

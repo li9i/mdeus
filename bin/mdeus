@@ -42,21 +42,14 @@ import sys
 import threading
 from pathlib import Path
 
-# The modules this drives sit under share/mdeus in the same checkout as this
-# script. The path is resolved through any symlink first, so the command works
-# whether it is run from the checkout or reached through the link the installer
-# leaves in ~/.local/bin.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'share' / 'mdeus'))
 
-import vimlink  # noqa: E402
-import window  # noqa: E402
-from browser import browser_path  # noqa: E402
-from export import write_export  # noqa: E402
-from server import NAME, serve, start  # noqa: E402
+import vimlink
+import window
+from browser import browser_path
+from export import write_export
+from server import NAME, serve, start
 
-# How often a reading that is only the page looks up from waiting, in seconds.
-# Nothing is polled for: the wait ends the moment the page asks for anything
-# and the moment the server stops, and this is the backstop behind both.
 WAKE = 1
 
 
@@ -111,9 +104,6 @@ def parse_args(argv):
         description='Read a markdown document in your browser, and edit it there.',
     )
     parser.add_argument('document', type=Path, help='markdown file to read')
-    # Printing opens nothing at all, so there is nothing for vim to sit beside.
-    # Refused rather than quietly dropped, since a flag that was typed and did
-    # nothing is worse than being told it cannot be had.
     opening = parser.add_mutually_exclusive_group()
     opening.add_argument(
         '--edit',
@@ -155,14 +145,8 @@ def read(document, edit, tab):
     the box is ticked and only the first vim was warmed for free.
     """
     servername = f'{NAME.upper()}{os.getpid()}'
-    # Whether the page's window is one that can be taken into a container.
-    # A tab cannot be, and neither can a window of a browser that gives no
-    # window of its own, so vim opens beside such a page rather than within it.
     app_window = bool(browser_path()) and not tab
     bound, reading, url = start(document, servername, editable=on_a_desktop())
-    # The address carries the reading's own name, because the browser writes
-    # the name of the window it puts up out of the address it was given, and a
-    # page opened at any other address is one no session can find and take in.
     print(f'reading {document.name}')
     print(f'  {url}/{servername}')
     print('  ctrl-c to stop, or close the page', flush=True)
@@ -171,33 +155,16 @@ def read(document, edit, tab):
     ending = threading.Event()
     signal.signal(signal.SIGINT, interrupt(reading, ending))
     if edit:
-        # The container is made before the page is asked for, so that neither
-        # half of the reading is seen standing on the desktop on its way in.
         if window.edit(reading, url, ending, opening=True, app_window=app_window):
             return
     else:
         window.open_page(url, servername, app_window)
 
-    # The vim warmed behind the page, or nothing while none is warmed. A session
-    # takes it over and leaves nothing behind it, so this is emptied whenever one
-    # begins and filled again when the reading comes back to waiting.
     waiting = None
-    # Whether warming has been tried for the reading as it stands. A warming that
-    # came back with nothing is not tried again every turn of the loop, since
-    # whatever stopped it will not have changed in the meantime, and the toggle
-    # opens vim the long way instead. Each session clears this, so the reading
-    # tries again once it is back to the page alone.
     warmed = False
     try:
         while not ending.is_set():
-            # Cleared before the wish is read rather than after, so that a page
-            # asking in the moment between the two is answered by the wait ending
-            # at once rather than by a whole turn of waiting.
             reading.asked.clear()
-            # Read after the clearing above, for the same reason: the server
-            # stopping is said by the same event, and looking before the clearing
-            # would leave a reading whose page closed at that moment waiting out a
-            # turn it has no reason to wait.
             if reading.over.is_set():
                 break
             if reading.wanted:
@@ -208,19 +175,12 @@ def read(document, edit, tab):
                                waiting=session):
                     return
                 continue
-            # Warmed only once the page has drawn what it was opened on. A
-            # browser drawing a page and a gvim starting want the same machine,
-            # and the page is the one being waited on, so vim is left until the
-            # page is done. A reading whose page never draws never warms, which
-            # is a reading nobody can press Edit in anyway.
             if not warmed and app_window and reading.drawn.is_set():
                 warmed = True
                 waiting = window.warm(reading, url)
                 continue
             reading.asked.wait(WAKE)
     finally:
-        # A vim warmed and never wanted goes with the reading, since nothing
-        # else knows it is there to end it.
         window.cool(reading, waiting)
 
 

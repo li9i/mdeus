@@ -27,15 +27,8 @@ import vimlink
 import window
 from Xlib import error
 
-# How long a test waits for a session to end before calling it stuck. A session
-# with nothing to draw looks at the wish four times a second, so this is many
-# turns of that and not a race.
 ENDS_WITHIN = 3
-# The name the test reading answers to, and the name a stand in for vim is
-# asked to quit under.
 SERVERNAME = 'MDEUSTEST'
-# How long a test watches a session that is not meant to end, in seconds. Long
-# enough to catch a session asking vim to go on every turn rather than once.
 WATCH_FOR = 1.5
 
 
@@ -187,7 +180,6 @@ def test_a_stop_asked_for_while_the_session_opens_is_still_honoured():
     was = vimlink.quit_vim
     vimlink.quit_vim = lambda name: (asked.append(name), vim.terminate())
     try:
-        # The press that landed while the session was opening.
         reading.wanted = False
         session = held(reading, vim)
         session.join(ENDS_WITHIN)

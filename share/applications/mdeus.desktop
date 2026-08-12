@@ -2,18 +2,7 @@
 Type=Application
 Name=mdeus
 Comment=Read a markdown document in your browser, and edit it there
-# No terminal, because there is nothing to see in one. mdeus opens a window
-# carrying the page and nothing else, and serves the document from this machine
-# until the page stops saying it is still open, which is what ends a reading
-# started from here. The Edit toggle at the top of the page brings vim in,
-# and vim opens in a window of the reading's own rather than in a terminal.
 Exec=mdeus %f
 Terminal=false
-# A reading is a browser, and a browser with vim beside it as soon as you ask,
-# and an entry carries one icon, so the icon is one image of the two: a terminal
-# behind at the top left and a browser in front at the bottom right, the pair
-# overlapping inside one square. It ships with the mdeus package, under
-# ~/.local/share/icons, and a reading wears the same image on the panel in both
-# of its states.
 Icon=mdeus
 MimeType=text/markdown;text/x-markdown;

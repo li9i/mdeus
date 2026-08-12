@@ -32,11 +32,6 @@ from server import ASSET_DIR, page_html, resolve_inside
 from state import load_state
 
 CACHE_DIR = Path.home() / '.cache' / 'mdeus'
-# What the reading page draws from, answered from the document printed beside it.
-# Nothing here reaches the network. Every other request the page makes is
-# refused rather than answered, since there is nowhere to store a theme, no
-# reading to hold open and nobody waiting to hear that the document has been
-# drawn.
 STUB = """\
 window.fetch = (path) => {
   const answers = { '/doc': DOC };
@@ -47,10 +42,6 @@ window.fetch = (path) => {
   });
 };
 
-/* A link to another document was left as it was written, and there is nothing
-   here to render a target, so the browser follows it the way it would in any
-   other page. The reading page takes such links over as the click travels back
-   up, which stopping it on the way down prevents. */
 document.querySelector('.doc').addEventListener(
   'click',
   (event) => {
@@ -96,8 +87,6 @@ def embedded_image(root):
 
     def embed(target):
         """Return one image as its own bytes, or as the target that was there."""
-        # The value is percent encoded on the way into the document, so that
-        # has to come off before it names a file.
         path = resolve_inside(root, unquote(target))
         return target if path is None else data_uri(path)
 
@@ -106,9 +95,6 @@ def embedded_image(root):
 
 def printed_page(document):
     """Return the whole file: the reading page, its stylesheet, and the document."""
-    # Both go in whole rather than a piece at a time, so a printed copy can
-    # never be missing a theme, or name a heading differently from the reading
-    # it was printed out of.
     styles = (ASSET_DIR / 'themes.css').read_text(encoding='utf-8')
     page = (ASSET_DIR / 'page.js').read_text(encoding='utf-8')
     return page_html(
@@ -122,9 +108,6 @@ def printed_page(document):
 
 def stub_script(document):
     """Return the script that answers the reading page from the printed document."""
-    # A document holding the end of a script tag would otherwise close the one
-    # it is being carried inside. The slash is escaped instead, which a
-    # JavaScript string reads as the slash it was.
     baked = json.dumps(document).replace('</', '<\\/')
     return f'const DOC = {baked};\n\n{STUB}'
 
@@ -137,8 +120,6 @@ def write_export(source):
     )
     document = {
         'blocks': rendered['blocks'],
-        # There is no server behind a printed copy to answer for a write, so
-        # the page is told the document never changes.
         'mtime': 0,
         'name': source.name,
         'outline': rendered['outline'],
