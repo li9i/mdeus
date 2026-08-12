@@ -9,11 +9,13 @@
    owes it is its height, written to the root as --bar-height so that a heading
    jumped to lands below the row rather than behind it.
 
-   The page keeps nothing of its own. It draws what GET /doc sends and writes
+   The page keeps no setting of its own. It draws what GET /doc sends and writes
    every change back through POST /api/state, so one reading and the next
-   agree wherever they were opened from.
+   agree wherever they were opened from. The one thing it keeps for itself is
+   where a refresh left it, which belongs to the window rather than to the next
+   reading and is kept in the window's own store for exactly that reason.
 
-   The Edit toggle is the exception to that: it is not a setting and is stored
+   The Edit toggle is neither of those: it is not a setting and is stored
    nowhere. It is a fact about the reading in front of you, so it follows what
    the server says rather than leading it, and every line the server sends
    writes it again.
@@ -31,6 +33,8 @@
 const CONTENTS_MINIMUM = 3;
 /* How long a copy button says it copied before it offers to again. */
 const COPIED_MS = 1500;
+/* Where the place a refresh left is kept, in the window's own store. */
+const PLACE_KEY = 'mdeus:place';
 const THEMES = [
   ['browser', 'Browser default'],
   ['report', 'Mono headings'],
@@ -465,6 +469,48 @@ function isSection(block) {
   return sectionLines.has(Number(block.dataset.start));
 }
 
+function keepPlace() {
+  /* Note where the reading was as the page goes, so that a refresh comes back
+     to it rather than to the top of the document.
+
+     A refresh takes the whole page down and builds it again from an empty
+     shell, and the document is drawn into it a moment later than the browser
+     would put back a scroll position of its own, so the browser is told not to
+     try and this is what holds the place instead.
+
+     It is held in the window's own store rather than on the server, which is
+     where every setting goes. Where a reading was scrolled to is a fact about
+     the window in front of you and not something the next reading should open
+     with, and that store lasts exactly as long: it survives the refresh in
+     between and goes when the window does.
+
+     The document is named beside the block, since the reading may have followed
+     a link before the refresh and a place in one document says nothing about
+     another. */
+  const mark = doc && !doc.gone ? anchor() : null;
+  if (!mark) {
+    sessionStorage.removeItem(PLACE_KEY);
+    return;
+  }
+  sessionStorage.setItem(
+    PLACE_KEY,
+    JSON.stringify({ name: doc.name, start: mark.start, top: mark.top })
+  );
+}
+
+function keptPlace() {
+  /* The place a refresh left, or nothing where this window has none kept for it
+     or the one it has belongs to another document. Forgotten as it is handed
+     over, so that a place is put back once and never again. */
+  const kept = sessionStorage.getItem(PLACE_KEY);
+  sessionStorage.removeItem(PLACE_KEY);
+  if (!kept) {
+    return null;
+  }
+  const place = JSON.parse(kept);
+  return place.name === doc.name ? place : null;
+}
+
 async function load() {
   /* Draw what the server has. Called again whenever the file changes, so it
      holds the reading position across a redraw. The document arrives with the
@@ -617,12 +663,19 @@ function slug(text, used) {
 }
 
 async function start() {
+  /* The browser is told to put back no scroll position of its own. The document
+     is drawn into an empty shell a moment after the page is up, so a browser
+     restoring a position has nothing to restore it into and lands at the top,
+     and the place a refresh left is put back below instead. */
+  history.scrollRestoration = 'manual';
   /* The reading is taken hold of before the document is asked for, so that a
      reloaded page is holding it again within the moment rather than once it has
      drawn, which on a long document is long enough for the reading to have ended
      underneath it. */
   hold();
   await load();
+  restore(keptPlace());
+  window.addEventListener('pagehide', keepPlace);
   /* The document the reading opened at is the first history entry, so going
      back to it names a path like every other entry does. */
   history.replaceState({ path: doc.name }, '');
