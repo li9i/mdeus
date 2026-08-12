@@ -19,13 +19,14 @@ import sys
 import tempfile
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
 import server
 import vimlink
 import window
-from Xlib import error
+from Xlib import X, error
 
 ENDS_WITHIN = 3
 SERVERNAME = 'MDEUSTEST'
@@ -37,6 +38,39 @@ class Display:
 
     def sync(self):
         """Wait for the requests above to have been made."""
+
+
+class Dragging(Display):
+    """A stand in for the desktop with a drag already waiting in it.
+
+    The events a drag reads are all queued before it starts, which is the state
+    a reading is really in a moment into a violent drag: the pointer has said
+    where it is many times over while the panes were still being resized to
+    answer the first of them.
+    """
+
+    def __init__(self, events, edge=0):
+        self.edge = edge
+        self.events = list(events)
+
+    def next_event(self):
+        """Take the event that has waited longest."""
+        return self.events.pop(0)
+
+    def pending_events(self):
+        """Say how many are still waiting."""
+        return len(self.events)
+
+    def screen(self):
+        """Answer for the root window, which is asked where the container is."""
+        return SimpleNamespace(
+            root=SimpleNamespace(
+                translate_coords=lambda window, x, y: SimpleNamespace(x=self.edge)
+            )
+        )
+
+    def ungrab_pointer(self, when):
+        """Give the pointer back, as the end of a drag does."""
 
 
 class Pane:
@@ -62,6 +96,27 @@ class Pane:
         if self.gone:
             raise error.BadDrawable.__new__(error.BadDrawable)
         return self.here
+
+    def grab_pointer(self, *asked):
+        """Take the pointer, as the strip does for as long as a drag lasts."""
+
+
+@contextmanager
+def a_split_of(share):
+    """Hold the seam at this share of the window for as long as the test runs.
+
+    Where a drag leaves the seam is stored for the next reading to open at, and
+    a test is not a reading: it says where the seam started, keeps its own
+    dragging out of the stored settings, and puts both back afterwards.
+    """
+    was, stored = window.browser_share, window.save_split
+    window.browser_share = share
+    window.save_split = lambda left: None
+    try:
+        yield
+    finally:
+        window.browser_share = was
+        window.save_split = stored
 
 
 def held(reading, vim):
@@ -158,6 +213,54 @@ def test_a_pane_that_has_gone_does_not_take_the_reading_with_it():
         window.meet(Display(), container, panes, divider)
         for name, pane in dict(panes, **divider).items():
             assert pane.asked == [], (closed, name, pane.asked)
+
+
+def test_a_drag_lays_the_panes_out_where_the_pointer_ended_and_nowhere_else():
+    """A drag answers where the pointer is now, not every place it has been.
+
+    A pointer says where it is far oftener than a browser and a vim can be
+    resized to answer it, so the moves pile up while the panes are still
+    answering the first of them. A reading that takes them one at a time lays
+    the panes out for every place the pointer passed through, each layout being
+    two other programs asked to redraw a whole window, and the seam falls
+    further behind the hand the harder it is dragged. The reader drags a little
+    and waits for the reading to catch up.
+
+    Only the last of them says anything about where the seam is wanted, so the
+    rest are read and dropped, and the panes are laid out once.
+    """
+    container = Pane(0, 0, 1000, 600)
+    panes = {'browser': Pane(0, 0, 500, 600), 'vim': Pane(500, 0, 500, 600)}
+    divider = seam(500, 600)
+    moves = [SimpleNamespace(type=X.MotionNotify, root_x=x) for x in range(501, 701)]
+    d = Dragging(moves + [SimpleNamespace(type=X.ButtonRelease)])
+    with a_split_of(0.5):
+        window.drag(d, container, panes, divider, SimpleNamespace(time=0))
+    assert panes['vim'].asked == [{'x': 700, 'y': 0, 'width': 300, 'height': 600}], (
+        panes['vim'].asked
+    )
+    assert panes['browser'].asked == [{'x': 0, 'y': 0, 'width': 700, 'height': 600}], (
+        panes['browser'].asked
+    )
+
+
+def test_a_drag_puts_the_panes_edge_to_edge_once_however_often_they_answer():
+    """The panes saying how big they settled on are answered together, not each in turn.
+
+    One layout tells four windows where to go and hears back from every one of
+    them, and each of those answers arriving on its own would be another round
+    of asking both panes their size and moving them to meet. That is the same
+    work done four times over for one move of the seam.
+    """
+    container = Pane(0, 0, 1000, 600)
+    panes = {'browser': Pane(0, 0, 500, 600), 'vim': Pane(500, 0, 495, 600)}
+    divider = seam(500, 600)
+    settled = [SimpleNamespace(type=X.ConfigureNotify) for _ in range(4)]
+    d = Dragging(settled + [SimpleNamespace(type=X.ButtonRelease)])
+    with a_split_of(0.5):
+        window.drag(d, container, panes, divider, SimpleNamespace(time=0))
+    assert panes['vim'].asked == [{'x': 505}], panes['vim'].asked
+    assert panes['browser'].asked == [{'width': 505}], panes['browser'].asked
 
 
 def test_a_stop_asked_for_while_the_session_opens_is_still_honoured():

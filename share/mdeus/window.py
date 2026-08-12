@@ -265,6 +265,22 @@ def drag(d, container, panes, divider, press):
     will land: vim settles on whole character columns, so the reading snaps to
     the nearest one and dragging is how you see which. Where it was left is
     stored, so the next reading opens at the same split.
+
+    Everything already said is read before any of it is acted on, and only the
+    last place the pointer named is laid out. A pointer says where it is far
+    oftener than two other programs can be resized to answer it, so a reading
+    that took them one at a time would spend the drag laying out places the
+    pointer had long since left, and the harder the seam was dragged the
+    further behind the hand it would fall. Dropping the places already left
+    behind costs nothing, since a layout is the same work whether it is the
+    only move or the last of a hundred.
+
+    The panes answering with sizes of their own are gathered up the same way.
+    One layout is four windows told where to go and four answers saying so, and
+    each of those answers would otherwise be another round of putting the panes
+    edge to edge. However many arrive together they are answered once, and not
+    at all where a newer place has just been laid out, since that layout has
+    already asked the panes for sizes they have yet to answer.
     """
     global browser_share
     divider['grab'].grab_pointer(
@@ -273,19 +289,30 @@ def drag(d, container, panes, divider, press):
     )
     width = container.get_geometry().width
     edge = d.screen().root.translate_coords(container, 0, 0).x
+    going = True
     try:
-        while True:
-            event = d.next_event()
-            if event.type == X.ButtonRelease:
-                break
-            if event.type == X.ConfigureNotify:
-                meet(d, container, panes, divider)
-            elif event.type == X.MotionNotify:
-                here = (event.root_x - edge) / width
+        while going:
+            moved, settled, laid = None, False, False
+            batch = [d.next_event()]
+            while batch[-1].type != X.ButtonRelease and d.pending_events():
+                batch.append(d.next_event())
+            for event in batch:
+                if event.type == X.ButtonRelease:
+                    going = False
+                    break
+                if event.type == X.ConfigureNotify:
+                    settled = True
+                elif event.type == X.MotionNotify:
+                    moved = event
+            if moved is not None:
+                here = (moved.root_x - edge) / width
                 wanted = min(MAX_SPLIT, max(MIN_SPLIT, here))
                 if round(wanted * width) != round(browser_share * width):
                     browser_share = wanted
                     layout(d, container, panes, divider)
+                    laid = True
+            if settled and not laid:
+                meet(d, container, panes, divider)
     finally:
         d.ungrab_pointer(X.CurrentTime)
         d.sync()
