@@ -579,7 +579,14 @@ def hold(d, container, panes, divider, vim, reading, ending):
     # What the page last asked for, so that unticking the box is heard as the
     # change it is and vim is asked once rather than four times a second for as
     # long as it goes on refusing.
-    was = reading.wanted
+    #
+    # It starts at editing being wanted rather than at whatever the wish says
+    # now, because a session exists at all only because editing was wanted, and
+    # a session takes a moment to open. The page is told vim is up as soon as
+    # vim is started, so a reader pressing the toggle again straight away
+    # unticks the box while the session is still opening, and reading the wish
+    # here would find it already unticked and go on waiting for it to move.
+    was = True
     while vim.poll() is None:
         if reading.wanted != was:
             was = reading.wanted
@@ -800,18 +807,44 @@ def meet(d, container, panes, divider):
     showing below vim, and nothing here can close it: vim settles on whole rows
     as it settles on whole columns, and there is no third pane to hand the
     remainder to.
+
+    Nothing is laid out on a turn where vim is as wide as the container or
+    wider. It happens for a moment while a session is opening, since vim
+    answers a size of its own after the fact and the container is given its own
+    size by the window manager, so the two are briefly of the reading's two
+    different ideas of how wide the reading is. What is left of the container
+    beside vim is nothing at all then, and no window can be that wide: the
+    request cannot even be put together, and a reading that tried would end
+    there and leave its page standing on the desktop with nothing behind it.
+    The container settling on its size asks for the layout again a moment
+    later, which is where the two panes actually meet.
+
+    Both panes are asked how big they are before either is told anything, since
+    both belong to other programs and either may go between one question and
+    the next. A pane that has gone is answered for here rather than by the
+    handler the rest of this file leans on: that one hears the errors the X
+    server sends back late, and a question waited on for an answer is refused
+    where it was asked instead. Unanswered, it would end the whole reading over
+    a vim that quit half a moment before the layout it left behind was acted
+    on, which is exactly what quitting vim does.
     """
     browser, vim = panes.get('browser'), panes.get('vim')
     if vim is None:
         return
     here = container.get_geometry()
-    there = vim.get_geometry()
+    try:
+        there = vim.get_geometry()
+        beside = browser.get_geometry().width if browser is not None else None
+    except (error.BadDrawable, error.BadMatch, error.BadWindow):
+        return
     left = here.width - there.width
+    if left < 1:
+        return
     # Asked for only where it is wrong, since a request answered by no change
     # still arrives back here and would otherwise go round for ever.
     if there.x != left:
         vim.configure(x=left)
-    if browser is not None and browser.get_geometry().width != left:
+    if browser is not None and beside != left:
         browser.configure(width=left)
     divider_at(divider, left, here.height)
     d.sync()
