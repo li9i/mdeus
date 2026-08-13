@@ -72,7 +72,11 @@
   max-width: 46em;
 }
 
-.browser.wide body {
+.browser.middle body {
+  margin: 8px auto;
+}
+
+.browser.wide:not(.middle) body {
   max-width: none;
 }
 

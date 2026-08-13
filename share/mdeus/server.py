@@ -84,7 +84,11 @@ def page_html(title, state, head, body_tail=''):
     differs between them is how the stylesheet and the script arrive, which is
     the caller's to hand in: linked from this server, or inlined whole.
     """
-    classes = f"{state['theme']} reader" + (' wide' if state['wide'] else '')
+    classes = (
+        f"{state['theme']} reader"
+        + (' middle' if state['middle'] else '')
+        + (' wide' if state['wide'] else '')
+    )
     return f"""<!doctype html>
 <html lang="en" class="{classes}">
   <head>
@@ -157,14 +161,16 @@ def wanted_line(body):
 def wanted_state(body):
     """Return the state a request asks to store, or raise ValueError.
 
-    A body naming no full width setting reads as the setting being on, which is
-    the same reading the stored state gets when its file has no field for it.
+    A body naming no full width setting or no centring setting reads as that
+    setting being on, which is the same reading the stored state gets when its
+    file has no field for it.
     """
     theme = body.get('theme')
     if theme not in THEMES:
         raise ValueError('unknown theme')
     return {
         'contents': bool(body.get('contents')),
+        'middle': bool(body.get('middle', True)),
         'theme': theme,
         'wide': bool(body.get('wide', True)),
     }

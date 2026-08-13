@@ -623,7 +623,8 @@ def test_every_theme_is_accepted_and_a_fourth_is_not():
             status, reply = fetch_json(
                 port, '/api/state', 'POST', {'theme': theme, 'contents': False})
             assert status == 200, (theme, status)
-            assert reply == {'contents': False, 'theme': theme, 'wide': True}, reply
+            assert reply == {'contents': False, 'middle': True, 'theme': theme,
+                             'wide': True}, reply
             status, doc = fetch_json(port, '/doc')
             assert doc['state']['theme'] == theme, (theme, doc['state'])
         before = state.STATE_PATH.read_text(encoding='utf-8')
@@ -751,7 +752,7 @@ def test_full_width_is_on_until_it_is_unticked_and_lands_on_the_first_paint():
         status, doc = fetch_json(port, '/doc')
         assert doc['state']['wide'] is True, doc['state']
         status, _, page = fetch(port, '/')
-        assert b'class="browser reader wide"' in page, page[:200]
+        assert b'class="browser reader middle wide"' in page, page[:200]
 
         status, reply = fetch_json(
             port, '/api/state', 'POST', {'theme': 'browser', 'contents': False,
@@ -761,7 +762,7 @@ def test_full_width_is_on_until_it_is_unticked_and_lands_on_the_first_paint():
         status, doc = fetch_json(port, '/doc')
         assert doc['state']['wide'] is False, doc['state']
         status, _, page = fetch(port, '/')
-        assert b'class="browser reader"' in page, page[:200]
+        assert b'class="browser reader middle"' in page, page[:200]
 
         state.STATE_PATH.write_text(
             '{"theme": "browser", "contents": false}', encoding='utf-8')
@@ -771,11 +772,43 @@ def test_full_width_is_on_until_it_is_unticked_and_lands_on_the_first_paint():
         stop()
 
 
+def test_middle_is_on_until_it_is_unticked_and_lands_on_the_first_paint():
+    """The centring setting is stored, reported back, and already on the root element.
+
+    It arrives with the markup for the same reason the full width setting does:
+    the lines have to stand where the reader left them from the first paint,
+    rather than down one edge and moved across the moment the script catches up.
+    """
+    root, port, reading, stop = start_reading()
+    try:
+        status, doc = fetch_json(port, '/doc')
+        assert doc['state']['middle'] is True, doc['state']
+        status, _, page = fetch(port, '/')
+        assert b'class="browser reader middle wide"' in page, page[:200]
+
+        status, reply = fetch_json(
+            port, '/api/state', 'POST', {'theme': 'browser', 'contents': False,
+                                         'middle': False})
+        assert status == 200, status
+        assert reply['middle'] is False, reply
+        status, doc = fetch_json(port, '/doc')
+        assert doc['state']['middle'] is False, doc['state']
+        status, _, page = fetch(port, '/')
+        assert b'class="browser reader wide"' in page, page[:200]
+
+        state.STATE_PATH.write_text(
+            '{"theme": "browser", "contents": false}', encoding='utf-8')
+        status, doc = fetch_json(port, '/doc')
+        assert doc['state']['middle'] is True, doc['state']
+    finally:
+        stop()
+
+
 def test_missing_or_broken_state_falls_back_to_browser():
     """A state file that is absent, malformed or naming no theme is not an error."""
     root, port, reading, stop = start_reading()
     try:
-        default = {'contents': False, 'theme': 'browser', 'wide': True}
+        default = {'contents': False, 'middle': True, 'theme': 'browser', 'wide': True}
         assert not state.STATE_PATH.exists(), state.STATE_PATH
         status, doc = fetch_json(port, '/doc')
         assert status == 200, status
@@ -844,7 +877,8 @@ def test_removed_file_gives_the_gone_reply_and_recovers():
     try:
         gone = {'editable': False, 'editing': False, 'name': 'start.md',
                 'gone': True,
-                'state': {'contents': False, 'theme': 'browser', 'wide': True}}
+                'state': {'contents': False, 'middle': True, 'theme': 'browser',
+                          'wide': True}}
         source = root / 'start.md'
         source.unlink()
         status, doc = fetch_json(port, '/doc')
@@ -873,11 +907,11 @@ def test_split_is_kept_beside_the_theme_and_falls_back():
         fetch_json(port, '/api/state', 'POST',
                    {'theme': 'github', 'contents': True, 'wide': False})
         stored = json.loads(state.STATE_PATH.read_text(encoding='utf-8'))
-        assert stored == {'contents': True, 'theme': 'github', 'wide': False,
-                          'split': 0.62}, stored
+        assert stored == {'contents': True, 'middle': True, 'theme': 'github',
+                          'wide': False, 'split': 0.62}, stored
         state.save_split(0.5)
-        assert state.load_state() == {'contents': True, 'theme': 'github',
-                                      'wide': False}, stored
+        assert state.load_state() == {'contents': True, 'middle': True,
+                                      'theme': 'github', 'wide': False}, stored
         for share in ('sideways', None, 0.02, 0.99):
             state.save_state({'split': share})
             assert state.load_split() == state.DEFAULT_SPLIT, share
@@ -891,19 +925,22 @@ def test_state_file_is_never_read_half_written():
     try:
         writes = 120
         last = {'contents': bool((writes - 1) % 2),
+                'middle': bool((writes - 1) % 2),
                 'theme': THEMES[(writes - 1) % len(THEMES)],
                 'wide': not (writes - 1) % 2}
 
         def write_many():
-            """Store a different state over and over, as the three controls would."""
+            """Store a different state over and over, as the four controls would."""
             for index in range(writes):
                 fetch_json(port, '/api/state', 'POST',
                            {'theme': THEMES[index % len(THEMES)],
                             'contents': bool(index % 2),
+                            'middle': bool(index % 2),
                             'wide': not index % 2})
 
         fetch_json(port, '/api/state', 'POST',
-                   {'theme': 'browser', 'contents': False, 'wide': True})
+                   {'theme': 'browser', 'contents': False, 'middle': True,
+                    'wide': True})
         writer = threading.Thread(target=write_many)
         writer.start()
         seen = 0
@@ -915,6 +952,7 @@ def test_state_file_is_never_read_half_written():
                 raise AssertionError(f'the state file was not whole: {error}')
             assert stored['theme'] in THEMES, stored
             assert isinstance(stored['contents'], bool), stored
+            assert isinstance(stored['middle'], bool), stored
             assert isinstance(stored['wide'], bool), stored
             seen += 1
         writer.join(timeout=TIMEOUT)
@@ -930,7 +968,7 @@ def test_state_is_stored_and_reported_back():
     """POST /api/state writes the file, and the next /doc reports what it wrote."""
     root, port, reading, stop = start_reading()
     try:
-        wanted = {'contents': True, 'theme': 'report', 'wide': False}
+        wanted = {'contents': True, 'middle': False, 'theme': 'report', 'wide': False}
         status, reply = fetch_json(port, '/api/state', 'POST', wanted)
         assert status == 200, status
         assert reply == wanted, reply

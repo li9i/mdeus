@@ -2,8 +2,9 @@
 The little a reading remembers between one opening and the next.
 
 The theme, whether the contents list was open, whether a theme that will run its
-lines the full width of the pane is left to, and where the divider between the
-browser and vim was left. One file holds all four, and each thing that stores
+lines the full width of the pane is left to, whether a theme that will stand its
+lines in the middle of the pane is left to, and where the divider between the
+browser and vim was left. One file holds all five, and each thing that stores
 into it writes only its own field, since a reading in a browser and a reading
 with vim beside it know nothing of each other's settings.
 
@@ -44,17 +45,19 @@ def load_state():
     theme naming something that does not exist. Any of them means the reading
     opens the way the very first one did.
 
-    A file written before the full width setting existed has no field for it,
-    and reads as the setting being on, since that is how a first reading opens.
+    A file written before the full width setting or the centring setting existed
+    has no field for either, and both read as being on, since that is how a first
+    reading opens.
     """
     stored = stored_state()
     if stored.get('theme') in THEMES:
         return {
             'contents': bool(stored.get('contents')),
+            'middle': bool(stored.get('middle', True)),
             'theme': stored['theme'],
             'wide': bool(stored.get('wide', True)),
         }
-    return {'contents': False, 'theme': 'browser', 'wide': True}
+    return {'contents': False, 'middle': True, 'theme': 'browser', 'wide': True}
 
 
 def save_split(share):
@@ -67,8 +70,8 @@ def save_state(state):
 
     What is written is merged into what is already there. Two things store into
     this file and neither knows the other's field: the page stores the theme,
-    the contents setting and the full width setting, and a reading with vim
-    beside it stores where the divider was left.
+    the contents setting, the full width setting and the centring setting, and a
+    reading with vim beside it stores where the divider was left.
     """
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     temp = STATE_PATH.with_name(f'{STATE_PATH.name}.{uuid.uuid4().hex}.tmp')

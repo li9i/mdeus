@@ -3,7 +3,7 @@
 const CONTENTS_MINIMUM = 3;
 const COPIED_MS = 1500;
 const PLACE_KEY = 'mdeus:place';
-const SHORTCUTS = { c: 'contents', e: 'edit', f: 'wide' };
+const SHORTCUTS = { c: 'contents', e: 'edit', f: 'wide', m: 'middle' };
 const THEMES = [
   ['browser', 'Browser default'],
   ['report', 'Mono headings'],
@@ -19,6 +19,7 @@ let contentsOpen = false;
 let doc = null;
 let editing = false;
 let headingIds = [];
+let middle = null;
 let mtime = null;
 let sectionLines = new Set();
 let theme = null;
@@ -61,6 +62,10 @@ function applyFolds() {
   });
 }
 
+function applyMiddle() {
+  document.documentElement.classList.toggle('middle', middle);
+}
+
 function applyTheme() {
   const root = document.documentElement;
   THEMES.forEach(([key]) => root.classList.toggle(key, key === theme));
@@ -92,7 +97,12 @@ function buildControls() {
   });
   select.value = theme;
   select.addEventListener('change', onTheme);
-  controlsNode.append(label, select, toggleButton('wide', 'Full width', wide, onWide));
+  controlsNode.append(
+    label,
+    select,
+    toggleButton('wide', 'Full width', wide, onWide),
+    toggleButton('middle', 'Middle', middle, onMiddle)
+  );
   if (doc.editable) {
     controlsNode.append(toggleButton('edit', 'Edit', editing, onEdit));
   }
@@ -337,7 +347,9 @@ async function load() {
   if (theme === null) {
     theme = doc.state.theme;
     contentsOpen = doc.state.contents;
+    middle = doc.state.middle;
     wide = doc.state.wide;
+    applyMiddle();
     applyTheme();
     applyWide();
     buildControls();
@@ -397,6 +409,13 @@ function onKey(event) {
   button.click();
 }
 
+function onMiddle(event) {
+  middle = !middle;
+  applyMiddle();
+  setPressed(event.currentTarget, middle);
+  saveState();
+}
+
 function onPop(event) {
   if (event.state && event.state.path !== doc.name) {
     follow(event.state.path, false);
@@ -432,7 +451,7 @@ function restore(mark) {
 
 function saveState() {
   fetch('/api/state', {
-    body: JSON.stringify({ contents: contentsOpen, theme, wide }),
+    body: JSON.stringify({ contents: contentsOpen, middle, theme, wide }),
     headers: { 'Content-Type': 'application/json' },
     method: 'POST',
   }).catch(() => {});

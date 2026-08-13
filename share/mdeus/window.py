@@ -92,6 +92,8 @@ POLL = 0.25
 SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cursor.vim')
 SETTLE_TRIES = 100
 SETTLE_WAIT = 0.01
+STATE_ADD = 1
+STATE_FROM_APP = 1
 UNPLACED = f'{NAME}: vim is in a window of its own, wherever the desktop put it'
 WINDOW_WAIT = 15
 WITHDRAW_WAIT = 5
@@ -742,6 +744,73 @@ def make_divider(d, container):
     )
     grab.map()
     return {'grab': grab, 'line': line}
+
+
+def maximise(d, window):
+    """Ask the window manager to fill the screen with a window it is managing.
+
+    A state and not a size, so the window is maximised the way the manager's own
+    button maximises it: it keeps clear of the panels, it remembers the size to
+    come back to when it is unmaximised, and it fills whichever screen it is
+    later moved to rather than the one it started on.
+
+    It is a request. A manager that ignores it leaves the window at whatever size
+    the browser gave it, which is what a reading had before.
+    """
+    root = d.screen().root
+    root.send_event(
+        protocol.event.ClientMessage(
+            window=window,
+            client_type=d.intern_atom('_NET_WM_STATE'),
+            data=(32, [
+                STATE_ADD,
+                d.intern_atom('_NET_WM_STATE_MAXIMIZED_HORZ'),
+                d.intern_atom('_NET_WM_STATE_MAXIMIZED_VERT'),
+                STATE_FROM_APP,
+                0,
+            ]),
+        ),
+        event_mask=X.SubstructureRedirectMask | X.SubstructureNotifyMask,
+    )
+    d.sync()
+
+
+def maximise_page(servername):
+    """Fill the screen with the reading's window as soon as the browser has put it up.
+
+    A reading opens maximised, and the window it opens in is the browser's rather
+    than the reading's, so it cannot simply be asked for at that size: a browser
+    already running pays no attention to a size named on the command line, and the
+    window arrives a moment after the asking rather than with it. So the desktop
+    is watched for the window, the way a session watches for it, and the manager
+    is asked the moment it is there.
+
+    The watching is done on a thread of its own, because the thread that opened
+    the page has a reading to get on with and the window may be seconds away
+    where no browser was running yet.
+
+    Nothing is lost where any of it fails. A machine with nothing to talk to the
+    desktop with, a window that never arrives and a manager that ignores the
+    asking all leave the reading open at the size the browser chose.
+    """
+
+    def when_it_is_up():
+        """Watch the desktop for the page's window, and maximise it once it is there."""
+        d = x_display()
+        if d is None:
+            return
+        try:
+            deadline = time.monotonic() + WINDOW_WAIT
+            while time.monotonic() < deadline:
+                window = page_window(d, client_list(d), servername)
+                if window is not None:
+                    maximise(d, window)
+                    return
+                time.sleep(SETTLE_WAIT)
+        finally:
+            d.close()
+
+    threading.Thread(target=when_it_is_up, daemon=True).start()
 
 
 def meet(d, container, panes, divider):
