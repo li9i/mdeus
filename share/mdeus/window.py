@@ -1083,6 +1083,31 @@ def start_vim(reading, url, box, origin):
     )
 
 
+def stop_page(servername):
+    """Take the reading's page away with the reading, where the page is a window.
+
+    A reading ended in the terminal has its page still up, since the window is
+    the browser's rather than the reading's and nothing of the reading's going
+    asks it to close. What that leaves standing is a window with nothing behind
+    it: the document as it was last drawn, no redraw and no Edit.
+
+    So it is asked, in the way the close button on it asks, which is the way a
+    session ending asks as well. Nothing is asked where the window is not there
+    to ask, which is a reading ended by its own page closing, and nothing is
+    asked of a page in a tab, since a tab is one of a browser's own windows and
+    carries more than the reading.
+    """
+    d = x_display()
+    if d is None:
+        return
+    try:
+        page = page_window(d, client_list(d), servername)
+        if page is not None:
+            close_page(d, page)
+    finally:
+        d.close()
+
+
 def take_in(d, container, wanted):
     """Take each pane into the container as its window appears in the desktop's list.
 

@@ -73,6 +73,79 @@ class Dragging(Display):
         """Give the pointer back, as the end of a drag does."""
 
 
+class Desktop(Display):
+    """A stand in for the desktop with one window on it, listed and named.
+
+    Enough of a desktop for the asking a reading makes of it as it ends: the
+    list of windows it is managing, the atoms the ask is written in, and the
+    connection being closed afterwards. The atoms are numbers, since the ask is
+    a real X message and a real one is packed as it is made.
+    """
+
+    def __init__(self, page):
+        self.atoms = []
+        self.closed = False
+        self.page = page
+
+    def close(self):
+        """Give the connection back, as a reading does once it has asked."""
+        self.closed = True
+
+    def create_resource_object(self, kind, xid):
+        """Answer for the one window on this desktop."""
+        return self.page
+
+    def intern_atom(self, name):
+        """Return a number for an atom, and remember which name it stands for."""
+        if name not in self.atoms:
+            self.atoms.append(name)
+        return self.atoms.index(name) + 1
+
+    def named(self, atom):
+        """Return the name the number above was given for."""
+        return self.atoms[atom - 1]
+
+    def screen(self):
+        """Answer for the root window, which is asked what the desktop is managing."""
+        listed = SimpleNamespace(value=[self.page.id])
+        return SimpleNamespace(
+            root=SimpleNamespace(get_full_property=lambda atom, kind: listed)
+        )
+
+
+class Page:
+    """A stand in for the page's window, which is asked to close and then goes.
+
+    It answers the two questions a close asks of it, what it is called and
+    whether it is still there, and it remembers the message rather than sending
+    one. The window goes as the ask arrives, which is a browser closing a window
+    it was asked to close.
+    """
+
+    def __init__(self, servername):
+        self.asked = []
+        self.id = 42
+        self.servername = servername
+
+    def __index__(self):
+        """Answer as the window's own number, which is how a message names it."""
+        return self.id
+
+    def get_geometry(self):
+        """Say the window is there until it has been asked to go, then refuse."""
+        if self.asked:
+            raise error.BadDrawable.__new__(error.BadDrawable)
+        return SimpleNamespace(x=0, y=0, width=800, height=600)
+
+    def get_wm_class(self):
+        """Say what a browser calls a window it opened for one page."""
+        return ('mdeus', f'127.0.0.1__8766_{self.servername}')
+
+    def send_event(self, event):
+        """Remember the message rather than making one."""
+        self.asked.append(event)
+
+
 class Pane:
     """A stand in for a window, which says how big it is and remembers what it was asked.
 
@@ -327,6 +400,35 @@ def test_a_vim_that_heard_nothing_is_asked_again():
     finally:
         vimlink.quit_vim = was
         stop()
+
+
+def test_a_reading_ended_in_the_terminal_takes_its_page_with_it():
+    """Ctrl-c on a reading that is only the page closes the page's window too.
+
+    The window is the browser's and not the reading's, so nothing about the
+    command ending asks it to go, and a reading that does not ask leaves a
+    window standing on the desktop with nothing behind it: the document as it
+    was last drawn, no redraw and no Edit, and no way to tell it apart from a
+    reading still running.
+
+    The asking is the one a close button makes, since the window belongs to a
+    browser that may have other windows open and ending the process behind it
+    would take those with it.
+    """
+    page = Page(SERVERNAME)
+    desktop = Desktop(page)
+    was = window.x_display
+    window.x_display = lambda: desktop
+    try:
+        window.stop_page(SERVERNAME)
+    finally:
+        window.x_display = was
+    assert len(page.asked) == 1, page.asked
+    message = page.asked[0]
+    assert desktop.named(message.client_type) == 'WM_PROTOCOLS', message.client_type
+    wanted = desktop.named(message.data[1][0])
+    assert wanted == 'WM_DELETE_WINDOW', wanted
+    assert desktop.closed, 'the reading left its connection to the desktop open'
 
 
 def test_vim_is_asked_to_go_once_however_long_it_refuses():
