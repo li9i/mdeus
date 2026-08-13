@@ -1,6 +1,6 @@
 # mdeus
 
-Read a markdown document in your browser, and edit it there when you want to.
+> Google chrome on the left / gvim on the right
 
 <p align="center">
   <img src="docs/screenshot.png" alt="A reading with vim beside it, the page on the left and vim on the right in one window" width="900">
@@ -17,9 +17,10 @@ git clone https://github.com/li9i/mdeus.git ~/mdeus
 ~/mdeus/install.sh
 ```
 
-Ubuntu, or anything close enough to it. The installer asks for root once to fetch what it needs, then links five files into `~/.local` pointing back at the checkout. Nothing is copied anywhere, so `git pull` is the whole of updating it, and removing those five links leaves nothing behind.
-
-`~/.local/bin` has to be on your `PATH`. Ubuntu's stock `~/.profile` puts it there at login once the directory exists, so a fresh machine wants one log out and back in.
+- Installable in Ubuntu, or anything close enough to it.
+- The installer links five files into `~/.local` pointing back at the checkout. Nothing is copied anywhere, so `git pull` is the whole of updating it.
+- `~/mdeus/uninstall.sh` takes the five links and the settings a reading stored back out again. It leaves the checkout and the packages where they are.
+- `~/.local/bin` has to be on your `PATH`. Ubuntu's stock `~/.profile` puts it there at login once the directory exists, so a fresh machine wants one log out and back in.
 
 ## Use
 
@@ -29,20 +30,6 @@ mdeus --edit notes.md     the same, with vim beside it from the start
 mdeus --tab notes.md      read it in a tab of your default browser
 mdeus --print notes.md    write one self contained HTML file, print its path
 ```
-
-Markdown files gain an "Open With" entry too, so a reading starts from the file manager as well as from a shell.
-
-The three toggles at the top of the page answer to one letter each: `c` for the contents list, `f` for full width, `e` for `Edit`. It is the letter each label begins with, and it is underlined on the button.
-
-A reading ends on ctrl-c, or when you close the page. While vim is up, vim is what holds the reading, and it refuses to go while anything in it is unsaved.
-
-Several readings run at once, each on its own port. The document is opened read only and is never written to, which is what vim is for.
-
-## What it renders
-
-The markdown GitHub renders, so a document reads here the way it reads there: tables, strikethrough, task lists, footnotes, bare addresses, emoji shortcodes and the five `> [!NOTE]` callouts. Three themes to choose between, and a copy button on every fence.
-
-No mathematics, no mermaid diagrams and no syntax highlighting, because each of the three would need something fetched from the network, and nothing here fetches anything.
 
 ## What it needs
 
