@@ -322,7 +322,7 @@ class ReadingHandler(BaseHTTPRequestHandler):
                 self.send_json({'ok': True})
             elif self.path == '/api/state':
                 state = wanted_state(body)
-                save_state(state)
+                save_state(self.reading.current, state)
                 self.send_json(state)
             else:
                 self.send_json({'error': 'not found'}, code=404)
@@ -479,7 +479,7 @@ class ReadingHandler(BaseHTTPRequestHandler):
             '    <script src="/assets/page.js" defer></script>',
             '    <script src="/assets/sync.js" defer></script>',
         ]
-        page = page_html(self.name(), load_state(), '\n'.join(head))
+        page = page_html(self.name(), load_state(self.reading.current), '\n'.join(head))
         self.send_bytes(page.encode('utf-8'), 'text/html')
 
     def snapshot(self):
@@ -489,7 +489,7 @@ class ReadingHandler(BaseHTTPRequestHandler):
             'editing': self.reading.editing,
             'mtime': self.mtime(),
             'name': self.name(),
-            'state': load_state(),
+            'state': load_state(self.reading.current),
         }
         try:
             source = self.reading.current.read_text(encoding='utf-8')

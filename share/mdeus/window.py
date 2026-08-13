@@ -62,7 +62,7 @@ import webbrowser
 import vimlink
 from browser import app_command, browser_path
 from server import HOST, NAME, icon_path
-from state import MAX_SPLIT, MIN_SPLIT, load_split, save_split
+from state import DEFAULT_SPLIT, MAX_SPLIT, MIN_SPLIT, load_split, save_split
 
 try:
     from PIL import Image
@@ -98,7 +98,7 @@ UNPLACED = f'{NAME}: vim is in a window of its own, wherever the desktop put it'
 WINDOW_WAIT = 15
 WITHDRAW_WAIT = 5
 
-browser_share = load_split()
+browser_share = DEFAULT_SPLIT
 
 
 class Waiting:
@@ -256,7 +256,7 @@ def divider_at(divider, seam, height):
     )
 
 
-def drag(d, container, panes, divider, press):
+def drag(d, container, panes, divider, press, reading):
     """Move the seam with the pointer until the button goes up.
 
     The pointer is grabbed for as long as the drag lasts, because the strip is
@@ -267,7 +267,8 @@ def drag(d, container, panes, divider, press):
     seam that arrives where the pointer left it says nothing about where it
     will land: vim settles on whole character columns, so the reading snaps to
     the nearest one and dragging is how you see which. Where it was left is
-    stored, so the next reading opens at the same split.
+    stored under the document being read, so the next reading of that document
+    opens at the same split.
 
     Everything already said is read before any of it is acted on, and only the
     last place the pointer named is laid out. A pointer says where it is far
@@ -319,7 +320,7 @@ def drag(d, container, panes, divider, press):
     finally:
         d.ungrab_pointer(X.CurrentTime)
         d.sync()
-    save_split(browser_share)
+    save_split(reading.current, browser_share)
 
 
 def edit(reading, url, ending, opening=False, app_window=True, waiting=None):
@@ -348,8 +349,10 @@ def edit(reading, url, ending, opening=False, app_window=True, waiting=None):
     hint and no more: both windows are placed again for themselves once they are
     inside.
 
-    The split is read here rather than at import, because a session may begin
-    an hour into a reading and another reading may have moved the seam since.
+    The split is read here rather than at import, because it belongs to the
+    document being read and import time knows of no document, and because a
+    session may begin an hour into a reading and another reading of the same
+    document may have moved the seam since.
 
     Where the page's window was standing before the session took it is noted on
     the way in, so that it can be put back exactly there on the way out. The
@@ -357,7 +360,7 @@ def edit(reading, url, ending, opening=False, app_window=True, waiting=None):
     goes in, and it should shrink again as it comes out.
     """
     global browser_share
-    browser_share = load_split()
+    browser_share = load_split(reading.current)
     reading.wanted = True
     if not app_window:
         print(IN_A_TAB, flush=True)
@@ -566,7 +569,7 @@ def hold(d, container, panes, divider, vim, reading, ending):
             event = d.next_event()
             if event.type == X.ButtonPress:
                 if event.window.id == divider['grab'].id:
-                    drag(d, container, panes, divider, event)
+                    drag(d, container, panes, divider, event, reading)
                     continue
                 for name, window in panes.items():
                     if window.id == event.window.id:

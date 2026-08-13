@@ -178,13 +178,14 @@ class Pane:
 def a_split_of(share):
     """Hold the seam at this share of the window for as long as the test runs.
 
-    Where a drag leaves the seam is stored for the next reading to open at, and
-    a test is not a reading: it says where the seam started, keeps its own
-    dragging out of the stored settings, and puts both back afterwards.
+    Where a drag leaves the seam is stored under the document it was dragged on,
+    for the next reading of that document to open at, and a test is not a
+    reading: it says where the seam started, keeps its own dragging out of the
+    stored settings, and puts both back afterwards.
     """
     was, stored = window.browser_share, window.save_split
     window.browser_share = share
-    window.save_split = lambda left: None
+    window.save_split = lambda document, left: None
     try:
         yield
     finally:
@@ -307,8 +308,9 @@ def test_a_drag_lays_the_panes_out_where_the_pointer_ended_and_nowhere_else():
     divider = seam(500, 600)
     moves = [SimpleNamespace(type=X.MotionNotify, root_x=x) for x in range(501, 701)]
     d = Dragging(moves + [SimpleNamespace(type=X.ButtonRelease)])
+    reading = SimpleNamespace(current='doc.md')
     with a_split_of(0.5):
-        window.drag(d, container, panes, divider, SimpleNamespace(time=0))
+        window.drag(d, container, panes, divider, SimpleNamespace(time=0), reading)
     assert panes['vim'].asked == [{'x': 700, 'y': 0, 'width': 300, 'height': 600}], (
         panes['vim'].asked
     )
@@ -330,8 +332,9 @@ def test_a_drag_puts_the_panes_edge_to_edge_once_however_often_they_answer():
     divider = seam(500, 600)
     settled = [SimpleNamespace(type=X.ConfigureNotify) for _ in range(4)]
     d = Dragging(settled + [SimpleNamespace(type=X.ButtonRelease)])
+    reading = SimpleNamespace(current='doc.md')
     with a_split_of(0.5):
-        window.drag(d, container, panes, divider, SimpleNamespace(time=0))
+        window.drag(d, container, panes, divider, SimpleNamespace(time=0), reading)
     assert panes['vim'].asked == [{'x': 505}], panes['vim'].asked
     assert panes['browser'].asked == [{'width': 505}], panes['browser'].asked
 

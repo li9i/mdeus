@@ -284,6 +284,12 @@ def start_watching(reading):
     return stopped, watching
 
 
+def stored_settings(document):
+    """Return what the state file holds under one document's own name."""
+    whole = json.loads(state.STATE_PATH.read_text(encoding='utf-8'))
+    return whole['documents'][str(document)]
+
+
 def test_a_click_in_vim_is_counted_and_a_move_is_not():
     """The page is told how many clicks vim has reported, so it can follow every one.
 
@@ -597,6 +603,35 @@ def test_edit_is_recorded_and_answered_with_the_state_as_it_stands():
         stop()
 
 
+def test_each_document_keeps_its_own_look():
+    """Settings belong to the document they were set on, not to every document.
+
+    Two documents read one after the other have nothing in common but the file
+    the settings live in, so the theme and the toggles one of them was left in
+    have to be stored under its own name. A document nothing was ever set on
+    opens the way the very first reading did, whatever was last set elsewhere.
+    """
+    root, port, reading, stop = start_reading()
+    try:
+        fetch_json(port, '/api/state', 'POST',
+                   {'theme': 'github', 'contents': False, 'middle': False})
+        fetch_json(port, '/doc?' + urlencode({'path': 'notes/other.md'}))
+        status, doc = fetch_json(port, '/doc')
+        assert doc['state'] == {'contents': False, 'middle': True,
+                                'theme': 'browser', 'wide': True}, doc['state']
+        assert b'class="browser reader middle wide"' in fetch(port, '/')[2]
+
+        fetch_json(port, '/api/state', 'POST',
+                   {'theme': 'report', 'contents': True, 'wide': False})
+        fetch_json(port, '/doc?' + urlencode({'path': 'start.md'}))
+        status, doc = fetch_json(port, '/doc')
+        assert doc['state'] == {'contents': False, 'middle': False,
+                                'theme': 'github', 'wide': True}, doc['state']
+        assert b'class="github reader wide"' in fetch(port, '/')[2]
+    finally:
+        stop()
+
+
 def test_editable_says_whether_the_edit_box_belongs_on_the_page():
     """The document reply carries whether the reading could open vim at all.
 
@@ -765,7 +800,9 @@ def test_full_width_is_on_until_it_is_unticked_and_lands_on_the_first_paint():
         assert b'class="browser reader middle"' in page, page[:200]
 
         state.STATE_PATH.write_text(
-            '{"theme": "browser", "contents": false}', encoding='utf-8')
+            json.dumps({'documents': {str(root / 'start.md'):
+                                      {'theme': 'browser', 'contents': False}}}),
+            encoding='utf-8')
         status, doc = fetch_json(port, '/doc')
         assert doc['state']['wide'] is True, doc['state']
     finally:
@@ -797,7 +834,9 @@ def test_middle_is_on_until_it_is_unticked_and_lands_on_the_first_paint():
         assert b'class="browser reader wide"' in page, page[:200]
 
         state.STATE_PATH.write_text(
-            '{"theme": "browser", "contents": false}', encoding='utf-8')
+            json.dumps({'documents': {str(root / 'start.md'):
+                                      {'theme': 'browser', 'contents': False}}}),
+            encoding='utf-8')
         status, doc = fetch_json(port, '/doc')
         assert doc['state']['middle'] is True, doc['state']
     finally:
@@ -815,8 +854,11 @@ def test_missing_or_broken_state_falls_back_to_browser():
         assert doc['state'] == default, doc['state']
         broken = (
             '{not json at all',
-            '{"theme": "chartreuse", "contents": false}',
             '[]',
+            '{"documents": []}',
+            '{"documents": {"' + str(root / 'start.md') + '": []}}',
+            '{"documents": {"' + str(root / 'start.md') + '": {"theme": "puce"}}}',
+            '{"theme": "github", "contents": true}',
         )
         for content in broken:
             state.STATE_PATH.write_text(content, encoding='utf-8')
@@ -898,23 +940,38 @@ def test_removed_file_gives_the_gone_reply_and_recovers():
 
 
 def test_split_is_kept_beside_the_theme_and_falls_back():
-    """The divider's share and the page's theme share a file and neither puts the other out."""
+    """The divider's share and the page's theme share a document's entry and neither puts the other out.
+
+    The share belongs to the document it was dragged on, like everything else
+    stored here, so one document's seam says nothing about another's.
+    """
     root, port, reading, stop = start_reading()
+    start = root / 'start.md'
+    other = root / 'notes' / 'other.md'
     try:
-        assert state.load_split() == state.DEFAULT_SPLIT, state.load_split()
-        state.save_split(0.62)
-        assert state.load_split() == 0.62, state.load_split()
+        assert state.load_split(start) == state.DEFAULT_SPLIT, state.load_split(start)
+        state.save_split(start, 0.62)
+        assert state.load_split(start) == 0.62, state.load_split(start)
+        assert state.load_split(other) == state.DEFAULT_SPLIT, state.load_split(other)
+        state.save_split(other, 0.31)
+        assert state.load_split(start) == 0.62, state.load_split(start)
         fetch_json(port, '/api/state', 'POST',
                    {'theme': 'github', 'contents': True, 'wide': False})
-        stored = json.loads(state.STATE_PATH.read_text(encoding='utf-8'))
-        assert stored == {'contents': True, 'middle': True, 'theme': 'github',
-                          'wide': False, 'split': 0.62}, stored
-        state.save_split(0.5)
-        assert state.load_state() == {'contents': True, 'middle': True,
-                                      'theme': 'github', 'wide': False}, stored
+        assert stored_settings(start) == {'contents': True, 'middle': True,
+                                         'theme': 'github', 'wide': False,
+                                         'split': 0.62}, stored_settings(start)
+        state.save_split(start, 0.5)
+        assert state.load_state(start) == {'contents': True, 'middle': True,
+                                           'theme': 'github', 'wide': False}, (
+            state.load_state(start)
+        )
+        assert state.load_state(other) == {'contents': False, 'middle': True,
+                                          'theme': 'browser', 'wide': True}, (
+            state.load_state(other)
+        )
         for share in ('sideways', None, 0.02, 0.99):
-            state.save_state({'split': share})
-            assert state.load_split() == state.DEFAULT_SPLIT, share
+            state.save_state(start, {'split': share})
+            assert state.load_split(start) == state.DEFAULT_SPLIT, share
     finally:
         stop()
 
@@ -947,7 +1004,7 @@ def test_state_file_is_never_read_half_written():
         deadline = time.monotonic() + TIMEOUT
         while writer.is_alive() and time.monotonic() < deadline:
             try:
-                stored = json.loads(state.STATE_PATH.read_text(encoding='utf-8'))
+                stored = stored_settings(root / 'start.md')
             except (OSError, ValueError) as error:
                 raise AssertionError(f'the state file was not whole: {error}')
             assert stored['theme'] in THEMES, stored
@@ -958,7 +1015,7 @@ def test_state_file_is_never_read_half_written():
         writer.join(timeout=TIMEOUT)
         assert not writer.is_alive(), 'the writer never finished'
         assert seen > 10, f'only {seen} reads landed while the file was being written'
-        final = json.loads(state.STATE_PATH.read_text(encoding='utf-8'))
+        final = stored_settings(root / 'start.md')
         assert final == last, final
     finally:
         stop()
@@ -972,8 +1029,8 @@ def test_state_is_stored_and_reported_back():
         status, reply = fetch_json(port, '/api/state', 'POST', wanted)
         assert status == 200, status
         assert reply == wanted, reply
-        stored = json.loads(state.STATE_PATH.read_text(encoding='utf-8'))
-        assert stored == wanted, stored
+        assert stored_settings(root / 'start.md') == wanted, stored_settings(
+            root / 'start.md')
         status, doc = fetch_json(port, '/doc')
         assert doc['state'] == wanted, doc['state']
     finally:

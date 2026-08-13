@@ -123,7 +123,7 @@ def write_export(source):
         'mtime': 0,
         'name': source.name,
         'outline': rendered['outline'],
-        'state': load_state(),
+        'state': load_state(source),
     }
     path = cache_path(source)
     path.parent.mkdir(parents=True, exist_ok=True)
