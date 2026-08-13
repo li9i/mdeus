@@ -87,6 +87,7 @@ IN_A_TAB = (
 )
 MANAGE_WAIT = 5
 MOVERESIZE = (1 << 8) | (1 << 9) | (1 << 10) | (1 << 11) | (1 << 12)
+OPENS_FOCUSED = 'browser'
 POLL = 0.25
 SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cursor.vim')
 SETTLE_TRIES = 100
@@ -418,7 +419,7 @@ def edit(reading, url, ending, opening=False, app_window=True, waiting=None):
             if 'browser' in panes:
                 panes['browser'].change_attributes(event_mask=X.PropertyChangeMask)
                 follow_title(d, container, panes['browser'])
-            focus(d, panes.get('vim'))
+            focus_pane(d, panes, OPENS_FOCUSED)
         hold(d, container, panes, divider, vim, reading, ending)
     finally:
         reading.editing = False
@@ -531,8 +532,13 @@ def hold(d, container, panes, divider, vim, reading, ending):
     that the container was clicked, so where the pointer is says which pane was
     meant. Once the reading has the keyboard the desktop stops taking the
     clicks, and from then on they arrive here and name their own pane.
+
+    The pane a session opens on is the page, so the letter that opened vim
+    closes it again without the pointer being reached for. Handing the keyboard
+    to vim instead would leave that letter meaning what it means in vim, which
+    is a word of the document, and the reader with no way back but a click.
     """
-    focused = 'vim'
+    focused = OPENS_FOCUSED
     named = d.intern_atom('_NET_WM_NAME') if d is not None else None
     asked = False
     again = 0.0
