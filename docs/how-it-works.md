@@ -50,6 +50,18 @@ Every fence carries a copy button in its corner as well, which shows on hover or
 
 A reading says which file it is showing and nothing else: `notes.md` on the window or the tab, and the same on the title bar and the panel entry while vim is up. Follow a link to another document and the name follows it. The page writes its own title as it draws, and the window a reading is edited in takes its title from the page inside it, so the two can never say different things.
 
+## Ticking a box
+
+A task list box in the page can be pressed, and pressing one writes it into the document: the `[ ]` of that item becomes `[x]`, or the other way about. Nothing else in the file is touched. The indentation, the list marker, the words and the line ending all stay as they were, so a document ticked in the page shows one character changed and nothing else, whatever is watching the file.
+
+Each box carries the line of the source its item was written on, since the page has no other way to say which item was pressed. A press naming a line that is not a task list item is refused and the box goes back where it was. That is what answers a page drawn before somebody else wrote the document: the lines have moved under it, and the press lands nowhere rather than on whatever is at that line now.
+
+While vim is up the document is vim's, so the press is sent there instead: the line is set in the buffer and the file is not written. It joins whatever else you have unsaved and goes to the disk when you save. So `Edit` pressed straight after a tick is refused the way it is refused over any other unwritten work, until you save. vim is asked rather than told, and answers no where it has another file open, so a vim taken off to something else cannot have a line of that file rewritten from a page that is not showing it.
+
+A document written while a vim holding it has nothing unsaved is picked up silently, within the second, rather than putting a question up in the pane. That is what carries a tick made while a vim is warmed out of sight behind the page: the warmed vim reads the line again by itself, and the session that opens later opens on the document as it now stands.
+
+This is the only thing in a reading that writes to the source. A printed copy has nothing behind it to write into, so its boxes are drawn as the document had them and cannot be pressed at all.
+
 ## What it renders
 
 The markdown GitHub renders, so a document reads here the way it reads there. On top of CommonMark that means tables, strikethrough, task lists, footnotes, bare web and mail addresses turned into links, emoji shortcodes such as `:tada:`, and the five callouts written as `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]` and `> [!CAUTION]`. A marker that is not one of the five, and a marker with words after it on the same line, are both left as the quote they were written as. A shortcode nothing answers to is left as the words it was, and neither shortcodes nor addresses are touched inside a code span or a fence.
@@ -69,11 +81,11 @@ The three themes draw all of it. `GitHub` reproduces GitHub's own colours, icons
 | `state.py` | The one file a reading remembers each document in, read by the server and by the window alike. |
 | `browser.py` | Which browser can give a reading a window of its own, and the command that asks it for one. |
 | `export.py` | The self contained file `mdeus --print` writes. |
-| `vimlink.py` | The link to vim: jumps, following a link on both sides, asking vim to quit, and the cursor line coming back. |
-| `cursor.vim` | What vim does for as long as vim is up: the cursor reports, the double click and the `enter` key that bring the page over, and the ground a jump lights. |
+| `vimlink.py` | The link to vim: jumps, following a link on both sides, ticking a box in the buffer, asking vim to quit, and the cursor line coming back. |
+| `cursor.vim` | What vim does for as long as vim is up: the cursor reports, the double click and the `enter` key that bring the page over, the ground a jump lights, the line a box pressed in the page rewrites, and reading the file again by itself when something else writes it. |
 | `window.py` | One editing session: the window it is drawn in, the browser and gvim inside it, the seam between the two, the title it takes from the page, and handing the page's window back to the desktop at the end. It also opens the page's own window and asks the desktop to fill the screen with it, and warms the gvim a session will want, out of sight, while the reading is only the page. |
 | `themes.css` | The three themes, the control row above the document, the copy button on a fence, and the look of the callouts, the task lists and the notes in each theme. |
-| `page.js` | The theme dropdown, the four toggles beside it, the contents list, the copy button on every fence, the heading names, the folding of a section, which nothing calls for the moment, the redraw, and the place a refresh comes back to. |
+| `page.js` | The theme dropdown, the four toggles beside it, the contents list, the copy button on every fence, the heading names, the boxes of a task list, the folding of a section, which nothing calls for the moment, the redraw, and the place a refresh comes back to. |
 | `sync.css`, `sync.js` | The two marks and the sync with vim. Loaded by every reading, and asleep until vim is up. |
 | `test_render.py`, `test_server.py` | The tests. |
 | `share/icons/hicolor/*/apps/mdeus.png` | What a reading looks like on the panel, in both of its states, and in the "Open With" menu. |

@@ -88,6 +88,21 @@ START_OUTLINE = [
     {'text': 'Second heading', 'level': 2, 'line': 7},
 ]
 
+TASKS_MD = """\
+# Tasks
+
+- [ ] first
+- [x] second
+  - [ ] nested
+
+1. [ ] ordered
+
+Not a task at all.
+
+- [ ] outer
+\t- [ ] indented with a tab
+"""
+
 THEMES = ('browser', 'report', 'github')
 
 TIMEOUT = 5
@@ -184,6 +199,7 @@ def start_export():
     root = base / 'tree'
     (root / 'images').mkdir(parents=True)
     (root / 'start.md').write_text(START_MD, encoding='utf-8')
+    (root / 'tasks.md').write_text(TASKS_MD, encoding='utf-8')
     (root / 'images' / 'pixel.png').write_bytes(PIXEL_PNG)
 
     def stop():
@@ -240,6 +256,7 @@ def start_reading(editable=False, editing=False):
     (root / 'notes').mkdir()
     (base / 'outside').mkdir()
     (root / 'start.md').write_text(START_MD, encoding='utf-8')
+    (root / 'tasks.md').write_text(TASKS_MD, encoding='utf-8')
     (root / 'images' / 'pixel.png').write_bytes(PIXEL_PNG)
     (root / 'notes' / 'other.md').write_text(OTHER_MD, encoding='utf-8')
     (base / 'outside' / 'secret.md').write_text(SECRET_MD, encoding='utf-8')
@@ -288,6 +305,87 @@ def stored_settings(document):
     """Return what the state file holds under one document's own name."""
     whole = json.loads(state.STATE_PATH.read_text(encoding='utf-8'))
     return whole['documents'][str(document)]
+
+
+def test_a_box_pressed_in_the_page_is_written_into_the_document():
+    """A box pressed in the page rewrites its own line of the source and nothing else.
+
+    The page is drawn from the document, so a tick kept anywhere but the
+    document would be one the next reading never hears about. Only the mark
+    between the brackets is written: the item keeps its indentation, its list
+    marker and its words, whichever kind of list it is written in, so the
+    document reads afterwards as the same document with one character changed.
+    """
+    root, port, reading, stop = start_reading()
+    tasks = root / 'tasks.md'
+    try:
+        fetch_json(port, '/doc?' + urlencode({'path': 'tasks.md'}))
+        for line, done, was, now in (
+            (3, True, '- [ ] first', '- [x] first'),
+            (4, False, '- [x] second', '- [ ] second'),
+            (5, True, '  - [ ] nested', '  - [x] nested'),
+            (7, True, '1. [ ] ordered', '1. [x] ordered'),
+            (12, True, '\t- [ ] indented', '\t- [x] indented'),
+        ):
+            wanted = tasks.read_text(encoding='utf-8').replace(was, now)
+            reply = fetch_json(port, '/api/tick', 'POST', {'done': done, 'line': line})
+            assert reply == (200, {'ticked': True}), (line, reply)
+            written = tasks.read_text(encoding='utf-8')
+            assert written == wanted, (line, written)
+    finally:
+        stop()
+
+
+def test_a_box_pressed_where_there_is_none_is_refused():
+    """A tick naming a line that is not a task list item is refused, and writes nothing.
+
+    That is what answers a page drawn before somebody else wrote the document:
+    the lines have moved under it, and the tick has to land nowhere rather than
+    on whatever is at that line now. A page that hears the refusal puts its own
+    box back.
+    """
+    root, port, reading, stop = start_reading()
+    tasks = root / 'tasks.md'
+    try:
+        fetch_json(port, '/doc?' + urlencode({'path': 'tasks.md'}))
+        for line in (1, 2, 9, 0, -3, 999):
+            reply = fetch_json(port, '/api/tick', 'POST', {'done': True, 'line': line})
+            assert reply == (200, {'ticked': False}), (line, reply)
+            assert tasks.read_text(encoding='utf-8') == TASKS_MD, line
+        for body in ({}, {'done': True}, {'line': None}, {'line': 'three'}):
+            status, reply = fetch_json(port, '/api/tick', 'POST', body)
+            assert status == 400, (body, status, reply)
+            assert tasks.read_text(encoding='utf-8') == TASKS_MD, body
+    finally:
+        stop()
+
+
+def test_a_box_pressed_while_vim_is_up_is_left_to_vim():
+    """While vim is up the tick goes to vim's copy of the document, not to the file.
+
+    vim holds the document while it is up, and a file written under it puts a
+    question up in the pane that has to be answered before vim hears anything
+    else. So the line is set in the buffer and left unwritten, to be saved with
+    whatever else the reader has open, and the file on the disk is not touched
+    by the reading at all.
+    """
+    root, port, reading, stop = start_reading()
+    tasks = root / 'tasks.md'
+    told = []
+    was = vimlink.tick
+    vimlink.tick = lambda servername, line, done, path: (
+        told.append((servername, line, done, Path(path).name)) or True
+    )
+    try:
+        fetch_json(port, '/doc?' + urlencode({'path': 'tasks.md'}))
+        reading.editing = True
+        reply = fetch_json(port, '/api/tick', 'POST', {'done': True, 'line': 3})
+        assert reply == (200, {'ticked': True}), reply
+        assert told == [(SERVERNAME, 3, True, 'tasks.md')], told
+        assert tasks.read_text(encoding='utf-8') == TASKS_MD, 'the file was written'
+    finally:
+        vimlink.tick = was
+        stop()
 
 
 def test_a_click_in_vim_is_counted_and_a_move_is_not():
@@ -669,6 +767,22 @@ def test_every_theme_is_accepted_and_a_fourth_is_not():
         assert reply == {'error': 'unknown theme'}, reply
         after = state.STATE_PATH.read_text(encoding='utf-8')
         assert after == before, 'a refused theme was written to the state file'
+    finally:
+        stop()
+
+
+def test_export_boxes_cannot_be_pressed():
+    """A printed copy draws its task list boxes as the document had them, and dead.
+
+    There is nothing behind a copy to write a tick into, so a box that moved
+    there would say the document had changed when nothing had.
+    """
+    root, stop = start_export()
+    try:
+        printed = export.write_export(root / 'tasks.md').read_text(encoding='utf-8')
+        assert 'task-list-item-checkbox' in printed, printed[:200]
+        assert 'disabled' in printed, printed[:200]
+        assert 'data-line' not in printed, 'a copy carries a box that can be pressed'
     finally:
         stop()
 

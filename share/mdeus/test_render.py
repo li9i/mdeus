@@ -315,6 +315,27 @@ def test_task_list_items_become_checkboxes():
     assert '[x]' in prose['html'] and '[ ]' in prose['html'], prose
 
 
+def test_task_list_boxes_are_live_only_where_a_press_can_land():
+    """A reading's boxes can be pressed and name their own line. A copy's cannot.
+
+    A press is answered by rewriting that line of the source, so the box has to
+    carry the line: the page has nothing else to say which item was pressed. A
+    printed copy has no document behind it to write into, so its boxes stay as a
+    rendered document's are.
+    """
+    document = render.render_document(TASK_FIXTURE, tickable=True)
+    bullets, numbered, prose = document['blocks']
+    ticked, empty, ordinary = bullets['html'].split('<li')[1:]
+    assert 'data-line="1"' in ticked and 'checked' in ticked, ticked
+    assert 'data-line="2"' in empty and 'checked' not in empty, empty
+    assert 'disabled' not in bullets['html'], bullets
+    assert 'data-line="5"' in numbered['html'], numbered
+    assert 'data-line' not in ordinary, ordinary
+    assert 'data-line' not in prose['html'], prose
+    copied = render.render_blocks(TASK_FIXTURE)[0]['html']
+    assert 'disabled' in copied and 'data-line' not in copied, copied
+
+
 FROZEN_SOURCE = """\
 # Heading level one
 

@@ -28,6 +28,8 @@ nnoremap <silent> <CR> :call <SID>MdeusClicked()<CR>
 
 call s:MdeusReport(0)
 
+set autoread
+
 let s:look = 1000
 
 function! s:MdeusLook(timer) abort
@@ -58,4 +60,16 @@ function! MdeusJumpTo(first, last) abort
     \ 'MdeusJump', '\%>' . (a:first - 1) . 'l\%<' . (a:last + 1) . 'l.\+')
   let w:mdeus_timer =
     \ timer_start(s:linger, function('MdeusFadeMark', [win_getid(), w:mdeus_match]))
+endfunction
+
+function! MdeusTick(line, done, path) abort
+  if expand('%:p') !=# a:path
+    return 0
+  endif
+  let text = getline(a:line)
+  if text !~# '^[ \t]*\%([-*+]\|\d\+[.)]\)[ \t]\+\[[ xX]\]'
+    return 0
+  endif
+  call setline(a:line, substitute(text, '\[[ xX]\]', a:done ? '[x]' : '[ ]', ''))
+  return 1
 endfunction

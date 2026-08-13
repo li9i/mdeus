@@ -38,6 +38,8 @@ ALERTS = {
     'warning': 'Warning',
 }
 ALERT_MARKER = re.compile(r'\[!([a-zA-Z]+)\][ \t]*(?:\n|$)')
+CHECKBOX = 'task-list-item-checkbox'
+CHECKED = 'checked="checked"'
 FULLY_QUALIFIED = STATUS['fully_qualified']
 SHORTCODE = re.compile(r':[a-z0-9_+-]+:')
 
@@ -128,6 +130,20 @@ def block_span(node):
     return min(span[0] for span in spans), max(span[1] for span in spans)
 
 
+def checkbox(line, checked):
+    """Return the markup for one task list box that can be pressed.
+
+    It carries the line of the document its item was written on, since a press
+    is answered by rewriting that line and the page has no other way to say
+    which item was pressed.
+    """
+    return (
+        f'<input class="{CHECKBOX}" data-line="{line}" type="checkbox"'
+        + (' checked' if checked else '')
+        + '>'
+    )
+
+
 def closing_index(tokens, index):
     """Return where whatever opened at this position is closed again."""
     depth = 0
@@ -210,13 +226,17 @@ def render_blocks(source):
     return render_document(source)['blocks']
 
 
-def render_document(source, image_src=None):
+def render_document(source, image_src=None, tickable=False):
     """Return a document's blocks and heading outline.
 
     image_src, where it is given, says what every image beside the document is
     written as: the address a server answers for the file at, or the bytes of
     the file itself. Without it the targets are left exactly as the document
     wrote them.
+
+    tickable says whether the task list boxes may be pressed. A reading has a
+    document behind it to write a tick into, and a printed copy has nothing, so
+    a copy keeps the dead boxes a rendered document ordinarily gets.
     """
     md = (
         MarkdownIt('commonmark', {'linkify': True})
@@ -226,6 +246,8 @@ def render_document(source, image_src=None):
     )
     md.core.ruler.after('block', 'alerts', alerts)
     md.core.ruler.push('emoji', emojis)
+    if tickable:
+        md.core.ruler.push('ticks', ticks)
     md.linkify.set({'fuzzy_link': False})
     md.linkify.add('www.', {'normalize': www_url, 'validate': www_address})
     env = {}
@@ -269,6 +291,26 @@ def retarget_images(tokens, image_src):
 def shortcode(found):
     """Return one shortcode as the character it names, or as the text it was."""
     return emoji_names().get(found.group(0), found.group(0))
+
+
+def ticks(state):
+    """Draw every task list box as one that can be pressed, naming its own line.
+
+    The plugin draws a box that cannot be, since a rendered document is
+    ordinarily nobody's to change. A reading has the document behind it and
+    writes a press straight into the source, so its boxes are live.
+
+    The line comes off the item the box belongs to rather than off the box,
+    which is written as text in the middle of the item's first line and carries
+    no place of its own.
+    """
+    line = None
+    for token in state.tokens:
+        if token.type == 'list_item_open' and token.map:
+            line = token.map[0] + 1
+        for child in token.children or ():
+            if child.type == 'html_inline' and CHECKBOX in child.content and line:
+                child.content = checkbox(line, CHECKED in child.content)
 
 
 def www_address(linkify, text, position):

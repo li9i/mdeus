@@ -4,6 +4,7 @@ const CONTENTS_MINIMUM = 3;
 const COPIED_MS = 1500;
 const PLACE_KEY = 'mdeus:place';
 const SHORTCUTS = { c: 'contents', e: 'edit', f: 'wide', m: 'middle' };
+const TASK_BOX = '.task-list-item-checkbox';
 const THEMES = [
   ['browser', 'Browser default'],
   ['report', 'Mono headings'],
@@ -430,6 +431,28 @@ function onTheme(event) {
   saveState();
 }
 
+async function onTick(event) {
+  const box = event.target;
+  if (!box.matches(TASK_BOX)) {
+    return;
+  }
+  const wanted = box.checked;
+  let landed = false;
+  try {
+    const response = await fetch('/api/tick', {
+      body: JSON.stringify({ done: wanted, line: Number(box.dataset.line) }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+    landed = (await response.json()).ticked;
+  } catch (error) {
+    landed = false;
+  }
+  if (!landed) {
+    box.checked = !wanted;
+  }
+}
+
 function onWide(event) {
   const mark = anchor();
   wide = !wide;
@@ -483,6 +506,7 @@ async function start() {
   window.addEventListener('pagehide', keepPlace);
   history.replaceState({ path: doc.name }, '');
   docNode.addEventListener('click', onClick);
+  docNode.addEventListener('change', onTick);
   document.addEventListener('keydown', onKey);
   new ResizeObserver(measureBar).observe(controlsNode, { box: 'border-box' });
   window.addEventListener('popstate', onPop);

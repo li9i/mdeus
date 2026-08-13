@@ -18,6 +18,7 @@ import urllib.request
 
 ASKING = 'r'
 NORMAL_MODE = r'<C-\><C-n>'
+TICKED = '1'
 TIMEOUT = 2
 
 
@@ -122,6 +123,44 @@ def run(command):
         command, capture_output=True, check=True, text=True, timeout=TIMEOUT
     )
     return done.stdout.strip()
+
+
+def tick(servername, line, done, path):
+    """Write a task list item in vim as ticked or unticked, and say whether it was.
+
+    The change lands in the buffer and the file is not written, so a tick joins
+    whatever else the reader has unwritten and goes to the disk when they save.
+    Writing the file instead would be the document changing under the vim
+    holding it, which vim puts a question up about.
+
+    vim is asked rather than told: it is the one that can see whether the line is
+    a task list item at all, since the buffer is the document as it stands while
+    the file is the document as it was last saved. It is given the document the
+    page is showing as well, and answers no where it has something else open,
+    so a reader who took vim off to another file cannot have a line of that one
+    rewritten from a page that is not showing it.
+
+    A vim with a question up is not sent to. It would neither act on this nor
+    keep it, and the page has to hear that the tick did not land rather than be
+    left showing one the document does not carry.
+    """
+    if not listening(servername):
+        return False
+    said = remote(
+        servername,
+        '--remote-expr',
+        f"MdeusTick({int(line)}, {int(bool(done))}, '{vim_string(path)}')",
+    )
+    return said == TICKED
+
+
+def vim_string(text):
+    """Return text as a vim single quoted string, without the quotes.
+
+    A single quote inside one of those is written twice. A path is the only
+    thing sent this way, and nothing else in it means anything to vim.
+    """
+    return str(text).replace("'", "''")
 
 
 if __name__ == '__main__':

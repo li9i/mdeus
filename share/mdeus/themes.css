@@ -64,6 +64,12 @@
   vertical-align: middle;
 }
 
+.browser .doc .task-list-item-checkbox:enabled,
+.report .doc .task-list-item-checkbox:enabled,
+:where(.github) .doc .task-list-item-checkbox:enabled {
+  cursor: pointer;
+}
+
 .browser body {
   background: #ffffff;
   color: #000000;

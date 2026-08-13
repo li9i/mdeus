@@ -8,6 +8,8 @@
 
 `mdeus notes.md` opens the document in a browser window that carries the page and nothing else: no address bar, no tabs, no bookmarks, and it fills the screen. The page redraws the moment the file changes, whoever changed it.
 
+Task list boxes can be pressed, and a press is written into the markdown: one character of that line, and nothing else.
+
 Press `Edit` at the top of the page and vim opens beside it in the same window. Double click a block in the page and vim goes to the line it came from. Double click a line in vim, or press `enter` on it, and the page comes the other way. Press `Edit` again and vim goes, and the page is handed back to the desktop exactly where it was.
 
 ## Install

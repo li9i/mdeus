@@ -24,16 +24,17 @@ class Vim:
     alone.
     """
 
-    def __init__(self, mode='n'):
+    def __init__(self, mode='n', answer=''):
+        self.answer = answer
         self.mode = mode
         self.sent = []
 
     def __call__(self, servername, *args):
         """Answer the one question asked of a vim, and remember the rest."""
-        if args[0] == '--remote-expr':
+        if args[:2] == ('--remote-expr', 'mode(1)'):
             return self.mode
         self.sent.append(args)
-        return ''
+        return self.answer
 
 
 def spoken_to(vim, what):
@@ -44,6 +45,27 @@ def spoken_to(vim, what):
         return what()
     finally:
         vimlink.remote = was
+
+
+def test_a_tick_names_the_line_and_the_document_it_belongs_to():
+    """A tick tells vim which line, what it is to become, and which document.
+
+    The document goes with it because vim answers no where it has another file
+    open, so a reader who took vim off somewhere else cannot have a line of that
+    file rewritten from a page that is not showing it. Whether the line was a
+    task list item at all is vim's to say, since the buffer is the document as it
+    stands while the file is the document as it was last saved.
+    """
+    vim = Vim(answer='1')
+    landed = spoken_to(vim, lambda: vimlink.tick(SERVERNAME, 3, True, "/tmp/it's.md"))
+    assert landed is True, landed
+    assert vim.sent == [('--remote-expr', "MdeusTick(3, 1, '/tmp/it''s.md')")], vim.sent
+    refused = Vim(answer='0')
+    landed = spoken_to(refused, lambda: vimlink.tick(SERVERNAME, 8, False, '/tmp/a.md'))
+    assert landed is False, landed
+    assert refused.sent == [('--remote-expr', "MdeusTick(8, 0, '/tmp/a.md')")], (
+        refused.sent
+    )
 
 
 def test_a_vim_that_answers_nothing_is_sent_nothing():
@@ -77,6 +99,19 @@ def test_a_vim_waiting_to_be_answered_is_not_asked_to_quit():
         landed = spoken_to(vim, lambda: vimlink.quit_vim(SERVERNAME))
         assert landed is False, (mode, landed)
         assert vim.sent == [], (mode, vim.sent)
+
+
+def test_a_vim_waiting_to_be_answered_is_not_ticked():
+    """A tick is not sent to a vim with a question up, and is said not to have landed.
+
+    It would be dropped rather than kept, and the page would be left showing a
+    box the document does not carry. Hearing that it did not land is what puts
+    the box back.
+    """
+    vim = Vim('r', answer='1')
+    landed = spoken_to(vim, lambda: vimlink.tick(SERVERNAME, 3, True, '/tmp/a.md'))
+    assert landed is False, landed
+    assert vim.sent == [], vim.sent
 
 
 def test_a_vim_with_nothing_up_is_asked_and_says_it_heard():

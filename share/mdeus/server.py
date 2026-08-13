@@ -24,13 +24,18 @@ file as it was a minute ago. A connection survives both, and a window closed or 
 browser killed drops it there and then.
 
 Images and links to other documents are served only from inside the directory
-tree the reading started in. Anything resolving outside it is not found. The
-source document is opened read only and is never written to.
+tree the reading started in. Anything resolving outside it is not found.
+
+One thing in the page writes to the document: a task list box pressed there is
+that box's own line of the source rewritten, and nothing else in the file is
+touched. While vim is up the press is sent to vim instead, so a document
+somebody is editing is never written round the back of them.
 """
 
 import json
 import mimetypes
 import os
+import re
 import select
 import threading
 import time
@@ -53,6 +58,7 @@ ICON_SIZE = 128
 MAX_BODY = 256 * 1024
 NAME = 'mdeus'
 RETURN_GRACE = 1
+TASK_ITEM = re.compile(r'([ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+\[)([ xX])\]')
 TELL_TICK = 0.05
 WATCH_TICK = 0.25
 
@@ -137,6 +143,38 @@ def start(document, servername, editable=False):
     return bound, reading, f'http://{HOST}:{bound.server_port}'
 
 
+def tick_line(path, line, done):
+    """Write one task list item as ticked or unticked, and say whether it was.
+
+    Only the mark between the brackets is written. The line keeps its
+    indentation, its list marker, its words and its ending, so a document
+    ticked in the page reads afterwards as the same document with one character
+    changed, and a document under version control shows exactly that.
+
+    A line that is not a task list item is refused rather than rewritten, which
+    is what answers a page drawn from a version of the document that has since
+    been written by somebody else: the lines have moved under it, and the tick
+    lands nowhere rather than on whatever is at that line now. The refusal is
+    the page's to act on.
+    """
+    try:
+        lines = path.read_text(encoding='utf-8').splitlines(keepends=True)
+    except (OSError, UnicodeDecodeError):
+        return False
+    if not 1 <= line <= len(lines):
+        return False
+    found = TASK_ITEM.match(lines[line - 1])
+    if found is None:
+        return False
+    rest = lines[line - 1][found.end(2):]
+    lines[line - 1] = f"{found.group(1)}{'x' if done else ' '}{rest}"
+    try:
+        path.write_text(''.join(lines), encoding='utf-8')
+    except OSError:
+        return False
+    return True
+
+
 def wanted_block(body):
     """Return the first and last source lines a request names, or raise ValueError.
 
@@ -174,6 +212,14 @@ def wanted_state(body):
         'theme': theme,
         'wide': bool(body.get('wide', True)),
     }
+
+
+def wanted_tick(body):
+    """Return the line a tick names and whether it is now ticked, or raise ValueError."""
+    try:
+        return int(body['line']), bool(body['done'])
+    except (KeyError, TypeError) as error:
+        raise ValueError('no tick') from error
 
 
 def watch_pages(server, reading):
@@ -324,6 +370,8 @@ class ReadingHandler(BaseHTTPRequestHandler):
                 state = wanted_state(body)
                 save_state(self.reading.current, state)
                 self.send_json(state)
+            elif self.path == '/api/tick':
+                self.send_json({'ticked': self.tick(*wanted_tick(body))})
             else:
                 self.send_json({'error': 'not found'}, code=404)
         except ValueError as error:
@@ -495,5 +543,23 @@ class ReadingHandler(BaseHTTPRequestHandler):
             source = self.reading.current.read_text(encoding='utf-8')
         except (OSError, UnicodeDecodeError):
             return dict(common, gone=True)
-        rendered = render_document(source, image_src=self.image_src)
+        rendered = render_document(source, image_src=self.image_src, tickable=True)
         return dict(common, blocks=rendered['blocks'], outline=rendered['outline'])
+
+    def tick(self, line, done):
+        """Write a tick into the document, and say whether it landed.
+
+        While vim is up the document is vim's, so the tick is sent there and
+        left unwritten for whoever is editing to save with the rest of their
+        work. Writing the file under vim instead would put a question up in the
+        pane, and a vim with a question up hears nothing else until it has been
+        answered.
+
+        While the page is alone there is nobody holding the document but the
+        reading, and the line is rewritten in the file.
+        """
+        if self.reading.editing:
+            return vimlink.tick(
+                self.reading.servername, line, done, self.reading.current
+            )
+        return tick_line(self.reading.current, line, done)

@@ -117,10 +117,20 @@ Run all of it after touching anything to do with the browser, the windows or vim
 ### Everything the markdown carries
 
 69. Open a document holding a task list, the five callouts, two footnotes, a bare address and a shortcode, and put it beside the same file on github.com under the `GitHub` theme. The two should agree throughout.
-70. The task list carries a box per item and no bullet or number beside it, ticked where the source says `[x]` and empty where it says `[ ]`. A box cannot be clicked. An ordinary item in the same list keeps its bullet. Brackets in a paragraph stay brackets.
+70. The task list carries a box per item and no bullet or number beside it, ticked where the source says `[x]` and empty where it says `[ ]`. The pointer over a box says it can be pressed. An ordinary item in the same list keeps its bullet. Brackets in a paragraph stay brackets.
 71. Each of the five callouts carries GitHub's colour, GitHub's icon and its name at the top, and the marker line itself is nowhere in the body. `> [!NOTHING]` stays an ordinary quote and so does `> [!NOTE] with words after it`, marker and all. Under the other two themes a callout is framed in that theme's own hairline and its name is what tells one from another.
 72. The notes sit at the foot of the document under a hairline, numbered, each ending in an arrow back to where it was cited. Click a number and the page goes to the note, click the arrow and it comes back.
 73. The notes are the one block drawn somewhere other than where it was written, so check the sync around them. Double click the notes and vim goes to the first definition. Put the vim cursor on a definition and the notes are marked. Put it on the last paragraph of the document, below the definitions, and that paragraph is marked and not the notes.
 74. A bare `https://` address, a `www.` address and a mail address are all links, and `:tada:` is drawn as the character. Neither happens inside a code span or a fence, and a shortcode nothing answers to stays as the words it was.
-75. `mdeus --print` on the same document. All of it survives into the one file, icons included, since the icons are drawings in the stylesheet rather than anything fetched.
+75. `mdeus --print` on the same document. All of it survives into the one file, icons included, since the icons are drawings in the stylesheet rather than anything fetched. Its task list boxes are drawn as the document had them and cannot be pressed, since there is nothing behind a copy to write a tick into.
+
+### Ticking a box
+
+76. Open a document with a task list and press a box, with the page alone. The box moves at once, and the source line has gone from `[ ]` to `[x]` or back. `git diff` on the document shows that one character and nothing else: the indentation, the marker, the words and the line ending are all as they were. Press boxes in a nested item and in a numbered list too, and press one twice to put it back.
+77. Watch what the page does around a press. It redraws off the file a moment later, since the file has changed, and it comes back to where you were reading rather than to the top.
+78. Press a box, then press `Edit`. vim opens on the document with the tick in it, since the tick is in the file. Do it the other way as well: leave a reading a couple of seconds so a vim is warmed out of sight, press a box, and then press `Edit`. The pane comes up with the document as the page shows it and with no question standing on it, which is the warmed vim having read the file again by itself.
+79. Press a box while vim is up. The box moves in the page and the line changes in vim, and the file on the disk is untouched: `git diff` says nothing until you save vim yourself. Save with `:w` and the page redraws off the file it always did.
+80. Press a box while vim is up and then press `Edit` off without saving. vim refuses to go, exactly as it refuses over any other unwritten work, and the toggle comes back down. Save and press it again and vim goes.
+81. In vim, `:e` another markdown file, then press a box in the page. Nothing changes in either file, since vim answers no for a document the page is not showing. Come back with `:e#` and the box works again.
+82. Take the page out of step with the file on purpose: press `Edit` off, add a dozen lines at the top of the document from another terminal without letting the page redraw, which is what `--print` and a paused reading are for, and then press an old box. It goes back where it was rather than ticking whatever now sits on that line.
 
