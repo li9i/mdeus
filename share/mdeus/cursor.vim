@@ -24,6 +24,7 @@ augroup mdeus
 augroup END
 
 nnoremap <silent> <2-LeftMouse> :call <SID>MdeusClicked()<CR>
+nnoremap <silent> <CR> :call <SID>MdeusClicked()<CR>
 
 call s:MdeusReport(0)
 
