@@ -128,6 +128,23 @@ def test_a_vim_with_nothing_up_is_asked_and_says_it_heard():
     assert vim.sent[0][0] == '--remote-send', vim.sent
 
 
+def test_a_write_the_reading_makes_itself_is_claimed_and_given_back():
+    """vim is told which change is the reading's own, and told when it is not coming.
+
+    A vim holding the document asks whether to load a file written under it, and
+    a box pressed while the page is alone is the reading writing that file. The
+    claim is what keeps that press from leaving a question standing in a pane
+    nobody is looking at. A claim nothing was written against is given back,
+    since the next write is as likely to be somebody else's.
+    """
+    vim = Vim()
+    spoken_to(vim, lambda: vimlink.mine(SERVERNAME, True))
+    assert vim.sent == [('--remote-expr', 'MdeusMine(1)')], vim.sent
+    given_back = Vim()
+    spoken_to(given_back, lambda: vimlink.mine(SERVERNAME, False))
+    assert given_back.sent == [('--remote-expr', 'MdeusMine(0)')], given_back.sent
+
+
 if __name__ == '__main__':
     tests = sorted(k for k in dict(globals()) if k.startswith('test_'))
     failed = 0

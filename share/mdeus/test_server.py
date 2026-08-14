@@ -388,6 +388,37 @@ def test_a_box_pressed_while_vim_is_up_is_left_to_vim():
         stop()
 
 
+def test_a_box_pressed_with_a_vim_behind_the_page_is_claimed_with_vim_first():
+    """A tick the reading writes itself is claimed with vim, and given back where it is refused.
+
+    A vim is warmed out of sight behind every reading and holds the same
+    document, so a file the reading writes is a file written under vim, and vim
+    asks whether to load what is written under it. Claiming the write is what
+    keeps a box pressed while the page was alone from leaving a question
+    standing in a pane nobody can see. A press that wrote nothing gives the
+    claim back, so that the next write, which may be anybody's, is asked about
+    as it should be.
+    """
+    root, port, reading, stop = start_reading()
+    tasks = root / 'tasks.md'
+    told = []
+    was = vimlink.mine
+    vimlink.mine = lambda servername, writing: told.append((servername, writing))
+    try:
+        fetch_json(port, '/doc?' + urlencode({'path': 'tasks.md'}))
+        reply = fetch_json(port, '/api/tick', 'POST', {'done': True, 'line': 3})
+        assert reply == (200, {'ticked': True}), reply
+        assert told == [(SERVERNAME, True)], told
+        assert tasks.read_text(encoding='utf-8') != TASKS_MD, 'nothing was written'
+        told.clear()
+        reply = fetch_json(port, '/api/tick', 'POST', {'done': True, 'line': 1})
+        assert reply == (200, {'ticked': False}), reply
+        assert told == [(SERVERNAME, True), (SERVERNAME, False)], told
+    finally:
+        vimlink.mine = was
+        stop()
+
+
 def test_a_click_in_vim_is_counted_and_a_move_is_not():
     """The page is told how many clicks vim has reported, so it can follow every one.
 

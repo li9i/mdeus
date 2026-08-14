@@ -77,6 +77,23 @@ def main(argv):
     return 0
 
 
+def mine(servername, writing):
+    """Tell vim whether the change about to reach the document is the reading's own.
+
+    A box pressed while the page is alone is written into the file by the
+    reading, and a vim holding that document finds the change the way it finds
+    anybody else's: by asking whether to load it. Behind a page that is being
+    read alone, that question stands in a pane nobody is looking at, and the
+    session opened later opens on it. So vim is told first and takes that one
+    change without asking.
+
+    Said the other way where the tick was refused and nothing was written. A
+    claim left standing would be spent on whatever wrote the document next, and
+    that one is as likely to be a formatter as the reading.
+    """
+    remote(servername, '--remote-expr', f'MdeusMine({int(bool(writing))})')
+
+
 def quit_vim(servername):
     """Ask vim to quit, which it refuses to do while anything in it is unwritten.
 

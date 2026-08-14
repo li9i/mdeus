@@ -562,10 +562,19 @@ class ReadingHandler(BaseHTTPRequestHandler):
         answered.
 
         While the page is alone there is nobody holding the document but the
-        reading, and the line is rewritten in the file.
+        reading, and the line is rewritten in the file. A vim warmed out of
+        sight behind the page holds the document too, and asks whether to load a
+        file written under it, so vim is told first that this one is the
+        reading's own and takes it without asking. What another program writes
+        is asked about as it should be, which is the point of telling the two
+        apart.
         """
         if self.reading.editing:
             return vimlink.tick(
                 self.reading.servername, line, done, self.reading.current
             )
-        return tick_line(self.reading.current, line, done)
+        vimlink.mine(self.reading.servername, True)
+        ticked = tick_line(self.reading.current, line, done)
+        if not ticked:
+            vimlink.mine(self.reading.servername, False)
+        return ticked

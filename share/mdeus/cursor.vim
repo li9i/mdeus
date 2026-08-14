@@ -33,6 +33,7 @@ augroup mdeus
   autocmd CursorMoved,CursorMovedI * call s:MdeusMoved()
   autocmd CmdlineLeave :
     \ let s:ends = !get(v:event, 'abort', 0) && s:MdeusEnds(getcmdline())
+  autocmd FileChangedShell * call s:MdeusChanged()
   autocmd VimLeavePre * if s:ends | call s:MdeusEnding() | endif
 augroup END
 
@@ -41,7 +42,18 @@ nnoremap <silent> <CR> :call <SID>MdeusClicked()<CR>
 
 call s:MdeusReport(0)
 
-set autoread
+let s:mine = 0
+
+function! s:MdeusChanged() abort
+  let unsaved = getbufvar(str2nr(expand('<abuf>')), '&modified')
+  let v:fcs_choice = s:mine && !unsaved ? 'reload' : 'ask'
+  let s:mine = 0
+endfunction
+
+function! MdeusMine(writing) abort
+  let s:mine = a:writing
+  return 1
+endfunction
 
 let s:look = 1000
 
