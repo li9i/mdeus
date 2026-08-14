@@ -42,10 +42,11 @@ Nothing manages the two windows once they are inside, and the work a window
 manager would have done falls here. The panes are laid out again whenever the
 container is resized, the seam between them is dragged with the pointer, and
 the keyboard is handed from one pane to the other on a click, which is how the
-desktop is set to hand it between windows. The title is the same sort of work:
-the desktop can see none of the panes, so the reading takes the page's own
-title for its own, and following a link in the browser renames the window on
-the panel with it.
+desktop is set to hand it between windows, or on alt and an arrow, which is the
+way across for a reader who has not reached for the pointer. The title is the
+same sort of work: the desktop can see none of the panes, so the reading takes
+the page's own title for its own, and following a link in the browser renames
+the window on the panel with it.
 
 Without python3-xlib there is no container to be made, so vim opens as an
 ordinary window of its own beside the page. It says so and carries on.
@@ -70,9 +71,9 @@ except ImportError:
     Image = None
 
 try:
-    from Xlib import X, Xatom, Xutil, display, error, protocol
+    from Xlib import X, XK, Xatom, Xutil, display, error, protocol
 except ImportError:
-    X = Xatom = Xutil = display = error = protocol = None
+    X = XK = Xatom = Xutil = display = error = protocol = None
 
 ASK_AGAIN = 1
 BROWSER_STOP = 5
@@ -465,6 +466,37 @@ def follow_title(d, container, page):
         set_title(d, container, title)
 
 
+def grab_switch(d, container):
+    """Ask for the two keys that hand the keyboard from one pane to the other.
+
+    Alt and an arrow, left for the page and right for vim, which is the order
+    the two panes stand in. The panes are one window as far as the desktop is
+    concerned, so nothing outside the reading can hand the keyboard between
+    them, and a click was the only way across until now.
+
+    Asked for on the container rather than on either pane. A key asked for this
+    way is heard wherever the keyboard is inside the window it was asked for on,
+    so one asking on the container covers both panes, covers a pane that keeps
+    the keyboard on a window of its own inside itself, which browsers commonly
+    do, and covers the moment either pane is missing.
+
+    Taking the key is also what keeps it from the pane it was pressed in. Alt
+    and the right arrow is the browser's own way forward through the pages it
+    has been shown, so a reading that merely listened for the key would hand the
+    keyboard to vim and send the page off to whatever it was showing before.
+
+    Each lock key makes a different set of modifiers, exactly as it does for the
+    clicks a pane is handed the keyboard by, so the pair is asked for under each
+    of them.
+    """
+    for keycode in switch_keys(d):
+        for modifiers in locked():
+            container.grab_key(
+                keycode, X.Mod1Mask | modifiers, True,
+                X.GrabModeAsync, X.GrabModeAsync,
+            )
+
+
 def hand_back(d, container, page, box):
     """Give the page's window back to the desktop, at the size and place it had.
 
@@ -538,6 +570,13 @@ def hold(d, container, panes, divider, vim, reading, ending):
     meant. Once the reading has the keyboard the desktop stops taking the
     clicks, and from then on they arrive here and name their own pane.
 
+    Alt and an arrow is the third road, and the one that needs no pointer at
+    all: left for the page, right for vim, from whichever pane the keyboard is
+    on at the time. It arrives as a key rather than as a click because it was
+    asked for on the container, so the pane it was pressed in never sees it, and
+    the keyboard is handed straight back so that whatever else is typed while
+    alt is still down goes where it was always going.
+
     The pane a session opens on is the page, so the letter that opened vim
     closes it again without the pointer being reached for. Handing the keyboard
     to vim instead would leave that letter meaning what it means in vim, which
@@ -545,6 +584,7 @@ def hold(d, container, panes, divider, vim, reading, ending):
     """
     focused = OPENS_FOCUSED
     named = d.intern_atom('_NET_WM_NAME') if d is not None else None
+    switching = switch_keys(d) if d is not None else {}
     asked = False
     again = 0.0
     while vim.poll() is None:
@@ -590,6 +630,10 @@ def hold(d, container, panes, divider, vim, reading, ending):
                 if event.mode == X.NotifyNormal:
                     focused = under_pointer(container, panes) or focused
                     focus_pane(d, panes, focused)
+            elif event.type == X.KeyPress and event.detail in switching:
+                d.ungrab_keyboard(event.time)
+                focused = switching[event.detail]
+                focus_pane(d, panes, focused)
             elif event.type == X.PropertyNotify and event.atom == named:
                 page = panes.get('browser')
                 if page is not None and event.window.id == page.id:
@@ -710,6 +754,7 @@ def make_container(d, document):
     )
     container.set_wm_hints(flags=Xutil.InputHint, input=1)
     container.set_wm_protocols([d.intern_atom('WM_DELETE_WINDOW')])
+    grab_switch(d, container)
     return container
 
 
@@ -1109,6 +1154,20 @@ def stop_page(servername):
             close_page(d, page)
     finally:
         d.close()
+
+
+def switch_keys(d):
+    """Return which pane each of the two switching keys asks for.
+
+    The left arrow asks for the page and the right for vim, which is where the
+    two of them stand in the window. Read off the keyboard rather than written
+    down here, since what a key sends is a number and which number carries an
+    arrow is the keyboard's own business.
+    """
+    return {
+        d.keysym_to_keycode(XK.XK_Left): 'browser',
+        d.keysym_to_keycode(XK.XK_Right): 'vim',
+    }
 
 
 def take_in(d, container, wanted):
