@@ -1,3 +1,4 @@
+let s:ends = 0
 let s:pending = 0
 
 function! s:MdeusReport(timer) abort
@@ -18,9 +19,21 @@ function! s:MdeusClicked() abort
     \ ['python3', $MDEUS_LINK, 'cursor', $MDEUS_URL, string(line('.')), 'click'])
 endfunction
 
+function! s:MdeusEnds(command) abort
+  return a:command =~# '^\s*\%(wq\|x\%[it]\|exi\%[t]\)!\=$'
+endfunction
+
+function! s:MdeusEnding() abort
+  call system(
+    \ 'python3 ' . shellescape($MDEUS_LINK) . ' ending ' . shellescape($MDEUS_URL))
+endfunction
+
 augroup mdeus
   autocmd!
   autocmd CursorMoved,CursorMovedI * call s:MdeusMoved()
+  autocmd CmdlineLeave :
+    \ let s:ends = !get(v:event, 'abort', 0) && s:MdeusEnds(getcmdline())
+  autocmd VimLeavePre * if s:ends | call s:MdeusEnding() | endif
 augroup END
 
 nnoremap <silent> <2-LeftMouse> :call <SID>MdeusClicked()<CR>

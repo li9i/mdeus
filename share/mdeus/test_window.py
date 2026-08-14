@@ -193,16 +193,19 @@ def a_split_of(share):
         window.save_split = stored
 
 
-def held(reading, vim):
+def held(reading, vim, ending=None):
     """Run one session's wait on a thread of its own, and return the thread.
 
     The session is given no desktop and no windows, so all it does is watch the
     wish and vim. It is a daemon, since a test that leaves it stuck must fail
     rather than hang the run.
+
+    The flag saying the whole reading is to end is the test's to hold where the
+    test cares what the session left it at, and the session's own otherwise.
     """
     thread = threading.Thread(
         target=window.hold,
-        args=(None, None, {}, None, vim, reading, threading.Event()),
+        args=(None, None, {}, None, vim, reading, ending or threading.Event()),
         daemon=True,
     )
     thread.start()
@@ -466,6 +469,33 @@ def test_vim_is_asked_to_go_once_however_long_it_refuses():
     finally:
         vimlink.quit_vim = was
         stop()
+
+
+def test_vim_leaving_on_a_write_and_quit_takes_the_reading_with_it():
+    """A vim that said goodbye on its way out ends the reading, and one that did not does not.
+
+    Both look the same from here: a process that has stopped. The reader means
+    quite different things by them, though, and the reading has one page's
+    window to close or to hand back on the strength of which it was. So vim says
+    which before it goes, and the session reads that once vim has gone.
+
+    A session that never looked would send every reader who typed a write and
+    quit back to a page they had finished with, and one that read it the other
+    way round would take the whole reading away from a reader who only wanted
+    vim gone.
+    """
+    for said, wanted in ((False, False), (True, True)):
+        reading, vim, stop = opening_session()
+        ending = threading.Event()
+        try:
+            reading.ends = said
+            session = held(reading, vim, ending)
+            vim.terminate()
+            session.join(ENDS_WITHIN)
+            assert not session.is_alive(), 'the session outlived the vim holding it'
+            assert ending.is_set() == wanted, (said, ending.is_set())
+        finally:
+            stop()
 
 
 if __name__ == '__main__':

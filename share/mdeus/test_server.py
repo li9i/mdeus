@@ -1202,6 +1202,30 @@ def test_the_vim_routes_answer_only_while_editing():
         stop()
 
 
+def test_vim_leaving_on_a_write_and_quit_ends_the_reading():
+    """vim's goodbye is recorded, and only a vim the reading has open may say it.
+
+    A reader who leaves vim on a write and quit means the whole reading to end
+    rather than to fall back to the page alone, and the session cannot tell the
+    two apart by watching vim go: both look like a process that has stopped. So
+    vim says which it was on its way out, and this is where that is kept until
+    the session comes to read it.
+
+    It is nothing at all until vim says so, since every other way out of a
+    session leaves the reading standing.
+    """
+    root, port, reading, stop = start_reading(editable=True)
+    try:
+        assert not reading.ends, 'a reading was ending before anything said so'
+        assert fetch_json(port, '/api/ending', 'POST')[0] == 404
+        assert not reading.ends, 'a reading with no vim up was told to end'
+        reading.editing = True
+        assert fetch_json(port, '/api/ending', 'POST')[0] == 200
+        assert reading.ends, 'the reading did not hear vim say goodbye'
+    finally:
+        stop()
+
+
 def test_symlink_out_of_the_tree_is_not_followed():
     """A name inside the tree pointing out of it is not found, on either route."""
     root, port, reading, stop = start_reading()

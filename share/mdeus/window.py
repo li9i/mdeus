@@ -551,6 +551,12 @@ def hold(d, container, panes, divider, vim, reading, ending):
     by setting the flag they share with whoever called this. The first means
     only that vim is to go.
 
+    A reader leaving vim on a write and quit means the same as those three, and
+    says so before it goes rather than after: vim holds itself up on the way out
+    until the reading has heard, since a session that heard it afterwards would
+    have handed the page back to the desktop already. Leaving vim any other way
+    is the toggle's meaning, and the reading goes back to the page alone.
+
     An ask to quit does not always reach vim. A vim waiting to be answered hears
     nothing until it has been, and what puts a question up is the document
     having changed underneath the reading, so a press meant to end the reading
@@ -641,6 +647,8 @@ def hold(d, container, panes, divider, vim, reading, ending):
             elif event.type == X.ClientMessage:
                 if event.data[1][0] == d.intern_atom('WM_DELETE_WINDOW'):
                     ending.set()
+    if reading.ends:
+        ending.set()
 
 
 def ignore_gone(problem, request):

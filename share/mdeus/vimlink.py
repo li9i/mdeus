@@ -2,7 +2,7 @@
 The link between a reading in the browser and the vim beside it.
 
 Sending vim to a line or to another document, asking it to quit, and carrying
-the cursor line back the other way.
+the cursor line and vim's own goodbye back the other way.
 
 The server imports this to reach vim, and the window imports it to ask vim to
 quit. The cursor report is reached from the command line instead, because vim
@@ -72,6 +72,8 @@ def main(argv):
     what = argv[0]
     if what == 'cursor':
         report_cursor(argv[1], argv[2], argv[3:4] == ['click'])
+    elif what == 'ending':
+        report_ending(argv[1])
     return 0
 
 
@@ -111,6 +113,26 @@ def report_cursor(url, line, clicked=False):
         data=json.dumps({'clicked': clicked, 'line': int(line)}).encode('utf-8'),
         headers={'Content-Type': 'application/json'},
     )
+    try:
+        urllib.request.urlopen(request, timeout=TIMEOUT).close()
+    except OSError:
+        pass
+
+
+def report_ending(url):
+    """Tell the reading that the vim now leaving is to take the whole reading with it.
+
+    Sent for a write and quit and for nothing else. Quitting vim any other way
+    hands the page back to the desktop as it always did, and so does the Edit
+    toggle, which asks vim to quit in the same breath.
+
+    vim waits for this rather than starting it and walking away, which is the
+    one place in the link where that is true. It is sent as vim is leaving, and
+    a message the reading heard a moment after the process it was about is gone
+    arrives too late to be acted on: the session would already have put the
+    window away and handed the page back.
+    """
+    request = urllib.request.Request(f'{url}/api/ending', data=b'', method='POST')
     try:
         urllib.request.urlopen(request, timeout=TIMEOUT).close()
     except OSError:

@@ -10,7 +10,7 @@
 
 Task list boxes can be pressed, and a press is written into the markdown: one character of that line, and nothing else.
 
-Press `Edit` at the top of the page and vim opens beside it in the same window. Double click a block in the page and vim goes to the line it came from. Double click a line in vim, or press `enter` on it, and the page comes the other way. `alt` and an arrow moves the keyboard between the two halves, left for the page and right for vim. Press `Edit` again and vim goes, and the page is handed back to the desktop exactly where it was.
+Press `Edit` at the top of the page and vim opens beside it in the same window. Double click a block in the page and vim goes to the line it came from. Double click a line in vim, or press `enter` on it, and the page comes the other way. `alt` and an arrow moves the keyboard between the two halves, left for the page and right for vim. Press `Edit` again and vim goes, and the page is handed back to the desktop exactly where it was. Leave vim on `:wq` or `:x` instead and the whole reading ends with it, page and all.
 
 ## Install
 

@@ -11,7 +11,9 @@ A reading is either viewing, which is the page alone, or editing, which is the
 page with vim beside it. The page asks to move between the two through
 /api/edit, and this server does no more than record the asking and say what the
 state is: the window and vim are the session's business, not this file's. The
-routes that speak to vim answer only while editing.
+routes that speak to vim answer only while editing, and so do the two vim
+speaks back on: where its cursor is, and whether the vim now leaving is taking
+the whole reading with it or handing the page back.
 
 The page holds the reading open by one request that is never answered, and the
 reading ends a moment after that request's connection drops. That connection is
@@ -267,6 +269,7 @@ class Reading:
         self.drawn = threading.Event()
         self.editable = editable
         self.editing = False
+        self.ends = False
         self.holding = 0
         self.holds = threading.Lock()
         self.heard, self.said = os.pipe()
@@ -363,6 +366,9 @@ class ReadingHandler(BaseHTTPRequestHandler):
             elif self.path == '/api/edit':
                 self.reading.ask(bool(body.get('editing')))
                 self.send_json({'editing': self.reading.editing})
+            elif self.path == '/api/ending' and self.reading.editing:
+                self.reading.ends = True
+                self.send_json({'ok': True})
             elif self.path == '/api/jump' and self.reading.editing:
                 vimlink.jump(self.reading.servername, *wanted_block(body))
                 self.send_json({'ok': True})
