@@ -39,6 +39,7 @@ import mimetypes
 import os
 import re
 import select
+import sys
 import threading
 import time
 from functools import partial
@@ -70,9 +71,9 @@ def build_server(reading, port=DEFAULT_PORT):
     """Bind a server for one reading, taking any free port if the preferred one is busy."""
     handler = partial(ReadingHandler, reading=reading)
     try:
-        return ThreadingHTTPServer((HOST, port), handler)
+        return ReadingServer((HOST, port), handler)
     except OSError:
-        return ThreadingHTTPServer((HOST, 0), handler)
+        return ReadingServer((HOST, 0), handler)
 
 
 def icon_path(size):
@@ -610,3 +611,23 @@ class ReadingHandler(BaseHTTPRequestHandler):
         if not ticked:
             vimlink.mine(self.reading.servername, False)
         return ticked
+
+
+class ReadingServer(ThreadingHTTPServer):
+    """The server one reading is answered from.
+
+    It differs in one thing from the server it is built on: a page that goes
+    while it is being answered is not something the reader has to hear about.
+    Closing a browser window drops whatever that page had in flight, and the
+    reading finds out by the write it was in the middle of failing. A stack
+    printed for that says something has gone wrong where nothing has, over a
+    terminal that belongs to whoever started the reading.
+
+    Everything else is still said. A fault the reading swallows is a fault
+    nobody can act on.
+    """
+
+    def handle_error(self, request, client_address):
+        """Say nothing where the page has gone, and speak up for anything else."""
+        if not isinstance(sys.exc_info()[1], ConnectionError):
+            super().handle_error(request, client_address)

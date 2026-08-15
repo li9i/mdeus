@@ -16,6 +16,7 @@ is made, and the run checks at the end that neither was written to.
 
 import base64
 import hashlib
+import io
 import json
 import os
 import re
@@ -26,6 +27,7 @@ import sys
 import tempfile
 import threading
 import time
+from contextlib import redirect_stderr
 from http.client import HTTPConnection
 from pathlib import Path
 from types import SimpleNamespace
@@ -51,6 +53,8 @@ PIXEL_PNG = b'\x89PNG\r\n\x1a\n\x00\x01\x02\x03'
 
 HOME_CACHE_DIR = export.CACHE_DIR
 HOME_STATE_PATH = state.STATE_PATH
+
+LINGER = b'\x01\x00\x00\x00\x00\x00\x00\x00'
 
 SECRET_MD = """\
 # Outside the tree
@@ -106,6 +110,11 @@ Not a task at all.
 THEMES = ('browser', 'report', 'github')
 
 TIMEOUT = 5
+
+
+def broken_state(document):
+    """Stand in for a settings file that falls over in a way nothing expects."""
+    raise RuntimeError('the state file fell over')
 
 
 def fetch(port, path, method='GET', body=None):
@@ -655,6 +664,44 @@ def test_a_page_that_comes_straight_back_holds_the_reading():
     finally:
         stop()
         watching.join(timeout=TIMEOUT)
+
+
+def test_a_page_that_goes_while_it_is_answered_leaves_the_terminal_alone():
+    """A page that drops its connection mid answer is not news, and a real fault is.
+
+    A browser closing a window drops whatever it had in flight, and the reading
+    finds out by the write it was in the middle of failing. That is the page
+    going, which the reading already knows how to carry, and printing a stack
+    over the terminal for it would say something is wrong when nothing is: the
+    terminal belongs to whoever started the reading.
+
+    Anything else is still worth hearing about, since a fault the reading says
+    nothing about is a fault nobody can act on.
+    """
+    root, port, reading, stop = start_reading()
+    said = io.StringIO()
+    try:
+        with redirect_stderr(said):
+            for _ in range(8):
+                sock = socket.create_connection((server.HOST, port), timeout=TIMEOUT)
+                sock.sendall(request_head(
+                    port, 'POST', '/api/tick', 'Content-Length: 4096') + b'{"line"')
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, LINGER)
+                sock.close()
+            time.sleep(0.5)
+        assert said.getvalue() == '', said.getvalue()[:400]
+
+        was = server.load_state
+        server.load_state = broken_state
+        try:
+            with redirect_stderr(said):
+                fetch_raw(port, request_head(port, 'GET', '/doc'))
+                time.sleep(0.5)
+        finally:
+            server.load_state = was
+        assert 'the state file fell over' in said.getvalue(), said.getvalue()[:400]
+    finally:
+        stop()
 
 
 def test_a_page_that_says_nothing_keeps_the_reading():
