@@ -564,6 +564,15 @@ def hold(d, container, panes, divider, vim, reading, ending):
     away. The asking is made again, a second apart, and vim goes the moment the
     reader has answered whatever vim was asking them.
 
+    A vim that heard the asking and refused it is another matter, and is left
+    alone: it is refusing because something in it is unwritten, and asking again
+    on every turn would be four asks a second for as long as the reader takes to
+    save, each of them pulling them out of whatever they were typing. It is the
+    next press of the box that asks again, which is why the presses are counted
+    rather than only read. Two of them say the same thing about what is wanted
+    and are still two separate askings, and a reader who writes their work and
+    presses again means it exactly as they did the first time.
+
     The page's window belongs to a browser the reading borrowed, so its closing
     is heard as the window being destroyed rather than as a process ending.
     Where there is no container there is nothing watching it, and such a
@@ -593,8 +602,12 @@ def hold(d, container, panes, divider, vim, reading, ending):
     switching = switch_keys(d) if d is not None else {}
     asked = False
     again = 0.0
+    presses = reading.asks
     while vim.poll() is None:
         going = ending.is_set() or not reading.wanted
+        if presses != reading.asks:
+            presses = reading.asks
+            asked = False
         if not going:
             asked = False
         elif not asked and time.monotonic() >= again:

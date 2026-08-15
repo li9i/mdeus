@@ -414,6 +414,45 @@ def test_a_drag_puts_the_panes_edge_to_edge_once_however_often_they_answer():
     assert panes['browser'].asked == [{'width': 505}], panes['browser'].asked
 
 
+def test_a_second_press_asks_a_vim_that_refused_the_first():
+    """A vim that refused one press is asked again by the next.
+
+    vim refuses to go while anything in it is unwritten, and it has heard the
+    asking when it refuses, which is what tells a session to stop asking. The
+    reader then writes their work and presses the box again, meaning exactly
+    what they meant the first time.
+
+    A session that took the first press as the whole of the asking leaves them
+    with a box that does nothing at all from then on, and a reading that will
+    only close by quitting vim by hand.
+    """
+    reading, vim, stop = opening_session()
+    asked = []
+    was = vimlink.quit_vim
+
+    def refuses(name):
+        """Stand in for a vim that hears both asks and goes on the second."""
+        asked.append(name)
+        if len(asked) > 1:
+            vim.terminate()
+        return True
+
+    vimlink.quit_vim = refuses
+    try:
+        reading.wanted = False
+        session = held(reading, vim)
+        time.sleep(WATCH_FOR)
+        assert asked == [SERVERNAME], asked
+        assert session.is_alive(), 'the session let go of a vim that refused'
+        reading.ask(False)
+        session.join(ENDS_WITHIN)
+        assert asked == [SERVERNAME, SERVERNAME], asked
+        assert not session.is_alive(), 'the second press was thrown away'
+    finally:
+        vimlink.quit_vim = was
+        stop()
+
+
 def test_a_stop_asked_for_while_the_session_opens_is_still_honoured():
     """A press that lands before the session is holding still takes vim away.
 

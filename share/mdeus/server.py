@@ -263,6 +263,7 @@ class Reading:
     def __init__(self, document, servername, editable=False):
         self.alone = None
         self.asked = threading.Event()
+        self.asks = 0
         self.clicks = 0
         self.current = document.resolve()
         self.cursor = None
@@ -293,9 +294,16 @@ class Reading:
         depending on which of its states it is in. Between sessions it waits on
         the event, and inside one it waits on its X connection, where only
         something with a file of its own can reach it.
+
+        Every asking is counted as well as recorded, because two of them in a
+        row can ask for the same thing and still be two. A press that asks vim
+        to go while vim is refusing to go, made again once the reader has
+        written their work, says nothing new about what is wanted and everything
+        about its being wanted again.
         """
         if editing and not self.editable:
             return
+        self.asks += 1
         self.wanted = editing
         self.asked.set()
         try:
