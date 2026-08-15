@@ -1018,10 +1018,19 @@ def put_in(d, container, window, box):
     black. A browser takes seconds to draw its first page, and those are seconds
     of a black rectangle where the reading is. The container is white for the
     same reason, so a pane arriving over it looks like no arrival at all.
+
+    The window is put in the save set on its way in, which is the X server being
+    told that this one is to outlive the reading. Neither pane is the reading's
+    to destroy: a window inside another program's window goes when that program
+    goes, so a reading killed outright, or one that falls over, would take the
+    browser's window and the vim beside it with it, and whatever is unwritten in
+    that vim with them. A window in the save set is handed back out to the
+    desktop instead, and stands there as the ordinary window it was before.
     """
     x, y, width, height = box
     window.change_attributes(background_pixel=white(d, window))
     window.reparent(container, x, y)
+    window.change_save_set(X.SetModeInsert)
     window.configure(x=x, y=y, width=width, height=height)
     window.map()
     for button in (1, 2, 3):

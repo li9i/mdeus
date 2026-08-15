@@ -174,6 +174,55 @@ class Pane:
         """Take the pointer, as the strip does for as long as a drag lasts."""
 
 
+class Screened(Display):
+    """A stand in for the desktop with a colour to paint a pane's ground with."""
+
+    def screen(self):
+        """Answer for the screen, which is asked what its white is."""
+        return SimpleNamespace(white_pixel=0xFFFFFF)
+
+
+class Taken:
+    """A stand in for another program's window, on its way into the container.
+
+    It answers what taking a window in asks of it, and remembers what it was
+    asked in the order it was asked, since the order is half of what taking a
+    window in has to get right.
+    """
+
+    def __init__(self):
+        self.asked = []
+        self.id = 7
+
+    def change_attributes(self, **wanted):
+        """Take the ground the pane is painted on until its program draws again."""
+        self.asked.append('attributes')
+
+    def change_save_set(self, mode):
+        """Take the reading's word that this window is to outlive the reading."""
+        self.asked.append(('save set', mode))
+
+    def configure(self, **wanted):
+        """Take a request for the size and place of the pane."""
+        self.asked.append('configure')
+
+    def get_geometry(self):
+        """Say how deep the window draws, which is what its white is worked out from."""
+        return SimpleNamespace(x=0, y=0, width=800, height=600, depth=24)
+
+    def grab_button(self, *asked):
+        """Take a click the session wants to see before the pane does."""
+        self.asked.append('grab')
+
+    def map(self):
+        """Put the window up where it now is."""
+        self.asked.append('map')
+
+    def reparent(self, container, x, y):
+        """Take the window into the container."""
+        self.asked.append('reparent')
+
+
 @contextmanager
 def a_split_of(share):
     """Hold the seam at this share of the window for as long as the test runs.
@@ -266,6 +315,29 @@ def test_a_vim_pane_as_wide_as_the_window_leaves_the_panes_where_they_are():
     window.meet(Display(), container, panes, divider)
     for name, pane in dict(panes, **divider).items():
         assert pane.asked == [], (name, pane.asked)
+
+
+def test_a_pane_taken_in_is_handed_back_to_the_desktop_if_the_reading_dies():
+    """A window taken into the container is put in the X server's save set.
+
+    Both panes belong to other programs and neither window is the reading's to
+    destroy. A window inside another program's window goes when that program
+    does, so a reading killed outright, or one that falls over, would take the
+    browser's window and the vim beside it with it, and whatever is unwritten in
+    that vim with them. That is the one promise a session makes: nothing is
+    taken away from under unsaved work.
+
+    A window in the save set is handed back out to the desktop instead, where it
+    stands as an ordinary window of its own, which is what the browser and vim
+    both survive the reading by.
+    """
+    taken = Taken()
+    window.put_in(Screened(), None, taken, (0, 0, 800, 600))
+    assert ('save set', X.SetModeInsert) in taken.asked, taken.asked
+    order = [what for what in taken.asked if what in ('reparent', 'map')]
+    kept = taken.asked.index(('save set', X.SetModeInsert))
+    assert order == ['reparent', 'map'], taken.asked
+    assert kept > taken.asked.index('reparent'), taken.asked
 
 
 def test_a_pane_that_has_gone_does_not_take_the_reading_with_it():
