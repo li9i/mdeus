@@ -62,6 +62,7 @@ NAME = 'mdeus'
 RETURN_GRACE = 1
 TASK_ITEM = re.compile(r'([ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+\[)([ xX])\]')
 TELL_TICK = 0.05
+TICKING = threading.Lock()
 WATCH_TICK = 0.25
 
 
@@ -158,23 +159,30 @@ def tick_line(path, line, done):
     been written by somebody else: the lines have moved under it, and the tick
     lands nowhere rather than on whatever is at that line now. The refusal is
     the page's to act on.
+
+    One press is written at a time. The whole document is read to change one
+    line of it and the whole of it is written back, and the page sends the next
+    press without waiting for the last to land, so two presses served at once
+    would each write back the document they read and the one that lost would be
+    a box the page shows ticked and the document does not carry.
     """
-    try:
-        lines = path.read_text(encoding='utf-8').splitlines(keepends=True)
-    except (OSError, UnicodeDecodeError):
-        return False
-    if not 1 <= line <= len(lines):
-        return False
-    found = TASK_ITEM.match(lines[line - 1])
-    if found is None:
-        return False
-    rest = lines[line - 1][found.end(2):]
-    lines[line - 1] = f"{found.group(1)}{'x' if done else ' '}{rest}"
-    try:
-        path.write_text(''.join(lines), encoding='utf-8')
-    except OSError:
-        return False
-    return True
+    with TICKING:
+        try:
+            lines = path.read_text(encoding='utf-8').splitlines(keepends=True)
+        except (OSError, UnicodeDecodeError):
+            return False
+        if not 1 <= line <= len(lines):
+            return False
+        found = TASK_ITEM.match(lines[line - 1])
+        if found is None:
+            return False
+        rest = lines[line - 1][found.end(2):]
+        lines[line - 1] = f"{found.group(1)}{'x' if done else ' '}{rest}"
+        try:
+            path.write_text(''.join(lines), encoding='utf-8')
+        except OSError:
+            return False
+        return True
 
 
 def wanted_block(body):

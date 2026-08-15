@@ -838,6 +838,58 @@ def test_editable_says_whether_the_edit_box_belongs_on_the_page():
         stop()
 
 
+def test_every_box_pressed_at_once_lands_in_the_document():
+    """Boxes pressed faster than they can be written all reach the document.
+
+    A press is the file read, one line of it changed, and the whole of it
+    written back. The page does not wait for one press to land before sending
+    the next, and a reading serves each of them on a turn of its own, so two
+    presses can read the same document and write it back over each other. What
+    is lost that way is a box the page shows ticked, was told had landed, and
+    the document does not carry.
+    """
+    root, port, reading, stop = start_reading()
+    many = root / 'many.md'
+    count = 60
+    many.write_text(
+        '# Many\n\n' + ''.join(f'- [ ] item {n}\n' for n in range(count)),
+        encoding='utf-8',
+    )
+    landed = []
+    try:
+        fetch_json(port, '/doc?' + urlencode({'path': 'many.md'}))
+
+        def press(line):
+            """Press one box, as one page of a reading does.
+
+            A connection refused is asked for again. Sixty pressed at once is
+            more than a browser would ever open at one host, and a listening
+            socket that turned some of them away is this test knocking too hard
+            rather than anything the reading did with the presses it took.
+            """
+            for _ in range(10):
+                try:
+                    landed.append(fetch_json(port, '/api/tick', 'POST',
+                                             {'done': True, 'line': line}))
+                    return
+                except AssertionError:
+                    time.sleep(0.05)
+            landed.append(('unanswered', line))
+
+        pressing = [threading.Thread(target=press, args=(line + 3,))
+                    for line in range(count)]
+        for thread in pressing:
+            thread.start()
+        for thread in pressing:
+            thread.join(timeout=TIMEOUT)
+        assert landed == [(200, {'ticked': True})] * count, landed
+        written = many.read_text(encoding='utf-8')
+        assert written.count('- [x] item') == count, written.count('- [x] item')
+        assert len(written.splitlines()) == count + 2, len(written.splitlines())
+    finally:
+        stop()
+
+
 def test_every_theme_is_accepted_and_a_fourth_is_not():
     """All three theme keys are stored and served back, and a name outside them is not."""
     root, port, reading, stop = start_reading()
