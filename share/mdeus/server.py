@@ -472,14 +472,30 @@ class ReadingHandler(BaseHTTPRequestHandler):
         return str(self.reading.current.relative_to(self.reading.root))
 
     def read_json(self):
-        """Return the decoded request body."""
+        """Return the object a request carries, refusing anything the page could not send.
+
+        A length below nothing is refused rather than read. Read as it stands it
+        says to go on reading until the sender stops, which is to say for as
+        long as it likes and as much as it likes, and the turn spent on that
+        request never comes back.
+
+        What comes out has to be an object, since every route reads its request
+        by name, and it has to be shallow enough for JSON itself to have read
+        without running out of stack. Neither is anything the page would send,
+        and both arrive from whatever else on the machine cares to send them.
+        """
         length = int(self.headers.get('Content-Length', 0))
+        if length < 0:
+            raise ValueError('no such body')
         if length > MAX_BODY:
             raise ValueError('request too large')
         try:
-            return json.loads(self.rfile.read(length) or b'{}')
-        except json.JSONDecodeError as error:
+            body = json.loads(self.rfile.read(length) or b'{}')
+        except (json.JSONDecodeError, RecursionError) as error:
             raise ValueError('malformed JSON') from error
+        if not isinstance(body, dict):
+            raise ValueError('malformed JSON')
+        return body
 
     def send_bytes(self, payload, content_type, code=200):
         """Send one complete response."""

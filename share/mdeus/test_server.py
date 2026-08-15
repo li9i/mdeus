@@ -134,6 +134,27 @@ def fetch_json(port, path, method='GET', body=None):
         raise AssertionError(f'{method} {path} did not answer with JSON: {data[:80]!r}')
 
 
+def fetch_raw(port, payload):
+    """Send bytes straight at the server and return the first line of the answer.
+
+    What http.client will not do for us is make a request that is malformed,
+    and a malformed request is exactly what a reading has to answer rather than
+    be held up by.
+    """
+    try:
+        with socket.create_connection((server.HOST, port), timeout=TIMEOUT) as sock:
+            sock.sendall(payload)
+            answer = b''
+            while b'\r\n' not in answer:
+                got = sock.recv(4096)
+                if not got:
+                    break
+                answer += got
+    except OSError:
+        return 'no answer'
+    return answer.split(b'\r\n', 1)[0].decode('latin-1')
+
+
 def heard_down(held):
     """Return the next thing a reading says down a connection a page is holding.
 
@@ -168,6 +189,13 @@ def home_state_snapshot():
         return exists, HOME_STATE_PATH.read_bytes()
     except OSError:
         return exists, None
+
+
+def request_head(port, method, path, *headers):
+    """Return one request as bytes, said exactly rather than by http.client."""
+    lines = [f'{method} {path} HTTP/1.1', f'Host: {server.HOST}:{port}',
+             'Content-Type: application/json', *headers]
+    return ('\r\n'.join(lines) + '\r\n\r\n').encode('ascii')
 
 
 def said_down(reading):
@@ -305,6 +333,37 @@ def stored_settings(document):
     """Return what the state file holds under one document's own name."""
     whole = json.loads(state.STATE_PATH.read_text(encoding='utf-8'))
     return whole['documents'][str(document)]
+
+
+def test_a_body_the_page_could_not_have_sent_is_refused():
+    """A request the page would never make is answered, not fallen over.
+
+    Everything a reading serves is reachable by anything else on the machine,
+    and what arrives is not always JSON holding an object. A body that is a
+    list, a bare word or a number, one nested deeper than JSON will read, and a
+    length that is not a length at all: each is refused in the way every other
+    refusal is refused, and the reading serves the next request as though the
+    last had never come.
+
+    A length below nothing is the one that matters most. It is not only
+    malformed: read as it stands it says to read until the page stops sending,
+    which is to say for as long as it likes and as much as it likes, and the
+    turn spent on that request never comes back.
+    """
+    root, port, reading, stop = start_reading(editable=True)
+    try:
+        for path in ('/api/edit', '/api/state', '/api/tick'):
+            for body in (b'[1, 2, 3]', b'"words"', b'3', b'true', b'null',
+                         b'[' * 2000 + b']' * 2000):
+                status, _, _ = fetch(port, path, 'POST', body)
+                assert status == 400, (path, body[:20], status)
+        answered = fetch_raw(port, request_head(
+            port, 'POST', '/api/tick', 'Content-Length: -1'))
+        assert answered.startswith('HTTP/1.1 400'), answered
+        status, reply = fetch_json(port, '/api/edit', 'POST', {'editing': True})
+        assert (status, reply) == (200, {'editing': False}), (status, reply)
+    finally:
+        stop()
 
 
 def test_a_box_pressed_in_the_page_is_written_into_the_document():
