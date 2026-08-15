@@ -34,8 +34,11 @@ closed all ask vim to quit, and vim refuses while anything in it is unwritten,
 so nothing is taken away from under unsaved work.
 
 Several readings run at once, each on its own port, each under a name of its
-own. The document is opened read only by this program and is never written to,
-which is what vim is for.
+own. The document is read and not written, with one thing excepted: a task list
+box pressed in the page is that box's own line of the source rewritten, one
+character of it and nothing else. While vim is up even that goes to vim rather
+than to the file, so a document somebody is editing is never written round the
+back of them.
 """
 
 import argparse
