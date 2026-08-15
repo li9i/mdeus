@@ -594,12 +594,21 @@ def hold(d, container, panes, divider, vim, reading, ending):
     have handed the page back to the desktop already. Leaving vim any other way
     is the toggle's meaning, and the reading goes back to the page alone.
 
+    vim is told to go and asked about afterwards, in that order, because telling
+    vim something costs a moment and asking vim anything costs half a second.
+    The press somebody is waiting on buys the telling only, and in the ordinary
+    case vim has gone before there is anything to ask.
+
     An ask to quit does not always reach vim. A vim waiting to be answered hears
     nothing until it has been, and what puts a question up is the document
     having changed underneath the reading, so a press meant to end the reading
     can land in the middle of one and go nowhere. Such a press is not thrown
-    away. The asking is made again, a second apart, and vim goes the moment the
-    reader has answered whatever vim was asking them.
+    away. A second later, if vim is still there, it is asked whether it was
+    listening: where it was, it heard and is refusing, and is left alone; where
+    it was not, the telling is made again, and so on until vim has it. That is
+    the only road the half second is ever spent on, and nobody is waiting at the
+    end of it, since a reader whose vim is asking them something is answering
+    vim rather than watching for the page.
 
     A vim that heard the asking and refused it is another matter, and is left
     alone: it is refusing because something in it is unwritten, and asking again
@@ -642,16 +651,20 @@ def hold(d, container, panes, divider, vim, reading, ending):
     focused = OPENS_FOCUSED
     named = d.intern_atom('_NET_WM_NAME') if d is not None else None
     switching = switch_keys(d) if d is not None else {}
-    asked = False
+    heard = False
+    sent = False
     again = 0.0
     presses = reading.asks
     while vim.poll() is None:
         going = ending.is_set() or not reading.wanted
         if presses != reading.asks:
             presses = reading.asks
-            asked = False
-        if going and not asked and time.monotonic() >= again:
-            asked = vimlink.quit_vim(reading.servername)
+            heard = sent = False
+        if going and not heard and time.monotonic() >= again:
+            if sent:
+                heard = sent = vimlink.listening(reading.servername)
+            else:
+                sent = vimlink.quit_vim(reading.servername)
             again = time.monotonic() + ASK_AGAIN
         if container is None:
             if going:

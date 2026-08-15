@@ -61,6 +61,11 @@ def listening(servername):
 
     Nothing here changes what vim does. It is how the reading knows an asking
     landed, so that one that did not can be made again.
+
+    It is the dear one. Every question put to vim waits half a second on the
+    client that carries it, whatever the question, so this is asked where the
+    answer changes what happens next and not on the way to anything a reader is
+    waiting for.
     """
     return not (remote(servername, '--remote-expr', 'mode(1)') or ASKING).startswith(
         ASKING
@@ -90,21 +95,53 @@ def mine(servername, writing):
     Said the other way where the tick was refused and nothing was written. A
     claim left standing would be spent on whatever wrote the document next, and
     that one is as likely to be a formatter as the reading.
+
+    Told rather than asked, since nothing here wants an answer and a question
+    put to vim costs half a second of the press somebody just made. What that
+    gives up is knowing when vim took it, so the claim is good for a moment
+    rather than until it is spent: vim looks at the document once a second, and
+    a claim that outlives that look by a margin is a claim that cannot arrive
+    late. It cannot linger either, which the one it replaces could, having no
+    hour of its own to run out at.
     """
-    remote(servername, '--remote-expr', f'MdeusMine({int(bool(writing))})')
+    remote(
+        servername,
+        '--remote-send',
+        f'{NORMAL_MODE}:call MdeusMine({int(bool(writing))})<CR>',
+    )
 
 
 def quit_vim(servername):
-    """Ask vim to quit, which it refuses to do while anything in it is unwritten.
+    """Tell vim to go, and say whether the telling went out.
 
-    What comes back says whether the asking was acted on at all, which is not the
-    same as vim agreeing to go: a vim that heard and refused because something in
-    it is unwritten has heard. Only a vim that would have dropped the asking says
-    False, and whoever wanted it to go asks again.
+    Told rather than asked. Telling vim something costs the moment it takes to
+    start the client that carries the word. Asking vim something and waiting for
+    the answer costs half a second whatever the question, because the client
+    that carries it looks for the answer twice a second and so sleeps through a
+    whole turn of its own clock before noticing one that arrived at once. This
+    is the press somebody is waiting on, so it says its piece and stops there.
+
+    What comes back is therefore only that the word left, which is not the same
+    as vim having it: a vim with a question up hears nothing until it has been
+    answered, and the word is dropped. Whether that happened is worth a
+    question, and listening() is that question, asked afterwards by whoever
+    minds and only where the answer changes anything. It does not change
+    anything in the ordinary case, where vim has gone by then.
+
+    What is sent is a function of vim's own rather than the quit itself, because
+    a quit vim refuses leaves a message standing that has to be dismissed before
+    vim will hear anything else, and a session that tells vim to go once a
+    press would be sending into that. The function looks first and says its
+    piece where it will not go, so vim is left listening either way and the next
+    telling lands as cleanly as the first. It is also the same to send twice as
+    once, which is what lets one be sent again where it may not have arrived.
+
+    Nothing is sent to a vim that is not there, since the client answers nothing
+    and says so at once.
     """
-    if not listening(servername):
-        return False
-    return remote(servername, '--remote-send', f'{NORMAL_MODE}:qa<CR>') is not None
+    return remote(
+        servername, '--remote-send', f'{NORMAL_MODE}:call MdeusGo()<CR>'
+    ) is not None
 
 
 def remote(servername, *args):
@@ -179,12 +216,12 @@ def tick(servername, line, done, path):
     so a reader who took vim off to another file cannot have a line of that one
     rewritten from a page that is not showing it.
 
-    A vim with a question up is not sent to. It would neither act on this nor
-    keep it, and the page has to hear that the tick did not land rather than be
-    left showing one the document does not carry.
+    A vim with a question up answers no. It is asked rather than tested for
+    first, because it can see that about itself as easily as it can see the
+    line, and one question put to vim costs half a second where two cost a
+    whole one. Either way the page hears that the tick did not land, rather
+    than being left showing one the document does not carry.
     """
-    if not listening(servername):
-        return False
     said = remote(
         servername,
         '--remote-expr',

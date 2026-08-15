@@ -26,13 +26,25 @@ class Vim:
 
     def __init__(self, mode='n', answer=''):
         self.answer = answer
+        self.asked = []
         self.mode = mode
         self.sent = []
 
     def __call__(self, servername, *args):
-        """Answer the one question asked of a vim, and remember the rest."""
+        """Answer the questions a vim answers, and remember everything said to it.
+
+        A vim with a question up says so when asked what it is doing, and
+        refuses a tick for the same reason, since the tick is a function of its
+        own that can see the state it is in. Every question is remembered as
+        well as answered, because what one costs is the reason for asking as
+        seldom as the link does.
+        """
         if args[:2] == ('--remote-expr', 'mode(1)'):
+            self.asked.append(args)
             return self.mode
+        if args[0] == '--remote-expr' and args[1].startswith('MdeusTick('):
+            self.asked.append(args)
+            return '0' if self.mode and self.mode.startswith('r') else self.answer
         self.sent.append(args)
         return self.answer
 
@@ -59,37 +71,36 @@ def test_a_tick_names_the_line_and_the_document_it_belongs_to():
     vim = Vim(answer='1')
     landed = spoken_to(vim, lambda: vimlink.tick(SERVERNAME, 3, True, "/tmp/it's.md"))
     assert landed is True, landed
-    assert vim.sent == [('--remote-expr', "MdeusTick(3, 1, '/tmp/it''s.md')")], vim.sent
+    assert vim.asked == [('--remote-expr', "MdeusTick(3, 1, '/tmp/it''s.md')")], vim.asked
     refused = Vim(answer='0')
     landed = spoken_to(refused, lambda: vimlink.tick(SERVERNAME, 8, False, '/tmp/a.md'))
     assert landed is False, landed
-    assert refused.sent == [('--remote-expr', "MdeusTick(8, 0, '/tmp/a.md')")], (
-        refused.sent
+    assert refused.asked == [('--remote-expr', "MdeusTick(8, 0, '/tmp/a.md')")], (
+        refused.asked
     )
 
 
-def test_a_vim_that_answers_nothing_is_sent_nothing():
-    """A vim that will not say what it is doing is not sent keys either.
+def test_a_vim_that_answers_nothing_is_told_nothing():
+    """A vim that is not there is not told to go, and the telling says so.
 
-    Either it has gone, and there is nothing there to send to, or it is held up
-    in something that is not listening, and the sending would wait out its own
-    timeout to no purpose. Both are answered the same way, by saying the asking
-    did not land, so that whoever wants vim to go asks again.
+    The client answers nothing where there is no vim of that name, which is the
+    same answer it gives for one held up in something that will not talk. Both
+    say the word did not leave, so that whoever wanted vim to go says it again.
     """
-    vim = Vim(None)
+    vim = Vim(None, answer=None)
     landed = spoken_to(vim, lambda: vimlink.quit_vim(SERVERNAME))
     assert landed is False, landed
-    assert vim.sent == [], vim.sent
 
 
-def test_a_vim_waiting_to_be_answered_is_not_asked_to_quit():
-    """An ask to quit is not counted as landing on a vim that would drop it.
+def test_a_vim_waiting_to_be_answered_is_told_and_says_it_was_not_listening():
+    """Telling vim to go is not a question, so the telling goes out either way.
 
-    A vim with a question up is answering whoever is reading and nothing else,
-    and keys sent to it then are dropped rather than kept, while the sending
-    itself looks as though it worked. A session that took that for vim having
-    heard would wait for a vim that was never told, and the press that asked for
-    the reading to end would be gone for good.
+    A vim with a question up is answering whoever is reading and nothing else.
+    Keys sent to it then are neither acted on nor taken as the answer: they are
+    dropped, and the sending looks exactly as it does for a vim that acted on
+    them. So the word goes out first, since it costs a moment and the reader is
+    waiting on it, and whether vim had it is a separate question asked
+    afterwards by whoever minds.
 
     All three of the states vim waits to be answered in are read the same way:
     the hit enter prompt, the more prompt, and a question with choices in it.
@@ -97,33 +108,40 @@ def test_a_vim_waiting_to_be_answered_is_not_asked_to_quit():
     for mode in ('r', 'rm', 'r?'):
         vim = Vim(mode)
         landed = spoken_to(vim, lambda: vimlink.quit_vim(SERVERNAME))
-        assert landed is False, (mode, landed)
-        assert vim.sent == [], (mode, vim.sent)
+        assert landed is True, (mode, landed)
+        assert vim.sent[0][0] == '--remote-send', (mode, vim.sent)
+        assert spoken_to(vim, lambda: vimlink.listening(SERVERNAME)) is False, mode
 
 
 def test_a_vim_waiting_to_be_answered_is_not_ticked():
-    """A tick is not sent to a vim with a question up, and is said not to have landed.
+    """A vim with a question up refuses a tick, and the refusal reaches the page.
 
-    It would be dropped rather than kept, and the page would be left showing a
-    box the document does not carry. Hearing that it did not land is what puts
-    the box back.
+    A vim answering whoever is reading is in no state to have a line of the
+    document rewritten under it, and it can see that about itself, so it is the
+    one asked rather than being tested for first and then asked. One question
+    where there were two, and the same answer.
+
+    What the page does with the refusal is put its own box back, rather than be
+    left showing one the document does not carry.
     """
-    vim = Vim('r', answer='1')
-    landed = spoken_to(vim, lambda: vimlink.tick(SERVERNAME, 3, True, '/tmp/a.md'))
-    assert landed is False, landed
-    assert vim.sent == [], vim.sent
+    for mode in ('r', 'rm', 'r?'):
+        vim = Vim(mode, answer='1')
+        landed = spoken_to(vim, lambda: vimlink.tick(SERVERNAME, 3, True, '/tmp/a.md'))
+        assert landed is False, (mode, landed)
+        assert len(vim.asked) == 1, (mode, vim.asked)
+        assert vim.sent == [], (mode, vim.sent)
 
 
-def test_a_vim_with_nothing_up_is_asked_and_says_it_heard():
-    """A vim that is listening is sent the asking, and the asking is said to have landed.
+def test_a_vim_with_nothing_up_is_told_to_go_and_asked_nothing():
+    """Telling vim to go asks vim nothing, since a question is what costs the time.
 
-    Landing is not the same as agreeing. A vim that heard and refused because
-    something in it is unwritten has heard, and a session that hears otherwise
-    would ask again every second for as long as the reader takes to save.
+    The word is one call and no more. A session that wanted to know whether vim
+    had it asks afterwards, and only where the answer changes anything.
     """
     vim = Vim()
     landed = spoken_to(vim, lambda: vimlink.quit_vim(SERVERNAME))
     assert landed is True, landed
+    assert vim.asked == [], vim.asked
     assert len(vim.sent) == 1, vim.sent
     assert vim.sent[0][0] == '--remote-send', vim.sent
 
@@ -139,10 +157,15 @@ def test_a_write_the_reading_makes_itself_is_claimed_and_given_back():
     """
     vim = Vim()
     spoken_to(vim, lambda: vimlink.mine(SERVERNAME, True))
-    assert vim.sent == [('--remote-expr', 'MdeusMine(1)')], vim.sent
+    assert vim.sent == [
+        ('--remote-send', f'{vimlink.NORMAL_MODE}:call MdeusMine(1)<CR>')
+    ], vim.sent
     given_back = Vim()
     spoken_to(given_back, lambda: vimlink.mine(SERVERNAME, False))
-    assert given_back.sent == [('--remote-expr', 'MdeusMine(0)')], given_back.sent
+    assert given_back.sent == [
+        ('--remote-send', f'{vimlink.NORMAL_MODE}:call MdeusMine(0)<CR>')
+    ], given_back.sent
+    assert vim.asked == [] and given_back.asked == [], (vim.asked, given_back.asked)
 
 
 if __name__ == '__main__':

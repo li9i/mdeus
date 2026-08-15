@@ -542,6 +542,45 @@ def test_a_second_press_asks_a_vim_that_refused_the_first():
         stop()
 
 
+def test_a_vim_that_goes_when_asked_is_asked_and_nothing_more():
+    """The press that closes vim tells vim to go and waits for nothing.
+
+    Telling vim something and asking vim something cost quite different
+    amounts. A word sent to a vim costs the moment it takes to start the client
+    that carries it. A question waits for vim to answer, and the client that
+    carries it looks for the answer twice a second, so it nearly always sleeps
+    through a whole turn of its own clock before noticing: half a second, on any
+    machine, for a question whose answer took no time at all to arrive.
+
+    So the press that ends a session says its piece and stops there. Whether vim
+    heard is worth a question, but only where the answer changes what happens
+    next, and it does not when vim has gone. That is the press the reader is
+    waiting on, and it now costs what one word costs.
+    """
+    reading, vim, stop = opening_session()
+    said, questions = [], []
+    was_quit, was_listening = vimlink.quit_vim, vimlink.listening
+
+    def goes(name):
+        """Stand in for a vim that hears the word and goes."""
+        said.append(name)
+        vim.terminate()
+        return True
+
+    vimlink.quit_vim = goes
+    vimlink.listening = lambda name: questions.append(name) or True
+    try:
+        reading.wanted = False
+        session = held(reading, vim)
+        session.join(ENDS_WITHIN)
+        assert not session.is_alive(), 'the session outlived the vim holding it'
+        assert said == [SERVERNAME], said
+        assert questions == [], questions
+    finally:
+        vimlink.quit_vim, vimlink.listening = was_quit, was_listening
+        stop()
+
+
 def test_a_stop_asked_for_while_the_session_opens_is_still_honoured():
     """A press that lands before the session is holding still takes vim away.
 
@@ -585,26 +624,31 @@ def test_a_vim_that_heard_nothing_is_asked_again():
     reason given for it.
     """
     reading, vim, stop = opening_session()
-    asked = []
-    was = vimlink.quit_vim
+    told, asked = [], []
+    was_quit, was_listening = vimlink.quit_vim, vimlink.listening
 
     def deaf(name):
-        """Stand in for a vim that hears nothing until it has been asked twice."""
-        asked.append(name)
-        if len(asked) < 2:
-            return False
-        vim.terminate()
+        """Stand in for a vim that takes the word once it has stopped asking."""
+        told.append(name)
+        if len(told) > 1:
+            vim.terminate()
         return True
 
+    def answering(name):
+        """Stand in for the question, which says vim was busy the first time."""
+        asked.append(name)
+        return len(asked) > 1
+
     vimlink.quit_vim = deaf
+    vimlink.listening = answering
     try:
         reading.wanted = False
         session = held(reading, vim)
-        session.join(ENDS_WITHIN)
-        assert asked == [SERVERNAME, SERVERNAME], asked
+        session.join(ENDS_WITHIN * 2)
+        assert told == [SERVERNAME, SERVERNAME], told
         assert not session.is_alive(), 'the session held a vim that heard nothing'
     finally:
-        vimlink.quit_vim = was
+        vimlink.quit_vim, vimlink.listening = was_quit, was_listening
         stop()
 
 
@@ -637,37 +681,38 @@ def test_a_reading_ended_in_the_terminal_takes_its_page_with_it():
     assert desktop.closed, 'the reading left its connection to the desktop open'
 
 
-def test_vim_is_asked_to_go_once_however_long_it_refuses():
-    """A vim with unsaved work is asked once and then left alone.
+def test_vim_is_told_to_go_once_however_long_it_refuses():
+    """A vim with unsaved work is told once, asked once, and then left alone.
 
     vim refuses to quit while anything in it is unwritten, and the session goes
-    on holding until it agrees. A vim that refuses has still heard the asking,
-    which is what tells the session to leave it alone: asking again on every turn
-    would be four asks a second for as long as the reader takes to save, each of
-    them a vim client command started and waited on.
+    on holding until it agrees. A vim that refuses has still heard, which is
+    what tells the session to leave it alone: telling it again on every turn
+    would be four vim client commands a second for as long as the reader takes
+    to save.
+
+    Whether it heard is the one question the session asks, and it asks it once.
+    Asking costs half a second every time, so a session that went on asking
+    would spend the reader's machine on finding out the same thing over and
+    over while they saved their work.
     """
     reading, vim, stop = opening_session()
-    asked = []
-    was = vimlink.quit_vim
-
-    def heard(name):
-        """Stand in for a vim that hears the asking and refuses to go."""
-        asked.append(name)
-        return True
-
-    vimlink.quit_vim = heard
+    told, asked = [], []
+    was_quit, was_listening = vimlink.quit_vim, vimlink.listening
+    vimlink.quit_vim = lambda name: told.append(name) or True
+    vimlink.listening = lambda name: asked.append(name) or True
     try:
         reading.wanted = False
         session = held(reading, vim)
-        time.sleep(WATCH_FOR)
+        time.sleep(WATCH_FOR * 2)
+        assert told == [SERVERNAME], told
         assert asked == [SERVERNAME], asked
         assert session.is_alive(), 'the session let go of a vim that never agreed to go'
         vim.terminate()
         session.join(ENDS_WITHIN)
         assert not session.is_alive(), 'the session outlived the vim holding it'
-        assert asked == [SERVERNAME], asked
+        assert told == [SERVERNAME] and asked == [SERVERNAME], (told, asked)
     finally:
-        vimlink.quit_vim = was
+        vimlink.quit_vim, vimlink.listening = was_quit, was_listening
         stop()
 
 

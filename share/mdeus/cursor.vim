@@ -43,15 +43,33 @@ nnoremap <silent> <CR> :call <SID>MdeusClicked()<CR>
 call s:MdeusReport(0)
 
 let s:mine = 0
+let s:claim = 2.0
+
+function! s:MdeusFresh() abort
+  if s:mine <=# 0
+    return 0
+  endif
+  return reltimefloat(reltime()) - s:mine <# s:claim
+endfunction
 
 function! s:MdeusChanged() abort
   let unsaved = getbufvar(str2nr(expand('<abuf>')), '&modified')
-  let v:fcs_choice = s:mine && !unsaved ? 'reload' : 'ask'
+  let v:fcs_choice = s:MdeusFresh() && !unsaved ? 'reload' : 'ask'
   let s:mine = 0
 endfunction
 
+function! MdeusGo() abort
+  if getbufinfo({'bufmodified': 1}) != []
+    echohl WarningMsg
+    echo 'mdeus: something here is unwritten'
+    echohl None
+    return
+  endif
+  qa
+endfunction
+
 function! MdeusMine(writing) abort
-  let s:mine = a:writing
+  let s:mine = a:writing ? reltimefloat(reltime()) : 0
   return 1
 endfunction
 
@@ -88,6 +106,9 @@ function! MdeusJumpTo(first, last) abort
 endfunction
 
 function! MdeusTick(line, done, path) abort
+  if mode(1) =~# '^r'
+    return 0
+  endif
   if expand('%:p') !=# a:path
     return 0
   endif
