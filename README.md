@@ -1,6 +1,6 @@
 # mdeus
 
-> Google chrome on the left / gvim on the right
+> Google chrome on the left / gvim on the right. Same document on both sides
 
 <p align="center">
   <img src="docs/screenshot.png" alt="A reading with vim beside it, the page on the left and vim on the right in one window" width="900">
