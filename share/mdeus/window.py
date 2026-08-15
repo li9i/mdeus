@@ -81,6 +81,7 @@ DIVIDER = 6
 DIVIDER_CURSOR = 108
 DIVIDER_LINE = 0xDCDCDC
 DRAIN = 1024
+FILLING = ('_NET_WM_STATE_MAXIMIZED_HORZ', '_NET_WM_STATE_MAXIMIZED_VERT')
 ICONS = tuple(icon_path(size) for size in (24, 128))
 IN_A_TAB = (
     f'{NAME}: the page is in a tab rather than a window of its own, so vim opens\n'
@@ -88,6 +89,7 @@ IN_A_TAB = (
 )
 MANAGE_WAIT = 5
 MOVERESIZE = (1 << 8) | (1 << 9) | (1 << 10) | (1 << 11) | (1 << 12)
+NAMED_STATE = '_NET_WM_STATE'
 OPENS_FOCUSED = 'browser'
 POLL = 0.25
 SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cursor.vim')
@@ -437,6 +439,19 @@ def edit(reading, url, ending, opening=False, app_window=True, waiting=None):
     return ending.is_set()
 
 
+def filling(d):
+    """Return the two states a window carries when it fills the screen.
+
+    Named in one place because three roads read or write the pair: the ask that
+    fills a window the desktop is holding, the question of whether it is filled
+    already, and the writing of it on a window the desktop is not holding yet. A
+    name misspelt in any of them interns as cleanly as a real one and answers
+    no, so the page would quietly come back the wrong size and nothing would
+    say why.
+    """
+    return [d.intern_atom(name) for name in FILLING]
+
+
 def focus(d, window):
     """Point the keyboard at one of the panes."""
     if window is None:
@@ -523,7 +538,8 @@ def hand_back(d, container, page, box, full):
     window manager has taken charge is a request to nobody. The first is the
     configure below, which is what the manager reads as it frames the window,
     and the second is place(), once the manager has answered, which corrects
-    whatever it decided to do instead.
+    whatever it decided to do instead. Waiting for the manager to answer is
+    worth the wait only where there is a second request to make afterwards.
 
     A window the desktop had filling the screen is told so before it is put up,
     rather than asked afterwards, and that cannot be done by pixels either: the
@@ -537,7 +553,9 @@ def hand_back(d, container, page, box, full):
     arrive at the size it was and be maximised a moment later, which is a window
     the reader watches come back, stand there and then jump. Nothing is asked
     about where such a window goes, since a window filling the screen goes where
-    the desktop puts it and asking would be the reading arguing with it.
+    the desktop puts it and asking would be the reading arguing with it, and so
+    such a window is not waited for either: what the wait is for is the second
+    request, and that one has nothing to ask.
     """
     for button in (1, 2, 3):
         for modifiers in locked():
@@ -550,11 +568,12 @@ def hand_back(d, container, page, box, full):
         set_maximised(d, page)
     page.map()
     d.sync()
+    if full:
+        return
     deadline = time.monotonic() + MANAGE_WAIT
     while time.monotonic() < deadline and page.id not in client_list(d):
         time.sleep(SETTLE_WAIT)
-    if not full:
-        place(d, page, box)
+    place(d, page, box)
 
 
 def hold(d, container, panes, divider, vim, reading, ending):
@@ -591,6 +610,11 @@ def hold(d, container, panes, divider, vim, reading, ending):
     and are still two separate askings, and a reader who writes their work and
     presses again means it exactly as they did the first time.
 
+    The count is also the whole of how the asking is let go of. Every press
+    passes through it, including the one that says the reading is to go on
+    editing after all, so nothing else has to notice that what was wanted has
+    changed back.
+
     The page's window belongs to a browser the reading borrowed, so its closing
     is heard as the window being destroyed rather than as a process ending.
     Where there is no container there is nothing watching it, and such a
@@ -626,9 +650,7 @@ def hold(d, container, panes, divider, vim, reading, ending):
         if presses != reading.asks:
             presses = reading.asks
             asked = False
-        if not going:
-            asked = False
-        elif not asked and time.monotonic() >= again:
+        if going and not asked and time.monotonic() >= again:
             asked = vimlink.quit_vim(reading.servername)
             again = time.monotonic() + ASK_AGAIN
         if container is None:
@@ -848,14 +870,8 @@ def maximise(d, window):
     root.send_event(
         protocol.event.ClientMessage(
             window=window,
-            client_type=d.intern_atom('_NET_WM_STATE'),
-            data=(32, [
-                STATE_ADD,
-                d.intern_atom('_NET_WM_STATE_MAXIMIZED_HORZ'),
-                d.intern_atom('_NET_WM_STATE_MAXIMIZED_VERT'),
-                STATE_FROM_APP,
-                0,
-            ]),
+            client_type=d.intern_atom(NAMED_STATE),
+            data=(32, [STATE_ADD, *filling(d), STATE_FROM_APP, 0]),
         ),
         event_mask=X.SubstructureRedirectMask | X.SubstructureNotifyMask,
     )
@@ -909,15 +925,12 @@ def maximised(d, window):
     desktop has gone quiet about, are both read as ordinary.
     """
     try:
-        state = window.get_full_property(d.intern_atom('_NET_WM_STATE'), Xatom.ATOM)
+        state = window.get_full_property(d.intern_atom(NAMED_STATE), Xatom.ATOM)
     except Exception:
         return False
     if not state:
         return False
-    return {
-        d.intern_atom('_NET_WM_STATE_MAXIMIZED_HORZ'),
-        d.intern_atom('_NET_WM_STATE_MAXIMIZED_VERT'),
-    } <= set(state.value)
+    return set(filling(d)) <= set(state.value)
 
 
 def meet(d, container, panes, divider):
@@ -1147,13 +1160,7 @@ def set_maximised(d, window):
     nowhere. What is written here is read by the desktop as it frames the
     window, so the window arrives filled rather than arriving and then growing.
     """
-    window.change_property(
-        d.intern_atom('_NET_WM_STATE'), Xatom.ATOM, 32,
-        [
-            d.intern_atom('_NET_WM_STATE_MAXIMIZED_HORZ'),
-            d.intern_atom('_NET_WM_STATE_MAXIMIZED_VERT'),
-        ],
-    )
+    window.change_property(d.intern_atom(NAMED_STATE), Xatom.ATOM, 32, filling(d))
 
 
 def set_title(d, container, title):
