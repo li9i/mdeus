@@ -339,8 +339,21 @@ class Reading:
 
 
 class ReadingHandler(BaseHTTPRequestHandler):
-    """Serve the reading page and the small JSON API behind it."""
+    """Serve the reading page and the small JSON API behind it.
 
+    Every answer goes out the moment it is written. An answer is two small
+    writes, the headers and then the body, and TCP ordinarily holds the second
+    of them back until the first has been answered for, while the other end,
+    having nothing to say, takes its own time about saying it. That is a fixed
+    twentieth of a second on every request a page makes: on the document it
+    draws from, on every box pressed, and on every line vim sends about where
+    its cursor is. None of it is spent by this program doing anything, and none
+    of it is bought back by a faster machine, since it is a clock rather than a
+    cost. A reading serves one page on this machine and nowhere else, so there
+    is nothing on the far side worth waiting for.
+    """
+
+    disable_nagle_algorithm = True
     protocol_version = 'HTTP/1.1'
 
     def __init__(self, *args, reading, **kwargs):

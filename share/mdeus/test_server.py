@@ -750,6 +750,42 @@ def test_absolute_and_parent_paths_are_not_served():
         stop()
 
 
+def test_an_answer_is_not_held_back_by_the_network():
+    """A reply goes out the moment it is written, rather than waiting to be asked for.
+
+    A reading answers in two writes, the headers and then the body, and both of
+    them are small. TCP holds a second small write back until the first has been
+    answered for, and the other end has nothing to say and answers at its own
+    leisure, so every reply a page waits for costs the best part of a twentieth
+    of a second that no part of this program spent doing anything.
+
+    Nothing on the far side of it is ever more than a hop away: the reading
+    serves one page on this machine and nowhere else. So it is turned off, and a
+    request costs what it costs to answer.
+
+    The route asked here is the one that answers without doing anything at all,
+    so what is left in the number is the waiting and nothing else. The margin is
+    a wide one rather than a measurement: held back, one of these is forty
+    milliseconds, and no faster machine makes it less, since it is a clock and
+    not a cost.
+    """
+    root, port, reading, stop = start_reading()
+    try:
+        connection = HTTPConnection(server.HOST, port, timeout=TIMEOUT)
+        took = []
+        for _ in range(20):
+            started = time.monotonic()
+            connection.request('POST', '/api/drawn', b'{}',
+                               {'Content-Type': 'application/json'})
+            connection.getresponse().read()
+            took.append(time.monotonic() - started)
+        connection.close()
+        middle = sorted(took)[len(took) // 2]
+        assert middle < 0.02, f'{middle * 1000:.0f} ms to answer a request'
+    finally:
+        stop()
+
+
 def test_asset_inside_the_tree_is_served():
     """GET /file/ sends a file from inside the tree, bytes and type intact."""
     root, port, reading, stop = start_reading()
