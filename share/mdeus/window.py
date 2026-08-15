@@ -372,11 +372,12 @@ def edit(reading, url, ending, opening=False, app_window=True, waiting=None):
     reading.waiting = False
     d = waiting.d if waiting is not None else (x_display() if app_window else None)
 
-    was_at = None
+    was_at, was_full = None, False
     if d is not None and app_window and not opening:
         standing = page_window(d, client_list(d), reading.servername)
         if standing is not None:
             was_at = where_of(d, standing)
+            was_full = maximised(d, standing)
 
     if d is None:
         boxes, origin = (None, None), (0, 0)
@@ -430,7 +431,7 @@ def edit(reading, url, ending, opening=False, app_window=True, waiting=None):
     finally:
         reading.editing = False
         reading.wanted = False
-        release(d, container, panes, ending.is_set(), was_at)
+        release(d, container, panes, ending.is_set(), was_at, was_full)
         if d is not None:
             d.close()
     return ending.is_set()
@@ -497,7 +498,7 @@ def grab_switch(d, container):
             )
 
 
-def hand_back(d, container, page, box):
+def hand_back(d, container, page, box, full):
     """Give the page's window back to the desktop, at the size and place it had.
 
     The window is the browser's and was only borrowed, so when vim goes it is
@@ -523,6 +524,12 @@ def hand_back(d, container, page, box):
     configure below, which is what the manager reads as it frames the window,
     and the second is place(), once the manager has answered, which corrects
     whatever it decided to do instead.
+
+    A window the desktop had filling the screen is asked to fill it again, and
+    that cannot be done by pixels: the desktop forgot the window was maximised
+    when the session took it, and a page put back at the same size looks right
+    and is not. Its maximise button no longer reads as pressed, so the next
+    press of it shrinks the window rather than restoring it.
     """
     for button in (1, 2, 3):
         for modifiers in locked():
@@ -537,6 +544,8 @@ def hand_back(d, container, page, box):
     while time.monotonic() < deadline and page.id not in client_list(d):
         time.sleep(SETTLE_WAIT)
     place(d, page, box)
+    if full:
+        maximise(d, page)
 
 
 def hold(d, container, panes, divider, vim, reading, ending):
@@ -882,6 +891,26 @@ def maximise_page(servername):
     threading.Thread(target=when_it_is_up, daemon=True).start()
 
 
+def maximised(d, window):
+    """Say whether the desktop is holding a window filled to the screen.
+
+    Asked of the page's window before a session takes it off the desktop, since
+    the desktop forgets everything it was holding about a window the moment the
+    window stops being its. A window that says nothing about itself, and one the
+    desktop has gone quiet about, are both read as ordinary.
+    """
+    try:
+        state = window.get_full_property(d.intern_atom('_NET_WM_STATE'), Xatom.ATOM)
+    except Exception:
+        return False
+    if not state:
+        return False
+    return {
+        d.intern_atom('_NET_WM_STATE_MAXIMIZED_HORZ'),
+        d.intern_atom('_NET_WM_STATE_MAXIMIZED_VERT'),
+    } <= set(state.value)
+
+
 def meet(d, container, panes, divider):
     """Put the two panes edge to edge, whatever vim rounded off its width.
 
@@ -1055,14 +1084,15 @@ def put_in(d, container, window, box):
     d.sync()
 
 
-def release(d, container, panes, ending, was_at):
+def release(d, container, panes, ending, was_at, was_full):
     """Put the session's window away, and settle what becomes of the page's own.
 
     A reading going back to viewing gets its page handed back to the desktop,
-    at the size and in the place it had before the session took it. A reading
-    that is ending has nowhere to hand it to, so the window is asked to close in
-    the way its close button asks, and asked before the container it sits in is
-    taken away, so that the browser closes the window rather than losing it.
+    at the size and in the place it had before the session took it, and filling
+    the screen again where it was filling it before. A reading that is ending
+    has nowhere to hand it to, so the window is asked to close in the way its
+    close button asks, and asked before the container it sits in is taken away,
+    so that the browser closes the window rather than losing it.
 
     The page's window is missing from the panes where it was closed by whoever
     is reading, which is one of the ways a reading ends, and there is nothing
@@ -1073,7 +1103,7 @@ def release(d, container, panes, ending, was_at):
         if ending:
             close_page(d, page)
         else:
-            hand_back(d, container, page, was_at or where_of(d, container))
+            hand_back(d, container, page, was_at or where_of(d, container), was_full)
     if container is not None:
         container.destroy()
         d.sync()

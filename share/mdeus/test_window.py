@@ -86,6 +86,7 @@ class Desktop(Display):
         self.atoms = []
         self.closed = False
         self.page = page
+        self.sent = []
 
     def close(self):
         """Give the connection back, as a reading does once it has asked."""
@@ -106,10 +107,17 @@ class Desktop(Display):
         return self.atoms[atom - 1]
 
     def screen(self):
-        """Answer for the root window, which is asked what the desktop is managing."""
+        """Answer for the root window, which is asked what the desktop is managing.
+
+        It also takes the messages a reading sends the desktop about one of its
+        windows, since those go to the root rather than to the window itself.
+        """
         listed = SimpleNamespace(value=[self.page.id])
         return SimpleNamespace(
-            root=SimpleNamespace(get_full_property=lambda atom, kind: listed)
+            root=SimpleNamespace(
+                get_full_property=lambda atom, kind: listed,
+                send_event=lambda message, event_mask: self.sent.append(message),
+            )
         )
 
 
@@ -144,6 +152,45 @@ class Page:
     def send_event(self, event):
         """Remember the message rather than making one."""
         self.asked.append(event)
+
+
+class Handed(Page):
+    """A stand in for the page's window on its way back out to the desktop.
+
+    It answers everything the handing back asks of a window and remembers
+    nothing of it, since what the test is watching for is what the reading says
+    to the desktop about the window rather than what it says to the window.
+
+    What it does carry is whether the desktop had it filling the screen, which
+    is the one thing about the window that the handing back has to put back
+    itself.
+    """
+
+    def __init__(self, servername, full=None):
+        super().__init__(servername)
+        self.full = full
+
+    def change_attributes(self, **wanted):
+        """Take a change to what the window is listening for."""
+
+    def configure(self, **wanted):
+        """Take a request for where the window is to go."""
+
+    def get_full_property(self, atom, kind):
+        """Say what the desktop is holding this window as, filled or ordinary."""
+        return SimpleNamespace(value=self.full) if self.full else None
+
+    def map(self):
+        """Put the window up."""
+
+    def reparent(self, parent, x, y):
+        """Take the window out to the desktop."""
+
+    def ungrab_button(self, button, modifiers):
+        """Give back a click the session had taken."""
+
+    def unmap(self):
+        """Take the window down."""
 
 
 class Pane:
@@ -315,6 +362,32 @@ def test_a_vim_pane_as_wide_as_the_window_leaves_the_panes_where_they_are():
     window.meet(Display(), container, panes, divider)
     for name, pane in dict(panes, **divider).items():
         assert pane.asked == [], (name, pane.asked)
+
+
+def test_a_page_that_filled_the_screen_is_handed_back_filling_it():
+    """A page taken in maximised is asked to be maximised again on the way out.
+
+    The desktop forgets a window is maximised the moment a session takes that
+    window off it, and there is no putting the state back by pixels. A page
+    handed back at the size it happened to be looks right and is not: its
+    maximise button no longer reads as pressed, so the next press of it shrinks
+    the window rather than restoring it, and the reading no longer opens the way
+    it did.
+
+    A page that was an ordinary window is left as one, since asking for that one
+    to fill the screen would be the session growing a window nobody grew.
+    """
+    for full in (True, False):
+        page = Handed(SERVERNAME)
+        desktop = Desktop(page)
+        if full:
+            page.full = [desktop.intern_atom('_NET_WM_STATE_MAXIMIZED_HORZ'),
+                         desktop.intern_atom('_NET_WM_STATE_MAXIMIZED_VERT')]
+        assert window.maximised(desktop, page) == full, full
+        window.hand_back(desktop, None, page, (10, 20, 800, 600), full)
+        asked = [desktop.named(message.client_type) for message in desktop.sent]
+        wanted = ['_NET_MOVERESIZE_WINDOW'] + (['_NET_WM_STATE'] if full else [])
+        assert asked == wanted, (full, asked)
 
 
 def test_a_pane_taken_in_is_handed_back_to_the_desktop_if_the_reading_dies():
