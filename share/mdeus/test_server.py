@@ -490,6 +490,56 @@ def test_a_box_pressed_with_a_vim_behind_the_page_is_claimed_with_vim_first():
         stop()
 
 
+def test_a_box_pressed_while_another_is_being_written_waits_its_turn():
+    """A press is one turn: the claim made with vim, the write, and the giving back.
+
+    A tick the reading writes itself is claimed with vim first, so that the vim
+    warmed behind the page takes that one write without putting a question up,
+    and the claim is given back where the tick landed nowhere. Claim and write
+    are therefore one act, and a press served while another is halfway through
+    one would spend the other's claim on its own write, or hand back a claim the
+    other still needed. What that leaves is the thing the claim exists to
+    prevent: a question standing in a pane nobody is looking at.
+
+    So the whole of a press is watched here rather than the write alone. Each
+    press is served on a turn of its own and puts that turn's name down as it
+    goes, and a record in which one turn appears in the middle of another is two
+    presses that overlapped.
+    """
+    root, port, reading, stop = start_reading()
+    record = []
+    was_mine, was_line = vimlink.mine, server.tick_line
+
+    def slow_line(path, line, done):
+        """Write a tick slowly enough that another press would arrive mid write."""
+        record.append((threading.current_thread().name, 'write'))
+        time.sleep(0.05)
+        return was_line(path, line, done)
+
+    vimlink.mine = lambda servername, writing: record.append(
+        (threading.current_thread().name, f'claim {writing}')
+    )
+    server.tick_line = slow_line
+    try:
+        fetch_json(port, '/doc?' + urlencode({'path': 'tasks.md'}))
+
+        def press(line):
+            """Press one box, as one page of a reading does."""
+            fetch_json(port, '/api/tick', 'POST', {'done': True, 'line': line})
+
+        pressing = [threading.Thread(target=press, args=(line,)) for line in (1, 3, 4)]
+        for thread in pressing:
+            thread.start()
+        for thread in pressing:
+            thread.join(timeout=TIMEOUT)
+        whose = [name for name, _ in record]
+        assert len(set(whose)) == 3, record
+        assert whose == sorted(whose, key=whose.index), record
+    finally:
+        vimlink.mine, server.tick_line = was_mine, was_line
+        stop()
+
+
 def test_a_click_in_vim_is_counted_and_a_move_is_not():
     """The page is told how many clicks vim has reported, so it can follow every one.
 

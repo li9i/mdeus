@@ -63,7 +63,6 @@ NAME = 'mdeus'
 RETURN_GRACE = 1
 TASK_ITEM = re.compile(r'([ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+\[)([ xX])\]')
 TELL_TICK = 0.05
-TICKING = threading.Lock()
 WATCH_TICK = 0.25
 
 
@@ -161,29 +160,27 @@ def tick_line(path, line, done):
     lands nowhere rather than on whatever is at that line now. The refusal is
     the page's to act on.
 
-    One press is written at a time. The whole document is read to change one
-    line of it and the whole of it is written back, and the page sends the next
-    press without waiting for the last to land, so two presses served at once
-    would each write back the document they read and the one that lost would be
-    a box the page shows ticked and the document does not carry.
+    The whole document is read to change one line of it and the whole of it is
+    written back, so one press must have the document to itself. Whose turn it
+    is is settled a level up, where the claim that goes to vim is made and given
+    back, since those belong to the same turn as the write they are about.
     """
-    with TICKING:
-        try:
-            lines = path.read_text(encoding='utf-8').splitlines(keepends=True)
-        except (OSError, UnicodeDecodeError):
-            return False
-        if not 1 <= line <= len(lines):
-            return False
-        found = TASK_ITEM.match(lines[line - 1])
-        if found is None:
-            return False
-        rest = lines[line - 1][found.end(2):]
-        lines[line - 1] = f"{found.group(1)}{'x' if done else ' '}{rest}"
-        try:
-            path.write_text(''.join(lines), encoding='utf-8')
-        except OSError:
-            return False
-        return True
+    try:
+        lines = path.read_text(encoding='utf-8').splitlines(keepends=True)
+    except (OSError, UnicodeDecodeError):
+        return False
+    if not 1 <= line <= len(lines):
+        return False
+    found = TASK_ITEM.match(lines[line - 1])
+    if found is None:
+        return False
+    rest = lines[line - 1][found.end(2):]
+    lines[line - 1] = f"{found.group(1)}{'x' if done else ' '}{rest}"
+    try:
+        path.write_text(''.join(lines), encoding='utf-8')
+    except OSError:
+        return False
+    return True
 
 
 def wanted_block(body):
@@ -287,6 +284,7 @@ class Reading:
         self.over = threading.Event()
         self.root = self.current.parent
         self.servername = servername
+        self.ticks = threading.Lock()
         self.waiting = False
         self.wanted = False
 
@@ -614,16 +612,25 @@ class ReadingHandler(BaseHTTPRequestHandler):
         reading's own and takes it without asking. What another program writes
         is asked about as it should be, which is the point of telling the two
         apart.
+
+        One press has all three to itself. The claim, the write and the giving
+        back are one act about one change, and the page sends the next press
+        without waiting for the last to land, so a press served in the middle of
+        another would spend that one's claim on its own write, or hand back a
+        claim the other still needed. Either leaves the question standing in a
+        pane nobody is looking at that the claim exists to prevent, and two
+        writes of a whole document at once lose one of the ticks besides.
         """
         if self.reading.editing:
             return vimlink.tick(
                 self.reading.servername, line, done, self.reading.current
             )
-        vimlink.mine(self.reading.servername, True)
-        ticked = tick_line(self.reading.current, line, done)
-        if not ticked:
-            vimlink.mine(self.reading.servername, False)
-        return ticked
+        with self.reading.ticks:
+            vimlink.mine(self.reading.servername, True)
+            ticked = tick_line(self.reading.current, line, done)
+            if not ticked:
+                vimlink.mine(self.reading.servername, False)
+            return ticked
 
 
 class ReadingServer(ThreadingHTTPServer):
