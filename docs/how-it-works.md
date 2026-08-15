@@ -83,7 +83,8 @@ The three themes draw all of it. `GitHub` reproduces GitHub's own colours, icons
 | `state.py` | The one file a reading remembers each document in, read by the server and by the window alike. |
 | `browser.py` | Which browser can give a reading a window of its own, and the command that asks it for one. |
 | `export.py` | The self contained file `mdeus --print` writes. |
-| `vimlink.py` | The link to vim: jumps, following a link on both sides, ticking a box in the buffer, asking vim to quit, and the cursor line coming back. |
+| `vimlink.py` | The link to vim: jumps, following a link on both sides, ticking a box in the buffer, asking vim to quit, and the cursor line coming back. Everything it says goes by the shorter of two roads, and falls back to vim's own client command where that one is shut. |
+| `vimwire.py` | The shorter road. vim listens for other programs on a property of its own window and answers on a property of yours, so this writes there rather than starting a second vim to do it. That saves about half a second on every question, since the client command looks for its answer twice a second and so sleeps through a turn of its own clock before noticing one that came at once. |
 | `cursor.vim` | What vim does for as long as vim is up: the cursor reports, the double click and the `enter` key that bring the page over, the ground a jump lights, the line a box pressed in the page rewrites, and what it makes of the document changing on disk. |
 | `window.py` | One editing session: the window it is drawn in, the browser and gvim inside it, the seam between the two, the title it takes from the page, and handing the page's window back to the desktop at the end. It also opens the page's own window and asks the desktop to fill the screen with it, and warms the gvim a session will want, out of sight, while the reading is only the page. |
 | `themes.css` | The three themes, the control row above the document, the copy button on a fence, and the look of the callouts, the task lists and the notes in each theme. |
@@ -106,7 +107,7 @@ Each of the four toggles carries `aria-pressed`, and the word in it is written o
 
 ## Why each package is there
 
-`python3-markdown-it` parses. `python3-mdit-py-plugins` draws the task lists and the footnotes, `python3-linkify-it` finds the bare addresses and `python3-emoji` answers the shortcodes. `python3-xlib` draws the one window an editing session lives in and `python3-pil` reads that window's icon off the disk.
+`python3-markdown-it` parses. `python3-mdit-py-plugins` draws the task lists and the footnotes, `python3-linkify-it` finds the bare addresses and `python3-emoji` answers the shortcodes. `python3-xlib` draws the one window an editing session lives in, and carries what a reading says to vim; `python3-pil` reads that window's icon off the disk. Without it a session opens vim as an ordinary window beside the page, and everything said to vim goes through vim's own client command instead, which is slower and works.
 
 The vim half of a reading is a `gvim --servername`, reached by `vim --servername` from the outside, so it needs a vim built with both a GUI and `+clientserver`. Ubuntu's plain `vim` package has neither and `vim-gtk3` has both, which is why the installer fetches that one. `vim --version | grep clientserver` says which is on a machine.
 

@@ -16,10 +16,28 @@ import subprocess
 import sys
 import urllib.request
 
+import vimwire
+
 ASKING = 'r'
 NORMAL_MODE = r'<C-\><C-n>'
 TICKED = '1'
 TIMEOUT = 2
+
+
+def ask(servername, expression):
+    """Return what vim says an expression comes to, or None where it did not answer.
+
+    Over the desktop where that can be done, since vim listens on a property of
+    its own window and answering takes about as long as anything else the two of
+    them do. Through vim's own client command where it cannot, which is a second
+    vim started for one sentence and half a second spent waiting on it, and
+    which is what this ran on before and still runs on where the shorter road is
+    shut.
+    """
+    try:
+        return vimwire.ask(servername, expression)
+    except vimwire.Unheard:
+        return remote(servername, '--remote-expr', expression)
 
 
 def edit(servername, path):
@@ -39,11 +57,7 @@ def jump(servername, first, last):
     reading started, since centring the block and marking it for a moment is
     more than a line of typed keys can carry.
     """
-    remote(
-        servername,
-        '--remote-send',
-        f'{NORMAL_MODE}:call MdeusJumpTo({int(first)}, {int(last)})<CR>',
-    )
+    tell(servername, f'{NORMAL_MODE}:call MdeusJumpTo({int(first)}, {int(last)})<CR>')
 
 
 def listening(servername):
@@ -67,9 +81,7 @@ def listening(servername):
     answer changes what happens next and not on the way to anything a reader is
     waiting for.
     """
-    return not (remote(servername, '--remote-expr', 'mode(1)') or ASKING).startswith(
-        ASKING
-    )
+    return not (ask(servername, 'mode(1)') or ASKING).startswith(ASKING)
 
 
 def main(argv):
@@ -104,11 +116,7 @@ def mine(servername, writing):
     late. It cannot linger either, which the one it replaces could, having no
     hour of its own to run out at.
     """
-    remote(
-        servername,
-        '--remote-send',
-        f'{NORMAL_MODE}:call MdeusMine({int(bool(writing))})<CR>',
-    )
+    tell(servername, f'{NORMAL_MODE}:call MdeusMine({int(bool(writing))})<CR>')
 
 
 def quit_vim(servername):
@@ -139,9 +147,7 @@ def quit_vim(servername):
     Nothing is sent to a vim that is not there, since the client answers nothing
     and says so at once.
     """
-    return remote(
-        servername, '--remote-send', f'{NORMAL_MODE}:call MdeusGo()<CR>'
-    ) is not None
+    return tell(servername, f'{NORMAL_MODE}:call MdeusGo()<CR>')
 
 
 def remote(servername, *args):
@@ -201,6 +207,24 @@ def run(command):
     return done.stdout.strip()
 
 
+def tell(servername, keys):
+    """Put keys in vim's mouth, and say whether they went.
+
+    The same two roads the questions take, and the shorter one for the same
+    reason: it is a property written on vim's own window rather than a second
+    vim started to write it.
+
+    What comes back is only that the keys left. Whether vim acted on them is
+    another matter, and one nothing here can see: a vim with a question up takes
+    keys and holds them until it has been answered.
+    """
+    try:
+        vimwire.tell(servername, keys)
+        return True
+    except vimwire.Unheard:
+        return remote(servername, '--remote-send', keys) is not None
+
+
 def tick(servername, line, done, path):
     """Write a task list item in vim as ticked or unticked, and say whether it was.
 
@@ -222,9 +246,8 @@ def tick(servername, line, done, path):
     whole one. Either way the page hears that the tick did not land, rather
     than being left showing one the document does not carry.
     """
-    said = remote(
+    said = ask(
         servername,
-        '--remote-expr',
         f"MdeusTick({int(line)}, {int(bool(done))}, '{vim_string(path)}')",
     )
     return said == TICKED
