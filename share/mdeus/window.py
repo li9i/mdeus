@@ -93,6 +93,8 @@ NAMED_STATE = '_NET_WM_STATE'
 OPENS_FOCUSED = 'browser'
 POLL = 0.25
 SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cursor.vim')
+SETTLE_STILL = 0.01
+SETTLE_TICK = 0.002
 SETTLE_TRIES = 100
 SETTLE_WAIT = 0.01
 STATE_ADD = 1
@@ -1190,15 +1192,30 @@ def set_title(d, container, title):
 
 
 def settle(window):
-    """Wait for a window to stop changing size, since a request is only a request."""
+    """Wait for a window to stop changing size, since a request is only a request.
+
+    Settled means a window that has been the same size for a moment, and the
+    moment is the same one it always was. What is shorter is the wait to notice
+    it: the size is read often enough that the moment is seen when it passes
+    rather than at the end of whichever slow turn it happened to fall in. A
+    reading is opening while this runs and somebody is watching it open, so the
+    difference is theirs.
+
+    Reading a window's size is a question to the desktop and back, which is
+    quick enough to ask at this rate and nothing like as dear as a turn spent
+    asleep.
+    """
     was = None
-    for _ in range(SETTLE_TRIES):
-        time.sleep(SETTLE_WAIT)
+    since = deadline = time.monotonic()
+    deadline += SETTLE_TRIES * SETTLE_WAIT
+    while time.monotonic() < deadline:
         here = window.get_geometry()
         now = (here.width, here.height)
-        if now == was:
+        if now != was:
+            was, since = now, time.monotonic()
+        elif time.monotonic() - since >= SETTLE_STILL:
             return
-        was = now
+        time.sleep(SETTLE_TICK)
 
 
 def show_container(d, container):
