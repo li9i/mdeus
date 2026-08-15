@@ -86,7 +86,11 @@ def main(argv=None):
         print(f'{NAME}: cannot read: {document}', file=sys.stderr)
         return 1
     if args.print:
-        print(write_export(document))
+        try:
+            print(write_export(document))
+        except UnicodeDecodeError:
+            print(f'{NAME}: not text: {document}', file=sys.stderr)
+            return 1
         return 0
     if args.edit and not on_a_desktop():
         print(f'{NAME}: --edit needs a desktop session', file=sys.stderr)

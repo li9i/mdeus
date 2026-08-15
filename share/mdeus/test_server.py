@@ -23,6 +23,7 @@ import re
 import select
 import shutil
 import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -50,6 +51,8 @@ Linked from the start.
 """
 
 PIXEL_PNG = b'\x89PNG\r\n\x1a\n\x00\x01\x02\x03'
+
+COMMAND = Path(__file__).resolve().parents[2] / 'bin' / 'mdeus'
 
 HOME_CACHE_DIR = export.CACHE_DIR
 HOME_STATE_PATH = state.STATE_PATH
@@ -1214,6 +1217,31 @@ def test_page_title_says_the_document_and_nothing_else():
         assert fetch_json(port, '/doc')[1]['name'] == 'notes/other.md'
     finally:
         stop()
+
+
+def test_printing_a_document_that_is_not_text_is_refused():
+    """A document that is not text is refused in a line, not in a stack.
+
+    The printed copy is the whole document read at once, and a file that is not
+    text cannot be read at all. Everything else the command will not do it says
+    in one line and stops, and this one has to say it the same way: a stack over
+    the terminal names the inside of the program to somebody who asked it to
+    print a file.
+    """
+    tree = Path(tempfile.mkdtemp(prefix='mdeus-test-print-'))
+    try:
+        document = tree / 'binary.md'
+        document.write_bytes(b'# Title\n\n\xff\xfe not text at all\n')
+        done = subprocess.run(
+            [sys.executable, str(COMMAND), '--print', str(document)],
+            capture_output=True, text=True, timeout=TIMEOUT * 4,
+        )
+        assert done.returncode == 1, (done.returncode, done.stderr)
+        assert 'Traceback' not in done.stderr, done.stderr
+        assert f'not text: {document}' in done.stderr, done.stderr
+        assert done.stdout == '', done.stdout
+    finally:
+        shutil.rmtree(tree, ignore_errors=True)
 
 
 def test_removed_file_gives_the_gone_reply_and_recovers():
