@@ -157,21 +157,26 @@ class Page:
 class Handed(Page):
     """A stand in for the page's window on its way back out to the desktop.
 
-    It answers everything the handing back asks of a window and remembers
-    nothing of it, since what the test is watching for is what the reading says
-    to the desktop about the window rather than what it says to the window.
+    It answers everything the handing back asks of a window, and remembers the
+    two things whose order is the whole point: what it was told about itself,
+    and when it was put up. A window told after it is up is a window the reader
+    watches change twice.
 
-    What it does carry is whether the desktop had it filling the screen, which
-    is the one thing about the window that the handing back has to put back
-    itself.
+    What it carries is whether the desktop had it filling the screen, which is
+    the one thing about the window that the handing back has to put back itself.
     """
 
     def __init__(self, servername, full=None):
         super().__init__(servername)
         self.full = full
+        self.told = []
 
     def change_attributes(self, **wanted):
         """Take a change to what the window is listening for."""
+
+    def change_property(self, atom, kind, format, value):
+        """Take what the window is to say about itself."""
+        self.told.append(('property', atom, tuple(value)))
 
     def configure(self, **wanted):
         """Take a request for where the window is to go."""
@@ -182,6 +187,7 @@ class Handed(Page):
 
     def map(self):
         """Put the window up."""
+        self.told.append(('up',))
 
     def reparent(self, parent, x, y):
         """Take the window out to the desktop."""
@@ -365,7 +371,7 @@ def test_a_vim_pane_as_wide_as_the_window_leaves_the_panes_where_they_are():
 
 
 def test_a_page_that_filled_the_screen_is_handed_back_filling_it():
-    """A page taken in maximised is asked to be maximised again on the way out.
+    """A page taken in maximised comes back up maximised, in one movement.
 
     The desktop forgets a window is maximised the moment a session takes that
     window off it, and there is no putting the state back by pixels. A page
@@ -374,20 +380,30 @@ def test_a_page_that_filled_the_screen_is_handed_back_filling_it():
     the window rather than restoring it, and the reading no longer opens the way
     it did.
 
-    A page that was an ordinary window is left as one, since asking for that one
-    to fill the screen would be the session growing a window nobody grew.
+    So the window is told what it is before it is put up, rather than asked
+    afterwards. The desktop reads that as it takes charge of the window, and the
+    page arrives filling the screen. Told afterwards, it would arrive at its old
+    size and be maximised a moment later, which the reader watches happen: the
+    page comes back, stands there, and jumps.
+
+    A page that was an ordinary window is left as one and put where it stood,
+    since asking for that one to fill the screen would be the session growing a
+    window nobody grew.
     """
     for full in (True, False):
         page = Handed(SERVERNAME)
         desktop = Desktop(page)
+        state = desktop.intern_atom('_NET_WM_STATE')
+        filling = (desktop.intern_atom('_NET_WM_STATE_MAXIMIZED_HORZ'),
+                   desktop.intern_atom('_NET_WM_STATE_MAXIMIZED_VERT'))
         if full:
-            page.full = [desktop.intern_atom('_NET_WM_STATE_MAXIMIZED_HORZ'),
-                         desktop.intern_atom('_NET_WM_STATE_MAXIMIZED_VERT')]
+            page.full = list(filling)
         assert window.maximised(desktop, page) == full, full
         window.hand_back(desktop, None, page, (10, 20, 800, 600), full)
+        assert page.told == ([('property', state, filling)] if full else []) + [('up',)], (
+            full, page.told)
         asked = [desktop.named(message.client_type) for message in desktop.sent]
-        wanted = ['_NET_MOVERESIZE_WINDOW'] + (['_NET_WM_STATE'] if full else [])
-        assert asked == wanted, (full, asked)
+        assert asked == ([] if full else ['_NET_MOVERESIZE_WINDOW']), (full, asked)
 
 
 def test_a_pane_taken_in_is_handed_back_to_the_desktop_if_the_reading_dies():

@@ -525,11 +525,19 @@ def hand_back(d, container, page, box, full):
     and the second is place(), once the manager has answered, which corrects
     whatever it decided to do instead.
 
-    A window the desktop had filling the screen is asked to fill it again, and
-    that cannot be done by pixels: the desktop forgot the window was maximised
-    when the session took it, and a page put back at the same size looks right
-    and is not. Its maximise button no longer reads as pressed, so the next
-    press of it shrinks the window rather than restoring it.
+    A window the desktop had filling the screen is told so before it is put up,
+    rather than asked afterwards, and that cannot be done by pixels either: the
+    desktop forgot the window was maximised when the session took it, and a page
+    put back at the same size looks right and is not. Its maximise button no
+    longer reads as pressed, so the next press of it shrinks the window rather
+    than restoring it.
+
+    Told beforehand, the desktop reads it as it frames the window and the page
+    arrives filling the screen in one movement. Asked afterwards, the page would
+    arrive at the size it was and be maximised a moment later, which is a window
+    the reader watches come back, stand there and then jump. Nothing is asked
+    about where such a window goes, since a window filling the screen goes where
+    the desktop puts it and asking would be the reading arguing with it.
     """
     for button in (1, 2, 3):
         for modifiers in locked():
@@ -538,14 +546,15 @@ def hand_back(d, container, page, box, full):
     page.unmap()
     page.reparent(d.screen().root, box[0], box[1])
     page.configure(x=box[0], y=box[1], width=box[2], height=box[3])
+    if full:
+        set_maximised(d, page)
     page.map()
     d.sync()
     deadline = time.monotonic() + MANAGE_WAIT
     while time.monotonic() < deadline and page.id not in client_list(d):
         time.sleep(SETTLE_WAIT)
-    place(d, page, box)
-    if full:
-        maximise(d, page)
+    if not full:
+        place(d, page, box)
 
 
 def hold(d, container, panes, divider, vim, reading, ending):
@@ -1127,6 +1136,24 @@ def set_icon(d, container):
         data += [pixels.width, pixels.height]
         data += [a << 24 | r << 16 | g << 8 | b for r, g, b, a in pixels.getdata()]
     container.change_property(d.intern_atom('_NET_WM_ICON'), Xatom.CARDINAL, 32, data)
+
+
+def set_maximised(d, window):
+    """Say a window is to fill the screen, before the desktop has taken it back.
+
+    Written on the window rather than asked of the desktop, because at this
+    moment the window is nobody's: the session took it off the desktop when it
+    began, and a message about a window the desktop is not holding lands
+    nowhere. What is written here is read by the desktop as it frames the
+    window, so the window arrives filled rather than arriving and then growing.
+    """
+    window.change_property(
+        d.intern_atom('_NET_WM_STATE'), Xatom.ATOM, 32,
+        [
+            d.intern_atom('_NET_WM_STATE_MAXIMIZED_HORZ'),
+            d.intern_atom('_NET_WM_STATE_MAXIMIZED_VERT'),
+        ],
+    )
 
 
 def set_title(d, container, title):
