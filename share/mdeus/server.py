@@ -208,7 +208,7 @@ def wanted_state(body):
     """Return the state a request asks to store, or raise ValueError.
 
     A body naming no full width setting or no centring setting reads as that
-    setting being on, which is the same reading the stored state gets when its
+    setting being off, which is the same reading the stored state gets when its
     file has no field for it.
     """
     theme = body.get('theme')
@@ -216,9 +216,9 @@ def wanted_state(body):
         raise ValueError('unknown theme')
     return {
         'contents': bool(body.get('contents')),
-        'middle': bool(body.get('middle', True)),
+        'middle': bool(body.get('middle')),
         'theme': theme,
-        'wide': bool(body.get('wide', True)),
+        'wide': bool(body.get('wide')),
     }
 
 

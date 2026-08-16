@@ -941,17 +941,17 @@ def test_each_document_keeps_its_own_look():
                    {'theme': 'github', 'contents': False, 'middle': False})
         fetch_json(port, '/doc?' + urlencode({'path': 'notes/other.md'}))
         status, doc = fetch_json(port, '/doc')
-        assert doc['state'] == {'contents': False, 'middle': True,
-                                'theme': 'browser', 'wide': True}, doc['state']
-        assert b'class="browser reader middle wide"' in fetch(port, '/')[2]
+        assert doc['state'] == {'contents': False, 'middle': False,
+                                'theme': 'browser', 'wide': False}, doc['state']
+        assert b'class="browser reader"' in fetch(port, '/')[2]
 
         fetch_json(port, '/api/state', 'POST',
                    {'theme': 'report', 'contents': True, 'wide': False})
         fetch_json(port, '/doc?' + urlencode({'path': 'start.md'}))
         status, doc = fetch_json(port, '/doc')
         assert doc['state'] == {'contents': False, 'middle': False,
-                                'theme': 'github', 'wide': True}, doc['state']
-        assert b'class="github reader wide"' in fetch(port, '/')[2]
+                                'theme': 'github', 'wide': False}, doc['state']
+        assert b'class="github reader"' in fetch(port, '/')[2]
     finally:
         stop()
 
@@ -1034,8 +1034,8 @@ def test_every_theme_is_accepted_and_a_fourth_is_not():
             status, reply = fetch_json(
                 port, '/api/state', 'POST', {'theme': theme, 'contents': False})
             assert status == 200, (theme, status)
-            assert reply == {'contents': False, 'middle': True, 'theme': theme,
-                             'wide': True}, reply
+            assert reply == {'contents': False, 'middle': False, 'theme': theme,
+                             'wide': False}, reply
             status, doc = fetch_json(port, '/doc')
             assert doc['state']['theme'] == theme, (theme, doc['state'])
         before = state.STATE_PATH.read_text(encoding='utf-8')
@@ -1167,7 +1167,7 @@ def test_linked_document_inside_the_tree_is_rendered():
         stop()
 
 
-def test_full_width_is_on_until_it_is_unticked_and_lands_on_the_first_paint():
+def test_full_width_is_off_until_it_is_ticked_and_lands_on_the_first_paint():
     """The full width setting is stored, reported back, and already on the root element.
 
     The page could turn the class on itself once it has the document, but the
@@ -1177,31 +1177,31 @@ def test_full_width_is_on_until_it_is_unticked_and_lands_on_the_first_paint():
     root, port, reading, stop = start_reading()
     try:
         status, doc = fetch_json(port, '/doc')
-        assert doc['state']['wide'] is True, doc['state']
+        assert doc['state']['wide'] is False, doc['state']
         status, _, page = fetch(port, '/')
-        assert b'class="browser reader middle wide"' in page, page[:200]
+        assert b'class="browser reader"' in page, page[:200]
 
         status, reply = fetch_json(
             port, '/api/state', 'POST', {'theme': 'browser', 'contents': False,
-                                         'wide': False})
+                                         'wide': True})
         assert status == 200, status
-        assert reply['wide'] is False, reply
+        assert reply['wide'] is True, reply
         status, doc = fetch_json(port, '/doc')
-        assert doc['state']['wide'] is False, doc['state']
+        assert doc['state']['wide'] is True, doc['state']
         status, _, page = fetch(port, '/')
-        assert b'class="browser reader middle"' in page, page[:200]
+        assert b'class="browser reader wide"' in page, page[:200]
 
         state.STATE_PATH.write_text(
             json.dumps({'documents': {str(root / 'start.md'):
                                       {'theme': 'browser', 'contents': False}}}),
             encoding='utf-8')
         status, doc = fetch_json(port, '/doc')
-        assert doc['state']['wide'] is True, doc['state']
+        assert doc['state']['wide'] is False, doc['state']
     finally:
         stop()
 
 
-def test_middle_is_on_until_it_is_unticked_and_lands_on_the_first_paint():
+def test_middle_is_off_until_it_is_ticked_and_lands_on_the_first_paint():
     """The centring setting is stored, reported back, and already on the root element.
 
     It arrives with the markup for the same reason the full width setting does:
@@ -1211,26 +1211,26 @@ def test_middle_is_on_until_it_is_unticked_and_lands_on_the_first_paint():
     root, port, reading, stop = start_reading()
     try:
         status, doc = fetch_json(port, '/doc')
-        assert doc['state']['middle'] is True, doc['state']
+        assert doc['state']['middle'] is False, doc['state']
         status, _, page = fetch(port, '/')
-        assert b'class="browser reader middle wide"' in page, page[:200]
+        assert b'class="browser reader"' in page, page[:200]
 
         status, reply = fetch_json(
             port, '/api/state', 'POST', {'theme': 'browser', 'contents': False,
-                                         'middle': False})
+                                         'middle': True})
         assert status == 200, status
-        assert reply['middle'] is False, reply
+        assert reply['middle'] is True, reply
         status, doc = fetch_json(port, '/doc')
-        assert doc['state']['middle'] is False, doc['state']
+        assert doc['state']['middle'] is True, doc['state']
         status, _, page = fetch(port, '/')
-        assert b'class="browser reader wide"' in page, page[:200]
+        assert b'class="browser reader middle"' in page, page[:200]
 
         state.STATE_PATH.write_text(
             json.dumps({'documents': {str(root / 'start.md'):
                                       {'theme': 'browser', 'contents': False}}}),
             encoding='utf-8')
         status, doc = fetch_json(port, '/doc')
-        assert doc['state']['middle'] is True, doc['state']
+        assert doc['state']['middle'] is False, doc['state']
     finally:
         stop()
 
@@ -1239,7 +1239,7 @@ def test_missing_or_broken_state_falls_back_to_browser():
     """A state file that is absent, malformed or naming no theme is not an error."""
     root, port, reading, stop = start_reading()
     try:
-        default = {'contents': False, 'middle': True, 'theme': 'browser', 'wide': True}
+        default = {'contents': False, 'middle': False, 'theme': 'browser', 'wide': False}
         assert not state.STATE_PATH.exists(), state.STATE_PATH
         status, doc = fetch_json(port, '/doc')
         assert status == 200, status
@@ -1336,8 +1336,8 @@ def test_removed_file_gives_the_gone_reply_and_recovers():
     try:
         gone = {'editable': False, 'editing': False, 'name': 'start.md',
                 'gone': True,
-                'state': {'contents': False, 'middle': True, 'theme': 'browser',
-                          'wide': True}}
+                'state': {'contents': False, 'middle': False, 'theme': 'browser',
+                          'wide': False}}
         source = root / 'start.md'
         source.unlink()
         status, doc = fetch_json(port, '/doc')
@@ -1374,16 +1374,16 @@ def test_split_is_kept_beside_the_theme_and_falls_back():
         assert state.load_split(start) == 0.62, state.load_split(start)
         fetch_json(port, '/api/state', 'POST',
                    {'theme': 'github', 'contents': True, 'wide': False})
-        assert stored_settings(start) == {'contents': True, 'middle': True,
+        assert stored_settings(start) == {'contents': True, 'middle': False,
                                          'theme': 'github', 'wide': False,
                                          'split': 0.62}, stored_settings(start)
         state.save_split(start, 0.5)
-        assert state.load_state(start) == {'contents': True, 'middle': True,
+        assert state.load_state(start) == {'contents': True, 'middle': False,
                                            'theme': 'github', 'wide': False}, (
             state.load_state(start)
         )
-        assert state.load_state(other) == {'contents': False, 'middle': True,
-                                          'theme': 'browser', 'wide': True}, (
+        assert state.load_state(other) == {'contents': False, 'middle': False,
+                                          'theme': 'browser', 'wide': False}, (
             state.load_state(other)
         )
         for share in ('sideways', None, 0.02, 0.99):

@@ -64,18 +64,18 @@ def load_state(document):
     first one did.
 
     A document stored before the full width setting or the centring setting
-    existed has no field for either, and both read as being on, since that is
+    existed has no field for either, and both read as being off, since that is
     how a first reading opens.
     """
     stored = document_state(document)
     if stored.get('theme') in THEMES:
         return {
             'contents': bool(stored.get('contents')),
-            'middle': bool(stored.get('middle', True)),
+            'middle': bool(stored.get('middle')),
             'theme': stored['theme'],
-            'wide': bool(stored.get('wide', True)),
+            'wide': bool(stored.get('wide')),
         }
-    return {'contents': False, 'middle': True, 'theme': 'browser', 'wide': True}
+    return {'contents': False, 'middle': False, 'theme': 'browser', 'wide': False}
 
 
 def save_split(document, share):
