@@ -870,6 +870,7 @@
 
 :where(.github) .doc img {
   box-sizing: content-box;
+  height: auto;
   max-width: 100%;
 }
 

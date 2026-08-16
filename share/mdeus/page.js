@@ -15,6 +15,7 @@ const TREE = 'file:///tree/';
 const controlsNode = document.querySelector('.controls');
 const docNode = document.querySelector('.doc');
 const foldedAt = new Set();
+const imageSizes = new Map();
 
 let contentsOpen = false;
 let doc = null;
@@ -215,6 +216,7 @@ function drawCopyButtons() {
 
 function drawDocument() {
   document.title = doc.name;
+  keepImageSizes();
   if (doc.gone) {
     docNode.innerHTML = `<p class="gone">${esc(doc.name || 'The file')} is gone.</p>`;
     headingIds = [];
@@ -232,6 +234,7 @@ function drawDocument() {
     parts.unshift(meta);
   }
   docNode.innerHTML = parts.join('');
+  sizeImages();
   const headings = docNode.querySelectorAll('h1, h2, h3, h4, h5, h6');
   const used = [];
   headingIds = doc.outline.map((entry, index) => {
@@ -316,6 +319,14 @@ async function hold() {
 
 function isSection(block) {
   return sectionLines.has(Number(block.dataset.start));
+}
+
+function keepImageSizes() {
+  docNode.querySelectorAll('img').forEach((image) => {
+    if (image.naturalWidth) {
+      imageSizes.set(image.src, [image.naturalWidth, image.naturalHeight]);
+    }
+  });
 }
 
 function keepPlace() {
@@ -482,6 +493,16 @@ function saveState() {
 
 function setPressed(button, on) {
   button.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+
+function sizeImages() {
+  docNode.querySelectorAll('img').forEach((image) => {
+    const size = imageSizes.get(image.src);
+    if (size && !image.hasAttribute('width') && !image.hasAttribute('height')) {
+      image.setAttribute('width', size[0]);
+      image.setAttribute('height', size[1]);
+    }
+  });
 }
 
 function slug(text, used) {
