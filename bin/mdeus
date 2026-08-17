@@ -10,8 +10,9 @@ Read a markdown document in your browser, and edit it there when you want to.
 
 A reading opens as the page and nothing else. The window it opens in carries
 the page and no more: no address bar, no tabs, no bookmarks, and it fills the
-screen. It comes from Chrome or Chromium, whichever is on the machine, and where
-neither is the reading opens in a tab as though --tab had been asked for.
+screen. It comes from Chrome, Chromium, Brave, Vivaldi or Edge, whichever of
+them is on the machine, and where none of them is the reading opens in a tab as
+though --tab had been asked for.
 
 The Edit toggle at the top of the page brings vim in beside it. The page and vim
 are then one window, the page on the left and gvim on the right, with a seam

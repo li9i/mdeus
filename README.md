@@ -1,6 +1,6 @@
 # mdeus
 
-> Google chrome on the left / gvim on the right. Same document on both sides
+> {Chrome, Chromium, Brave, Vivaldi, Edge} on the left / gvim on the right. Same document on both sides
 
 <p align="center">
   <img src="docs/screenshot.png" alt="A reading with vim beside it, the page on the left and vim on the right in one window" width="900">
@@ -35,7 +35,7 @@ mdeus --print notes.md    write one self contained HTML file, print its path
 
 ## What it needs
 
-Python 3, Chrome or Chromium for the window with nothing in it but the page, and a vim built with `+clientserver` and a GUI for the `Edit` toggle. Without Chrome or Chromium a reading opens in an ordinary tab instead. On Ubuntu the installer fetches all of it:
+Python 3, one of Chrome, Chromium, Brave, Vivaldi or Edge for the window with nothing in it but the page, and a vim built with `+clientserver` and a GUI for the `Edit` toggle. Without one of them a reading opens in an ordinary tab instead. On Ubuntu the installer fetches all of it:
 
 ```
 python3-markdown-it  python3-mdit-py-plugins  python3-linkify-it
