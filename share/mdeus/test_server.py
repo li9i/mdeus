@@ -565,6 +565,44 @@ def test_a_click_in_vim_is_counted_and_a_move_is_not():
         stop()
 
 
+def test_a_held_page_is_not_told_a_file_moved_aside_and_back_is_gone():
+    """A save that moves the old file aside is not a document being taken away.
+
+    Written this way by vim and by plenty else, and for the moment between the
+    move and the new file landing the name has nothing at it. A page told that
+    draws the line saying the document is gone, throws away what it was showing,
+    and comes back at the top of a document the reader was some way down.
+    """
+    root, port, reading, stop = start_reading()
+    try:
+        held = start_holding(port)
+        first = heard_down(held)
+        aside = root / 'start.md~'
+        (root / 'start.md').rename(aside)
+        time.sleep(server.TELL_TICK * 4)
+        aside.rename(root / 'start.md')
+        (root / 'start.md').write_text(START_MD + '\nA new paragraph.\n', encoding='utf-8')
+        later = heard_down(held)
+        assert later['mtime'] is not None, later
+        assert later['mtime'] > first['mtime'], (later, first)
+        held.close()
+    finally:
+        stop()
+
+
+def test_a_held_page_is_told_a_file_taken_away_for_good_is_gone():
+    """A document that stays away is still reported, a grace after it went."""
+    root, port, reading, stop = start_reading()
+    try:
+        held = start_holding(port)
+        assert isinstance(heard_down(held)['mtime'], int)
+        (root / 'start.md').unlink()
+        assert heard_down(held)['mtime'] is None
+        held.close()
+    finally:
+        stop()
+
+
 def test_a_held_page_is_told_nothing_while_nothing_moves():
     """A reading speaks as the page takes hold and then holds its tongue.
 

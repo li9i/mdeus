@@ -55,6 +55,7 @@ from state import THEMES, load_state, save_state
 ASSET_DIR = Path(__file__).resolve().parent
 DEFAULT_PORT = 8766
 FILE_ROUTE = '/file/'
+GONE_GRACE = 0.5
 HOST = '127.0.0.1'
 ICON_ROUTE = '/icon.png'
 ICON_SIZE = 128
@@ -429,6 +430,16 @@ class ReadingHandler(BaseHTTPRequestHandler):
         happened to ask next, and a browser slowing the timers of a window it is
         not showing cannot leave a reading behind the file it is reading.
 
+        A name that has nothing at it is not reported as such at once. Saving a
+        file is commonly the old one moved aside and a new one written in its
+        place, and for the moment between those two the document is not there to
+        be found. Said straight out, that moment reaches the page as the document
+        having been taken away: the page throws away what it is showing, draws
+        the line that says so, and comes back a moment later at the top of a
+        document the reader was some way down. A grace covers the moment and
+        costs a document truly deleted nothing but the same grace before its page
+        hears about it.
+
         The socket becoming readable is the page going. Nothing is ever sent up
         this connection, so there is nothing else it could be, and a browser
         closing a window drops it in the same movement. A page that goes while a
@@ -446,10 +457,18 @@ class ReadingHandler(BaseHTTPRequestHandler):
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.end_headers()
         self.reading.hold()
+        missing = None
         told = None
         try:
             while not self.reading.over.is_set():
-                said = {'editing': self.reading.editing, 'mtime': self.mtime()}
+                stamp = self.mtime()
+                if stamp is not None:
+                    missing = None
+                elif told is not None:
+                    missing = time.monotonic() if missing is None else missing
+                    if time.monotonic() - missing < GONE_GRACE:
+                        stamp = told['mtime']
+                said = {'editing': self.reading.editing, 'mtime': stamp}
                 if said != told:
                     told = said
                     self.wfile.write(json.dumps(said).encode('utf-8') + b'\n')
