@@ -110,7 +110,7 @@ Not a task at all.
 \t- [ ] indented with a tab
 """
 
-THEMES = ('browser', 'report', 'github')
+THEMES = ('browser', 'report', 'github', 'wikipedia', 'wikipedia-classic')
 
 TIMEOUT = 5
 
@@ -1092,8 +1092,8 @@ def test_every_box_pressed_at_once_lands_in_the_document():
         stop()
 
 
-def test_every_theme_is_accepted_and_a_fourth_is_not():
-    """All three theme keys are stored and served back, and a name outside them is not."""
+def test_every_theme_is_accepted_and_a_fifth_is_not():
+    """All four theme keys are stored and served back, and a name outside them is not."""
     root, port, reading, stop = start_reading()
     try:
         for theme in THEMES:

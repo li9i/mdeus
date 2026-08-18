@@ -2,9 +2,13 @@
   .browser,
   .report,
   .github,
+  .wikipedia,
+  .wikipedia-classic,
   .browser *,
   .report *,
-  .github * {
+  .github *,
+  .wikipedia *,
+  .wikipedia-classic * {
     animation-duration: 0s !important;
     scroll-behavior: auto !important;
     transition-duration: 0s !important;
@@ -13,7 +17,9 @@
 
 .browser .controls,
 .report .controls,
-:where(.github) .controls {
+:where(.github) .controls,
+.wikipedia .controls,
+.wikipedia-classic .controls {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -21,13 +27,17 @@
 
 .browser .code-block,
 .report .code-block,
-:where(.github) .code-block {
+:where(.github) .code-block,
+.wikipedia .code-block,
+.wikipedia-classic .code-block {
   position: relative;
 }
 
 .browser .copy,
 .report .copy,
-:where(.github) .copy {
+:where(.github) .copy,
+.wikipedia .copy,
+.wikipedia-classic .copy {
   opacity: 0;
   position: absolute;
   right: 10px;
@@ -37,7 +47,9 @@
 
 .browser .doc .folded h1::after,
 .report .doc .folded h1::after,
-:where(.github) .doc .folded h1::after {
+:where(.github) .doc .folded h1::after,
+.wikipedia .doc .folded h1::after,
+.wikipedia-classic .doc .folded h1::after {
   content: ' ...';
   opacity: 0.45;
 }
@@ -47,26 +59,36 @@
 .report .code-block:hover .copy,
 .report .copy:focus,
 :where(.github) .code-block:hover .copy,
-:where(.github) .copy:focus {
+:where(.github) .copy:focus,
+.wikipedia .code-block:hover .copy,
+.wikipedia-classic .code-block:hover .copy,
+.wikipedia .copy:focus,
+.wikipedia-classic .copy:focus {
   opacity: 1;
 }
 
 .browser .doc .task-list-item,
 .report .doc .task-list-item,
-:where(.github) .doc .task-list-item {
+:where(.github) .doc .task-list-item,
+.wikipedia .doc .task-list-item,
+.wikipedia-classic .doc .task-list-item {
   list-style-type: none;
 }
 
 .browser .doc .task-list-item-checkbox,
 .report .doc .task-list-item-checkbox,
-:where(.github) .doc .task-list-item-checkbox {
+:where(.github) .doc .task-list-item-checkbox,
+.wikipedia .doc .task-list-item-checkbox,
+.wikipedia-classic .doc .task-list-item-checkbox {
   margin: 0 0.2em 0.25em -1.4em;
   vertical-align: middle;
 }
 
 .browser .doc .task-list-item-checkbox:enabled,
 .report .doc .task-list-item-checkbox:enabled,
-:where(.github) .doc .task-list-item-checkbox:enabled {
+:where(.github) .doc .task-list-item-checkbox:enabled,
+.wikipedia .doc .task-list-item-checkbox:enabled,
+.wikipedia-classic .doc .task-list-item-checkbox:enabled {
   cursor: pointer;
 }
 
@@ -886,4 +908,584 @@
   :where(.github.reader) .doc {
     font-size: 13px;
   }
+}
+
+.wikipedia {
+  background: #f8f9fa;
+}
+
+.wikipedia body {
+  background: #ffffff;
+  border-left: 1px solid #c8ccd1;
+  border-right: 1px solid #c8ccd1;
+  box-sizing: border-box;
+  color: #202122;
+  font: 14px/1.6 sans-serif;
+  margin: 0 auto;
+  max-width: 960px;
+  min-height: 100vh;
+  padding: 0 2rem 3rem;
+}
+
+.wikipedia.wide body {
+  max-width: none;
+}
+
+.wikipedia .controls {
+  align-items: center;
+  background: #ffffff;
+  border-bottom: 1px solid #a2a9b1;
+  color: #54595d;
+  display: flex;
+  flex-wrap: wrap;
+  font: 13px/1 sans-serif;
+  gap: 0.6em;
+  margin: 0 -2rem 1.6rem;
+  padding: 0.7rem 2rem;
+}
+
+.wikipedia .controls select,
+.wikipedia .controls button,
+.wikipedia .code-block .copy {
+  background: #f8f9fa;
+  border: 1px solid #a2a9b1;
+  border-radius: 2px;
+  color: #202122;
+  font: 13px/1.2 sans-serif;
+  padding: 0.4em 0.7em;
+}
+
+.wikipedia .controls button,
+.wikipedia .code-block .copy {
+  cursor: pointer;
+}
+
+.wikipedia .controls button[aria-pressed='true'] {
+  background: #eaecf0;
+  border-color: #72777d;
+  color: #202122;
+}
+
+.wikipedia .controls select:focus-visible,
+.wikipedia .controls button:focus-visible,
+.wikipedia .code-block .copy:focus-visible {
+  outline: 2px solid #3366cc;
+  outline-offset: 1px;
+}
+
+.wikipedia .code-block .copy {
+  font-size: 12px;
+  padding: 0.25em 0.6em;
+}
+
+.wikipedia a {
+  color: #3366cc;
+  text-decoration: none;
+}
+
+.wikipedia a:visited {
+  color: #795cb2;
+}
+
+.wikipedia a:hover {
+  text-decoration: underline;
+}
+
+.wikipedia .toc {
+  background: #f8f9fa;
+  border: 1px solid #a2a9b1;
+  display: table;
+  font-size: 0.95em;
+  margin: 0 0 1.6em;
+  padding: 7px 16px 7px 7px;
+}
+
+.wikipedia .toc-title {
+  font-weight: 700;
+  margin: 0 0 0.3em;
+  text-align: center;
+}
+
+.wikipedia .toc ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 1.4em;
+}
+
+.wikipedia .toc > ul {
+  padding-left: 0;
+}
+
+.wikipedia .toc li {
+  margin: 0.15em 0;
+}
+
+.wikipedia .doc h1,
+.wikipedia .doc h2,
+.wikipedia .doc h3,
+.wikipedia .doc h4,
+.wikipedia .doc h5,
+.wikipedia .doc h6 {
+  line-height: 1.4;
+  scroll-margin-top: calc(var(--bar-height, 0px) + 16px);
+}
+
+.wikipedia .doc h1,
+.wikipedia .doc h2 {
+  border-bottom: 1px solid #a2a9b1;
+  font-family: 'Linux Libertine', Georgia, Times, serif;
+  font-weight: 400;
+  margin: 1.2em 0 0.35em;
+  padding-bottom: 0.25em;
+}
+
+.wikipedia .doc h1 {
+  font-size: 1.85em;
+  margin-top: 0;
+}
+
+.wikipedia .doc h2 {
+  font-size: 1.5em;
+}
+
+.wikipedia .doc h3,
+.wikipedia .doc h4,
+.wikipedia .doc h5,
+.wikipedia .doc h6 {
+  font-weight: 700;
+  margin: 1.1em 0 0.3em;
+}
+
+.wikipedia .doc h3 {
+  font-size: 1.15em;
+}
+
+.wikipedia .doc h4 {
+  font-size: 1.05em;
+}
+
+.wikipedia .doc h5,
+.wikipedia .doc h6 {
+  font-size: 1em;
+}
+
+.wikipedia .doc h6 {
+  color: #54595d;
+}
+
+.wikipedia .doc .meta {
+  color: #54595d;
+  font-size: 0.875em;
+  margin: 0 0 1.6em;
+}
+
+.wikipedia .doc p {
+  margin: 0.5em 0;
+}
+
+.wikipedia .doc ul,
+.wikipedia .doc ol {
+  margin: 0.4em 0 0.6em;
+  padding-left: 1.9em;
+}
+
+.wikipedia .doc li {
+  margin: 0.12em 0;
+}
+
+.wikipedia .doc code {
+  background: #f8f9fa;
+  border: 1px solid #eaecf0;
+  border-radius: 2px;
+  font-family: ui-monospace, 'DejaVu Sans Mono', monospace;
+  font-size: 0.9em;
+  padding: 1px 4px;
+}
+
+.wikipedia .doc pre {
+  background: #f8f9fa;
+  border: 1px solid #eaecf0;
+  color: #000000;
+  font: 13px/1.6 ui-monospace, 'DejaVu Sans Mono', monospace;
+  margin: 1em 0;
+  overflow-x: auto;
+  padding: 1em;
+}
+
+.wikipedia .doc pre code {
+  background: none;
+  border: 0;
+  font-size: 1em;
+  padding: 0;
+}
+
+.wikipedia .doc blockquote {
+  border-left: 4px solid #eaecf0;
+  margin: 1em 0;
+  padding: 0.3em 0 0.3em 1.4em;
+}
+
+.wikipedia .doc blockquote p {
+  margin: 0;
+}
+
+.wikipedia .doc .markdown-alert {
+  background: #fbfbfb;
+  border: 1px solid #a2a9b1;
+  border-left: 10px solid var(--ambox, #a2a9b1);
+  margin: 1em 0;
+  padding: 0.5em 0.9em;
+}
+
+.wikipedia .doc .markdown-alert-title {
+  font-weight: 700;
+  margin: 0 0 0.2em;
+}
+
+.wikipedia .doc .markdown-alert > :last-child {
+  margin-bottom: 0;
+}
+
+.wikipedia .doc .markdown-alert-note {
+  --ambox: #3366cc;
+}
+
+.wikipedia .doc .markdown-alert-tip {
+  --ambox: #14866d;
+}
+
+.wikipedia .doc .markdown-alert-important {
+  --ambox: #9932cc;
+}
+
+.wikipedia .doc .markdown-alert-warning {
+  --ambox: #f28500;
+}
+
+.wikipedia .doc .markdown-alert-caution {
+  --ambox: #b32424;
+}
+
+.wikipedia .doc table {
+  background: #f8f9fa;
+  border: 1px solid #a2a9b1;
+  border-collapse: collapse;
+  margin: 1em 0;
+}
+
+.wikipedia .doc th,
+.wikipedia .doc td {
+  border: 1px solid #a2a9b1;
+  padding: 0.35em 0.7em;
+}
+
+.wikipedia .doc th {
+  background: #eaecf0;
+  font-weight: 700;
+  text-align: left;
+}
+
+.wikipedia .doc hr {
+  border: 0;
+  border-top: 1px solid #a2a9b1;
+  margin: 1.6em 0;
+}
+
+.wikipedia .doc .footnotes {
+  font-size: 0.9em;
+}
+
+.wikipedia .doc img {
+  height: auto;
+  max-width: 100%;
+}
+
+.wikipedia-classic {
+  background: #f6f6f6;
+}
+
+.wikipedia-classic body {
+  background: #ffffff;
+  border-left: 1px solid #a7d7f9;
+  border-right: 1px solid #a7d7f9;
+  box-sizing: border-box;
+  color: #252525;
+  font: 13px/1.6 sans-serif;
+  margin: 0 auto;
+  max-width: 62em;
+  min-height: 100vh;
+  padding: 0 2rem 3rem;
+}
+
+.wikipedia-classic.wide body {
+  max-width: none;
+}
+
+.wikipedia-classic .controls {
+  align-items: center;
+  background: #ffffff;
+  border-bottom: 1px solid #a2a9b1;
+  color: #54595d;
+  display: flex;
+  flex-wrap: wrap;
+  font: 13px/1 sans-serif;
+  gap: 0.6em;
+  margin: 0 -2rem 1.6rem;
+  padding: 0.7rem 2rem;
+}
+
+.wikipedia-classic .controls select,
+.wikipedia-classic .controls button,
+.wikipedia-classic .code-block .copy {
+  background: #f8f9fa;
+  border: 1px solid #a7d7f9;
+  border-radius: 2px;
+  color: #0645ad;
+  font: 13px/1.2 sans-serif;
+  padding: 0.4em 0.7em;
+}
+
+.wikipedia-classic .controls button,
+.wikipedia-classic .code-block .copy {
+  cursor: pointer;
+}
+
+.wikipedia-classic .controls button[aria-pressed='true'] {
+  background: #ffffff;
+  border-color: #2a4b8d;
+  color: #252525;
+}
+
+.wikipedia-classic .controls select:focus-visible,
+.wikipedia-classic .controls button:focus-visible,
+.wikipedia-classic .code-block .copy:focus-visible {
+  outline: 2px solid #2a4b8d;
+  outline-offset: 1px;
+}
+
+.wikipedia-classic .code-block .copy {
+  font-size: 12px;
+  padding: 0.25em 0.6em;
+}
+
+.wikipedia-classic a {
+  color: #0645ad;
+  text-decoration: none;
+}
+
+.wikipedia-classic a:visited {
+  color: #0b0080;
+}
+
+.wikipedia-classic a:hover {
+  text-decoration: underline;
+}
+
+.wikipedia-classic .toc {
+  background: #f9f9f9;
+  border: 1px solid #a2a9b1;
+  display: table;
+  font-size: 0.95em;
+  margin: 0 0 1.6em;
+  padding: 7px 16px 7px 7px;
+}
+
+.wikipedia-classic .toc-title {
+  font-weight: 700;
+  margin: 0 0 0.3em;
+  text-align: center;
+}
+
+.wikipedia-classic .toc ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 1.4em;
+}
+
+.wikipedia-classic .toc > ul {
+  padding-left: 0;
+}
+
+.wikipedia-classic .toc li {
+  margin: 0.15em 0;
+}
+
+.wikipedia-classic .doc h1,
+.wikipedia-classic .doc h2,
+.wikipedia-classic .doc h3,
+.wikipedia-classic .doc h4,
+.wikipedia-classic .doc h5,
+.wikipedia-classic .doc h6 {
+  line-height: 1.4;
+  scroll-margin-top: calc(var(--bar-height, 0px) + 16px);
+}
+
+.wikipedia-classic .doc h1,
+.wikipedia-classic .doc h2 {
+  border-bottom: 1px solid #a2a9b1;
+  font-family: 'Linux Libertine', Georgia, Times, serif;
+  font-weight: 400;
+  margin: 1.2em 0 0.35em;
+  padding-bottom: 0.25em;
+}
+
+.wikipedia-classic .doc h1 {
+  font-size: 1.85em;
+  margin-top: 0;
+}
+
+.wikipedia-classic .doc h2 {
+  font-size: 1.5em;
+}
+
+.wikipedia-classic .doc h3,
+.wikipedia-classic .doc h4,
+.wikipedia-classic .doc h5,
+.wikipedia-classic .doc h6 {
+  font-weight: 700;
+  margin: 1.1em 0 0.3em;
+}
+
+.wikipedia-classic .doc h3 {
+  font-size: 1.15em;
+}
+
+.wikipedia-classic .doc h4 {
+  font-size: 1.05em;
+}
+
+.wikipedia-classic .doc h5,
+.wikipedia-classic .doc h6 {
+  font-size: 1em;
+}
+
+.wikipedia-classic .doc h6 {
+  color: #54595d;
+}
+
+.wikipedia-classic .doc .meta {
+  color: #54595d;
+  font-size: 0.875em;
+  margin: 0 0 1.6em;
+}
+
+.wikipedia-classic .doc p {
+  margin: 0.5em 0;
+}
+
+.wikipedia-classic .doc ul,
+.wikipedia-classic .doc ol {
+  margin: 0.4em 0 0.6em;
+  padding-left: 1.9em;
+}
+
+.wikipedia-classic .doc li {
+  margin: 0.12em 0;
+}
+
+.wikipedia-classic .doc code {
+  background: #f9f9f9;
+  border: 1px solid #dddddd;
+  border-radius: 2px;
+  font-family: ui-monospace, 'DejaVu Sans Mono', monospace;
+  font-size: 0.9em;
+  padding: 1px 4px;
+}
+
+.wikipedia-classic .doc pre {
+  background: #f9f9f9;
+  border: 1px dashed #2f6fab;
+  color: #000000;
+  font: 12px/1.6 ui-monospace, 'DejaVu Sans Mono', monospace;
+  margin: 1em 0;
+  overflow-x: auto;
+  padding: 1em;
+}
+
+.wikipedia-classic .doc pre code {
+  background: none;
+  border: 0;
+  font-size: 1em;
+  padding: 0;
+}
+
+.wikipedia-classic .doc blockquote {
+  border-left: 2px solid #dddddd;
+  margin: 1em 0;
+  padding: 0.3em 0 0.3em 1.4em;
+}
+
+.wikipedia-classic .doc blockquote p {
+  margin: 0;
+}
+
+.wikipedia-classic .doc .markdown-alert {
+  background: #fbfbfb;
+  border: 1px solid #a2a9b1;
+  border-left: 10px solid var(--ambox, #a2a9b1);
+  margin: 1em 0;
+  padding: 0.5em 0.9em;
+}
+
+.wikipedia-classic .doc .markdown-alert-title {
+  font-weight: 700;
+  margin: 0 0 0.2em;
+}
+
+.wikipedia-classic .doc .markdown-alert > :last-child {
+  margin-bottom: 0;
+}
+
+.wikipedia-classic .doc .markdown-alert-note {
+  --ambox: #0645ad;
+}
+
+.wikipedia-classic .doc .markdown-alert-tip {
+  --ambox: #14866d;
+}
+
+.wikipedia-classic .doc .markdown-alert-important {
+  --ambox: #9932cc;
+}
+
+.wikipedia-classic .doc .markdown-alert-warning {
+  --ambox: #f28500;
+}
+
+.wikipedia-classic .doc .markdown-alert-caution {
+  --ambox: #b32424;
+}
+
+.wikipedia-classic .doc table {
+  background: #f9f9f9;
+  border: 1px solid #a2a9b1;
+  border-collapse: collapse;
+  margin: 1em 0;
+}
+
+.wikipedia-classic .doc th,
+.wikipedia-classic .doc td {
+  border: 1px solid #a2a9b1;
+  padding: 0.35em 0.7em;
+}
+
+.wikipedia-classic .doc th {
+  background: #f2f2f2;
+  font-weight: 700;
+  text-align: left;
+}
+
+.wikipedia-classic .doc hr {
+  border: 0;
+  border-top: 1px solid #a2a9b1;
+  margin: 1.6em 0;
+}
+
+.wikipedia-classic .doc .footnotes {
+  font-size: 0.9em;
+}
+
+.wikipedia-classic .doc img {
+  height: auto;
+  max-width: 100%;
 }

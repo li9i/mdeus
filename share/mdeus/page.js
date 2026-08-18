@@ -9,6 +9,8 @@ const THEMES = [
   ['browser', 'Browser default'],
   ['report', 'Mono headings'],
   ['github', 'GitHub'],
+  ['wikipedia', 'Wikipedia'],
+  ['wikipedia-classic', 'Wikipedia classic'],
 ];
 const TREE = 'file:///tree/';
 

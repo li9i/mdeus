@@ -26,7 +26,7 @@ DEFAULT_SPLIT = 0.44
 MAX_SPLIT = 0.85
 MIN_SPLIT = 0.15
 STATE_PATH = Path.home() / '.config' / 'mdeus' / 'state.json'
-THEMES = ('browser', 'report', 'github')
+THEMES = ('browser', 'report', 'github', 'wikipedia', 'wikipedia-classic')
 
 
 def document_state(document):
