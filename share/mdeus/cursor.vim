@@ -3,7 +3,8 @@ let s:pending = 0
 
 function! s:MdeusReport(timer) abort
   let s:pending = 0
-  call job_start(['python3', $MDEUS_LINK, 'cursor', $MDEUS_URL, string(line('.'))])
+  call job_start(
+    \ ['python3', $MDEUS_LINK, 'cursor', $MDEUS_URL, string(line('.')), s:MdeusShare()])
 endfunction
 
 function! s:MdeusMoved() abort
@@ -15,8 +16,13 @@ function! s:MdeusMoved() abort
 endfunction
 
 function! s:MdeusClicked() abort
-  call job_start(
-    \ ['python3', $MDEUS_LINK, 'cursor', $MDEUS_URL, string(line('.')), 'click'])
+  call job_start(['python3', $MDEUS_LINK, 'cursor', $MDEUS_URL,
+    \ string(line('.')), s:MdeusShare(), 'click'])
+endfunction
+
+function! s:MdeusShare() abort
+  let height = winheight(0)
+  return height <=# 0 ? '0' : string((winline() - 1) * 1.0 / height)
 endfunction
 
 function! s:MdeusEnds(command) abort

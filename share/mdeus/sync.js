@@ -1,8 +1,10 @@
 'use strict';
 
 const CURSOR_MS = 200;
+const DEFAULT_SHARE = 0.25;
 const FLASH_MS = 1000;
 
+const controls = document.querySelector('.controls');
 const pane = document.querySelector('.doc');
 
 let clicksAt = null;
@@ -10,6 +12,7 @@ let cursorTimer = null;
 let flashTimer = null;
 let lineAt = null;
 let ruleAt = null;
+let shareAt = DEFAULT_SHARE;
 
 function begin() {
   pane.addEventListener('dblclick', onBlockDouble);
@@ -67,6 +70,7 @@ function markCursor(line, clicked) {
   block.classList.add('mdeus-cursor');
   ruleAt = Number(block.dataset.start);
   if (clicked) {
+    flash(block);
     show(block);
   }
 }
@@ -110,6 +114,9 @@ async function pollCursor() {
   } catch (error) {
     return;
   }
+  if (typeof where.share === 'number') {
+    shareAt = where.share;
+  }
   if (typeof where.line === 'number') {
     const clicked = clicksAt !== null && where.clicks !== clicksAt;
     if (clicked || where.line !== lineAt || !ruleStands()) {
@@ -126,7 +133,9 @@ function ruleStands() {
 }
 
 function show(block) {
-  window.scrollBy(0, block.getBoundingClientRect().top - window.innerHeight / 4);
+  const head = controls.getBoundingClientRect().bottom;
+  const room = window.innerHeight - head;
+  window.scrollBy(0, block.getBoundingClientRect().top - head - room * shareAt);
 }
 
 function shownFor(block) {

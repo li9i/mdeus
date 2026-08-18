@@ -120,6 +120,12 @@ def broken_state(document):
     raise RuntimeError('the state file fell over')
 
 
+def cursor_of(port):
+    """Return the clicks and the line the reading is telling the page about."""
+    state = fetch_json(port, '/api/cursor')[1]
+    return state['clicks'], state['line']
+
+
 def fetch(port, path, method='GET', body=None):
     """Make one request and return the status, the content type and the body."""
     connection = HTTPConnection(server.HOST, port, timeout=TIMEOUT)
@@ -552,15 +558,37 @@ def test_a_click_in_vim_is_counted_and_a_move_is_not():
     root, port, reading, stop = start_reading(editing=True)
     try:
         status, state = fetch_json(port, '/api/cursor')
-        assert (status, state) == (200, {'clicks': 0, 'line': None}), state
+        assert status == 200 and (state['clicks'], state['line']) == (0, None), state
         fetch_json(port, '/api/cursor', 'POST', {'line': 12})
-        assert fetch_json(port, '/api/cursor')[1] == {'clicks': 0, 'line': 12}
+        assert cursor_of(port) == (0, 12)
         fetch_json(port, '/api/cursor', 'POST', {'clicked': True, 'line': 30})
-        assert fetch_json(port, '/api/cursor')[1] == {'clicks': 1, 'line': 30}
+        assert cursor_of(port) == (1, 30)
         fetch_json(port, '/api/cursor', 'POST', {'line': 30})
-        assert fetch_json(port, '/api/cursor')[1] == {'clicks': 1, 'line': 30}
+        assert cursor_of(port) == (1, 30)
         fetch_json(port, '/api/cursor', 'POST', {'clicked': True, 'line': 30})
-        assert fetch_json(port, '/api/cursor')[1] == {'clicks': 2, 'line': 30}
+        assert cursor_of(port) == (2, 30)
+    finally:
+        stop()
+
+
+def test_a_cursor_report_carries_how_far_down_its_window_the_cursor_sits():
+    """The page needs where vim is holding the line, not only which line it is.
+
+    A page that only knew the line would have to choose a height of its own for
+    it, and the block would land somewhere other than where the reader is
+    already looking in the other half.
+    """
+    root, port, reading, stop = start_reading(editing=True)
+    try:
+        assert fetch_json(port, '/api/cursor')[1]['share'] == server.DEFAULT_SHARE
+        fetch_json(port, '/api/cursor', 'POST', {'line': 12, 'share': 0.75})
+        assert fetch_json(port, '/api/cursor')[1]['share'] == 0.75
+        fetch_json(port, '/api/cursor', 'POST', {'line': 12})
+        assert fetch_json(port, '/api/cursor')[1]['share'] == server.DEFAULT_SHARE
+        fetch_json(port, '/api/cursor', 'POST', {'line': 12, 'share': 4})
+        assert fetch_json(port, '/api/cursor')[1]['share'] == server.DEFAULT_SHARE
+        fetch_json(port, '/api/cursor', 'POST', {'line': 12, 'share': 'halfway'})
+        assert fetch_json(port, '/api/cursor')[1]['share'] == server.DEFAULT_SHARE
     finally:
         stop()
 

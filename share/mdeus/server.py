@@ -54,6 +54,7 @@ from state import THEMES, load_state, save_state
 
 ASSET_DIR = Path(__file__).resolve().parent
 DEFAULT_PORT = 8766
+DEFAULT_SHARE = 0.25
 FILE_ROUTE = '/file/'
 GONE_GRACE = 0.5
 HOST = '127.0.0.1'
@@ -205,6 +206,22 @@ def wanted_line(body):
         raise ValueError('no line') from error
 
 
+def wanted_share(body):
+    """Return how far down its window vim says the cursor sits, as a share of it.
+
+    A body naming no share, or naming one no window could put a cursor at,
+    reads as the quarter down the page a reading went to before vim said
+    anything about it. Nothing here is worth refusing a cursor report over: the
+    line is what the report is for, and a page that cannot know the height can
+    still mark the block.
+    """
+    try:
+        share = float(body['share'])
+    except (KeyError, TypeError, ValueError):
+        return DEFAULT_SHARE
+    return share if 0 <= share <= 1 else DEFAULT_SHARE
+
+
 def wanted_state(body):
     """Return the state a request asks to store, or raise ValueError.
 
@@ -285,6 +302,7 @@ class Reading:
         self.over = threading.Event()
         self.root = self.current.parent
         self.servername = servername
+        self.share = DEFAULT_SHARE
         self.ticks = threading.Lock()
         self.waiting = False
         self.wanted = False
@@ -366,7 +384,11 @@ class ReadingHandler(BaseHTTPRequestHandler):
         if path == '/' or path[1:] == self.reading.servername:
             self.send_page()
         elif path == '/api/cursor' and self.reading.editing:
-            self.send_json({'clicks': self.reading.clicks, 'line': self.reading.cursor})
+            self.send_json({
+                'clicks': self.reading.clicks,
+                'line': self.reading.cursor,
+                'share': self.reading.share,
+            })
         elif path.startswith('/assets/'):
             self.send_from(ASSET_DIR, unquote(path[len('/assets/') :]))
         elif path == '/doc':
@@ -386,6 +408,7 @@ class ReadingHandler(BaseHTTPRequestHandler):
             body = self.read_json()
             if self.path == '/api/cursor' and self.reading.editing:
                 self.reading.cursor = wanted_line(body)
+                self.reading.share = wanted_share(body)
                 if body.get('clicked'):
                     self.reading.clicks += 1
                 self.send_json({'ok': True})

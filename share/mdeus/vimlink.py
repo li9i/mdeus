@@ -88,7 +88,7 @@ def main(argv):
     """Run the small job the reading asks for from the command line."""
     what = argv[0]
     if what == 'cursor':
-        report_cursor(argv[1], argv[2], argv[3:4] == ['click'])
+        report_cursor(argv[1], argv[2], argv[3], argv[4:5] == ['click'])
     elif what == 'ending':
         report_ending(argv[1])
     return 0
@@ -158,7 +158,7 @@ def remote(servername, *args):
         return None
 
 
-def report_cursor(url, line, clicked=False):
+def report_cursor(url, line, share, clicked=False):
     """Tell the reading where the vim cursor is now.
 
     vim starts this and leaves it to itself, so a server that has stopped
@@ -167,10 +167,18 @@ def report_cursor(url, line, clicked=False):
     A line the pointer was clicked on says so, because the page follows a click
     to wherever it lands and follows an ordinary move only when it is far
     enough to be worth following.
+
+    How far down its own window vim is holding that line travels with it, since
+    a page brought over to a click is brought to the height the reader is
+    already looking at rather than to one of the page's choosing. Both halves
+    are panes of the one window and so stand the same height, and a share of
+    that height means the same thing on either side of the seam.
     """
     request = urllib.request.Request(
         f'{url}/api/cursor',
-        data=json.dumps({'clicked': clicked, 'line': int(line)}).encode('utf-8'),
+        data=json.dumps(
+            {'clicked': clicked, 'line': int(line), 'share': float(share)}
+        ).encode('utf-8'),
         headers={'Content-Type': 'application/json'},
     )
     try:
