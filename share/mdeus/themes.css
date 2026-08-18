@@ -33,6 +33,14 @@
   position: relative;
 }
 
+.browser .table-block,
+.report .table-block,
+:where(.github) .table-block,
+.wikipedia .table-block,
+.wikipedia-classic .table-block {
+  overflow-x: auto;
+}
+
 .browser .copy,
 .report .copy,
 :where(.github) .copy,

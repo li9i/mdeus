@@ -247,7 +247,17 @@ function drawDocument() {
     return id;
   });
   drawCopyButtons();
+  drawTableBlocks();
   applyFolds();
+}
+
+function drawTableBlocks() {
+  docNode.querySelectorAll('table').forEach((table) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'table-block';
+    table.parentNode.insertBefore(wrapper, table);
+    wrapper.append(table);
+  });
 }
 
 function drawn() {
