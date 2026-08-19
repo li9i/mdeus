@@ -217,16 +217,16 @@ def test_the_link_falls_back_to_the_vim_client():
     def client(servername, *args):
         """Stand in for the vim client command."""
         (asked if args[0] == '--remote-expr' else told).append(args)
-        return 'n'
+        return '1' if args[1] == vimlink.UNWRITTEN else 'n'
 
     vimwire.ask = vimwire.tell = unheard
     vimlink.remote = client
     try:
         assert vimlink.ask(SERVERNAME, 'mode(1)') == 'n'
-        assert asked == [('--remote-expr', 'mode(1)')], asked
+        assert asked[0] == ('--remote-expr', 'mode(1)'), asked
         assert vimlink.tell(SERVERNAME, 'keys') is True
         assert told == [('--remote-send', 'keys')], told
-        assert vimlink.listening(SERVERNAME) is True
+        assert vimlink.unwritten(SERVERNAME) is True
     finally:
         vimwire.ask, vimwire.tell = was_ask, was_tell
         vimlink.remote = was_remote

@@ -17,36 +17,41 @@ SERVERNAME = 'MDEUSTEST'
 class Vim:
     """A stand in for the vim client command, answering as one vim would.
 
-    Asked what vim is doing it answers the mode it was made with, and a stand in
-    made with nothing answers nothing at all, which is what a vim that has gone
-    or is held up in something does. Everything else is remembered rather than
-    sent, which is how a test sees what reached a vim that should have been left
-    alone.
+    Asked what it has unwritten it answers the count it was made with, and a
+    stand in with a question up answers nothing at all, which is what a vim
+    holding a prompt does and what one that has gone does. Everything else is
+    remembered rather than sent, which is how a test sees what reached a vim
+    that should have been left alone.
     """
 
-    def __init__(self, mode='n', answer=''):
+    def __init__(self, mode='n', answer='', unwritten='0'):
         self.answer = answer
         self.asked = []
         self.mode = mode
         self.sent = []
+        self.unwritten = unwritten
 
     def __call__(self, servername, *args):
         """Answer the questions a vim answers, and remember everything said to it.
 
-        A vim with a question up says so when asked what it is doing, and
-        refuses a tick for the same reason, since the tick is a function of its
-        own that can see the state it is in. Every question is remembered as
-        well as answered, because what one costs is the reason for asking as
-        seldom as the link does.
+        A vim with a question up answers neither what it has unwritten nor a
+        tick, the second because the tick is a function of its own that can see
+        the state it is in. Every question is remembered as well as answered,
+        because what one costs is the reason for asking as seldom as the link
+        does.
         """
-        if args[:2] == ('--remote-expr', 'mode(1)'):
+        if args[:2] == ('--remote-expr', vimlink.UNWRITTEN):
             self.asked.append(args)
-            return self.mode
+            return None if self.waiting() else self.unwritten
         if args[0] == '--remote-expr' and args[1].startswith('MdeusTick('):
             self.asked.append(args)
-            return '0' if self.mode and self.mode.startswith('r') else self.answer
+            return '0' if self.waiting() else self.answer
         self.sent.append(args)
         return self.answer
+
+    def waiting(self):
+        """Say whether this vim has a question up and so hears nothing."""
+        return bool(self.mode) and self.mode.startswith('r')
 
 
 def spoken_to(vim, what):
@@ -92,25 +97,47 @@ def test_a_vim_that_answers_nothing_is_told_nothing():
     assert landed is False, landed
 
 
-def test_a_vim_waiting_to_be_answered_is_told_and_says_it_was_not_listening():
+def test_a_vim_waiting_to_be_answered_is_told_and_says_nothing_of_its_work():
     """Telling vim to go is not a question, so the telling goes out either way.
 
     A vim with a question up is answering whoever is reading and nothing else.
     Keys sent to it then are neither acted on nor taken as the answer: they are
     dropped, and the sending looks exactly as it does for a vim that acted on
     them. So the word goes out first, since it costs a moment and the reader is
-    waiting on it, and whether vim had it is a separate question asked
+    waiting on it, and what vim has unwritten is a separate question asked
     afterwards by whoever minds.
+
+    Such a vim answers that question with nothing, which is neither work to be
+    kept nor an empty vim to be taken away, and whoever asked is left to say the
+    word again.
 
     All three of the states vim waits to be answered in are read the same way:
     the hit enter prompt, the more prompt, and a question with choices in it.
     """
     for mode in ('r', 'rm', 'r?'):
-        vim = Vim(mode)
+        vim = Vim(mode, unwritten='1')
         landed = spoken_to(vim, lambda: vimlink.quit_vim(SERVERNAME))
         assert landed is True, (mode, landed)
         assert vim.sent[0][0] == '--remote-send', (mode, vim.sent)
-        assert spoken_to(vim, lambda: vimlink.listening(SERVERNAME)) is False, mode
+        assert spoken_to(vim, lambda: vimlink.unwritten(SERVERNAME)) is None, mode
+
+
+def test_a_vim_holding_unwritten_work_says_so_and_an_empty_one_says_that():
+    """The one question a session asks vim has three answers, and all three matter.
+
+    A vim with something unwritten in it has heard the word to go and is
+    refusing on the work, and is left alone until the reader saves. A vim with
+    nothing unwritten has not heard it, since it would have gone, and is told
+    again. A vim that answers nothing says only that it cannot be seen, and
+    nothing is taken away on that.
+    """
+    holding = Vim(unwritten='2')
+    assert spoken_to(holding, lambda: vimlink.unwritten(SERVERNAME)) is True
+    assert holding.asked == [('--remote-expr', vimlink.UNWRITTEN)], holding.asked
+    empty = Vim()
+    assert spoken_to(empty, lambda: vimlink.unwritten(SERVERNAME)) is False
+    gone = Vim(None, unwritten=None)
+    assert spoken_to(gone, lambda: vimlink.unwritten(SERVERNAME)) is None
 
 
 def test_a_vim_waiting_to_be_answered_is_not_ticked():

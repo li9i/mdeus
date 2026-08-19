@@ -559,7 +559,7 @@ def test_a_vim_that_goes_when_asked_is_asked_and_nothing_more():
     """
     reading, vim, stop = opening_session()
     said, questions = [], []
-    was_quit, was_listening = vimlink.quit_vim, vimlink.listening
+    was_quit, was_unwritten = vimlink.quit_vim, vimlink.unwritten
 
     def goes(name):
         """Stand in for a vim that hears the word and goes."""
@@ -568,7 +568,7 @@ def test_a_vim_that_goes_when_asked_is_asked_and_nothing_more():
         return True
 
     vimlink.quit_vim = goes
-    vimlink.listening = lambda name: questions.append(name) or True
+    vimlink.unwritten = lambda name: questions.append(name) or True
     try:
         reading.wanted = False
         session = held(reading, vim)
@@ -577,7 +577,7 @@ def test_a_vim_that_goes_when_asked_is_asked_and_nothing_more():
         assert said == [SERVERNAME], said
         assert questions == [], questions
     finally:
-        vimlink.quit_vim, vimlink.listening = was_quit, was_listening
+        vimlink.quit_vim, vimlink.unwritten = was_quit, was_unwritten
         stop()
 
 
@@ -617,7 +617,9 @@ def test_a_vim_that_heard_nothing_is_asked_again():
     A vim waiting to be answered hears nothing until it has been, and what puts a
     question up is the document being written by another program: vim asks whether
     to load it and takes the next key as the answer. A press meant to end the
-    reading lands in the middle of that and goes nowhere.
+    reading lands in the middle of that and goes nowhere. Such a vim answers
+    nothing either, so what it has unwritten cannot be seen while the question
+    stands.
 
     A session that asks once has thrown that press away, and what the reader is
     left with is a reading that will not close however often they press, with no
@@ -625,7 +627,7 @@ def test_a_vim_that_heard_nothing_is_asked_again():
     """
     reading, vim, stop = opening_session()
     told, asked = [], []
-    was_quit, was_listening = vimlink.quit_vim, vimlink.listening
+    was_quit, was_unwritten = vimlink.quit_vim, vimlink.unwritten
 
     def deaf(name):
         """Stand in for a vim that takes the word once it has stopped asking."""
@@ -635,12 +637,12 @@ def test_a_vim_that_heard_nothing_is_asked_again():
         return True
 
     def answering(name):
-        """Stand in for the question, which says vim was busy the first time."""
+        """Stand in for the question, which says nothing while it stands."""
         asked.append(name)
-        return len(asked) > 1
+        return None
 
     vimlink.quit_vim = deaf
-    vimlink.listening = answering
+    vimlink.unwritten = answering
     try:
         reading.wanted = False
         session = held(reading, vim)
@@ -648,7 +650,137 @@ def test_a_vim_that_heard_nothing_is_asked_again():
         assert told == [SERVERNAME, SERVERNAME], told
         assert not session.is_alive(), 'the session held a vim that heard nothing'
     finally:
-        vimlink.quit_vim, vimlink.listening = was_quit, was_listening
+        vimlink.quit_vim, vimlink.unwritten = was_quit, was_unwritten
+        stop()
+
+
+def test_a_vim_that_kept_the_word_and_stayed_is_told_again():
+    """A vim still standing with nothing unwritten never had the word.
+
+    vim goes when it is told to and has nothing unwritten, so one that is told
+    and stays with nothing unwritten was never told: the word was dropped
+    somewhere between the two. That is why what vim has unwritten is the one
+    question asked. Reading how vim looks instead cannot tell a word that was
+    refused from a word that never arrived, and a session that takes the second
+    for the first waits for a vim nobody is asking any more. The reader is left
+    with a session that will not close and a page that cannot end the reading
+    either, since a reading it believes vim is holding is one the page has no
+    say over.
+    """
+    reading, vim, stop = opening_session()
+    told = []
+    was_quit, was_unwritten = vimlink.quit_vim, vimlink.unwritten
+
+    def dropped(name):
+        """Stand in for a vim the first word never reached."""
+        told.append(name)
+        if len(told) > 1:
+            vim.terminate()
+        return True
+
+    vimlink.quit_vim = dropped
+    vimlink.unwritten = lambda name: False
+    try:
+        reading.wanted = False
+        session = held(reading, vim)
+        session.join(ENDS_WITHIN * 2)
+        assert told == [SERVERNAME, SERVERNAME], told
+        assert not session.is_alive(), 'the session held a vim that never had the word'
+    finally:
+        vimlink.quit_vim, vimlink.unwritten = was_quit, was_unwritten
+        stop()
+
+
+def test_a_reading_ending_takes_away_a_vim_with_nothing_to_lose():
+    """A reading being ended is not held up by a vim that has nothing unwritten.
+
+    A reading ends by ctrl-c, by the window's close button or by its page being
+    closed, and by then there is no page left to press the box in again. A vim
+    that has been told twice and has nothing unwritten either cannot hear or
+    will not answer, and nothing of the reader's is lost by taking it away, so
+    it is ended outright and the reading ends with it.
+
+    Twice rather than once, because the first word is the one that can be
+    dropped on the way, and a vim that has since heard it is already going.
+    """
+    reading, vim, stop = opening_session()
+    told = []
+    ending = threading.Event()
+    was_quit, was_unwritten = vimlink.quit_vim, vimlink.unwritten
+    vimlink.quit_vim = lambda name: told.append(name) or True
+    vimlink.unwritten = lambda name: False
+    try:
+        ending.set()
+        session = held(reading, vim, ending)
+        session.join(ENDS_WITHIN * 2)
+        assert not session.is_alive(), 'the session held a vim nothing was lost by'
+        assert vim.poll() is not None, 'the vim was left running behind the reading'
+        assert told == [SERVERNAME, SERVERNAME], told
+    finally:
+        vimlink.quit_vim, vimlink.unwritten = was_quit, was_unwritten
+        stop()
+
+
+def test_a_reading_ending_asks_again_until_the_work_is_written():
+    """A vim that refuses a reading's ending over its work is asked again after.
+
+    The page's window is gone by the time vim is asked, so the press that would
+    ask again cannot come from it. A reading that asked once would sit there for
+    as long as vim did, ended in all but name, with nothing the reader could do
+    about it from the reading's side. So a reading that is ending goes on asking
+    what vim has unwritten, and says the word again the moment the answer is
+    nothing.
+
+    Only the question is repeated. Telling a vim that is refusing would put its
+    own message up once a second under the hands of somebody saving their work.
+    """
+    reading, vim, stop = opening_session()
+    told, asked = [], []
+    ending = threading.Event()
+    was_quit, was_unwritten = vimlink.quit_vim, vimlink.unwritten
+    vimlink.quit_vim = lambda name: told.append(name) or True
+
+    def saving(name):
+        """Stand in for a vim holding work until the reader writes it."""
+        asked.append(name)
+        return len(asked) < 3
+
+    vimlink.unwritten = saving
+    try:
+        ending.set()
+        session = held(reading, vim, ending)
+        session.join(ENDS_WITHIN * 3)
+        assert not session.is_alive(), 'the session waited on a press that cannot come'
+        assert told == [SERVERNAME, SERVERNAME], told
+    finally:
+        vimlink.quit_vim, vimlink.unwritten = was_quit, was_unwritten
+        stop()
+
+
+def test_a_vim_that_says_nothing_of_its_work_is_left_where_it_stands():
+    """A vim whose unwritten work cannot be seen is never taken away.
+
+    A vim answers nothing where it has a question up, where it is held up in
+    something long, and where it has gone. What it has unwritten cannot be read
+    off any of those, and a reading that guessed would be a reading that throws
+    away work on the guess. So it is told again and left standing, however long
+    the reading has been ending.
+    """
+    reading, vim, stop = opening_session()
+    told = []
+    ending = threading.Event()
+    was_quit, was_unwritten = vimlink.quit_vim, vimlink.unwritten
+    vimlink.quit_vim = lambda name: told.append(name) or True
+    vimlink.unwritten = lambda name: None
+    try:
+        ending.set()
+        session = held(reading, vim, ending)
+        time.sleep(ENDS_WITHIN * 2)
+        assert session.is_alive(), 'a vim of unknown work was taken away'
+        assert vim.poll() is None, 'a vim of unknown work was ended'
+        assert len(told) > 1, told
+    finally:
+        vimlink.quit_vim, vimlink.unwritten = was_quit, was_unwritten
         stop()
 
 
@@ -685,21 +817,21 @@ def test_vim_is_told_to_go_once_however_long_it_refuses():
     """A vim with unsaved work is told once, asked once, and then left alone.
 
     vim refuses to quit while anything in it is unwritten, and the session goes
-    on holding until it agrees. A vim that refuses has still heard, which is
-    what tells the session to leave it alone: telling it again on every turn
-    would be four vim client commands a second for as long as the reader takes
-    to save.
+    on holding until it agrees. A vim that says it has unwritten work has heard
+    and is refusing on that, which is what tells the session to leave it alone:
+    telling it again on every turn would be four vim client commands a second
+    for as long as the reader takes to save.
 
-    Whether it heard is the one question the session asks, and it asks it once.
-    Asking costs half a second every time, so a session that went on asking
-    would spend the reader's machine on finding out the same thing over and
-    over while they saved their work.
+    What it has unwritten is the one question the session asks, and it asks it
+    once. Asking costs half a second every time, so a session that went on
+    asking would spend the reader's machine on finding out the same thing over
+    and over while they saved their work.
     """
     reading, vim, stop = opening_session()
     told, asked = [], []
-    was_quit, was_listening = vimlink.quit_vim, vimlink.listening
+    was_quit, was_unwritten = vimlink.quit_vim, vimlink.unwritten
     vimlink.quit_vim = lambda name: told.append(name) or True
-    vimlink.listening = lambda name: asked.append(name) or True
+    vimlink.unwritten = lambda name: asked.append(name) or True
     try:
         reading.wanted = False
         session = held(reading, vim)
@@ -712,7 +844,7 @@ def test_vim_is_told_to_go_once_however_long_it_refuses():
         assert not session.is_alive(), 'the session outlived the vim holding it'
         assert told == [SERVERNAME] and asked == [SERVERNAME], (told, asked)
     finally:
-        vimlink.quit_vim, vimlink.listening = was_quit, was_listening
+        vimlink.quit_vim, vimlink.unwritten = was_quit, was_unwritten
         stop()
 
 

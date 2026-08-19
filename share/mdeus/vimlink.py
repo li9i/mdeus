@@ -18,10 +18,11 @@ import urllib.request
 
 import vimwire
 
-ASKING = 'r'
 NORMAL_MODE = r'<C-\><C-n>'
+NOTHING = '0'
 TICKED = '1'
 TIMEOUT = 2
+UNWRITTEN = 'len(getbufinfo({"bufmodified": 1}))'
 
 
 def ask(servername, expression):
@@ -58,30 +59,6 @@ def jump(servername, first, last):
     more than a line of typed keys can carry.
     """
     tell(servername, f'{NORMAL_MODE}:call MdeusJumpTo({int(first)}, {int(last)})<CR>')
-
-
-def listening(servername):
-    """Say whether keys sent to vim would be acted on.
-
-    A vim with a question up is answering whoever is reading and nothing else.
-    Keys sent to it then are neither acted on nor kept: they are dropped, and
-    the sending looks as though it worked. The document having been written by
-    another program is the question this happens with, and an ask to quit
-    arriving while it stands is the press that appears to have been ignored.
-
-    A vim that answers nothing at all is read the same way. Either it has gone,
-    and there is nothing to send to, or it is held up in something that does not
-    listen, and there the sending waits out its own timeout for nothing.
-
-    Nothing here changes what vim does. It is how the reading knows an asking
-    landed, so that one that did not can be made again.
-
-    It is the dear one. Every question put to vim waits half a second on the
-    client that carries it, whatever the question, so this is asked where the
-    answer changes what happens next and not on the way to anything a reader is
-    waiting for.
-    """
-    return not (ask(servername, 'mode(1)') or ASKING).startswith(ASKING)
 
 
 def main(argv):
@@ -131,10 +108,11 @@ def quit_vim(servername):
 
     What comes back is therefore only that the word left, which is not the same
     as vim having it: a vim with a question up hears nothing until it has been
-    answered, and the word is dropped. Whether that happened is worth a
-    question, and listening() is that question, asked afterwards by whoever
-    minds and only where the answer changes anything. It does not change
-    anything in the ordinary case, where vim has gone by then.
+    answered, and the word is dropped. What vim still has unwritten is the
+    question that tells a word which landed from one which did not, and
+    unwritten() is that question, asked afterwards by whoever minds and only
+    where the answer changes anything. It does not change anything in the
+    ordinary case, where vim has gone by then.
 
     What is sent is a function of vim's own rather than the quit itself, because
     a quit vim refuses leaves a message standing that has to be dismissed before
@@ -259,6 +237,28 @@ def tick(servername, line, done, path):
         f"MdeusTick({int(line)}, {int(bool(done))}, '{vim_string(path)}')",
     )
     return said == TICKED
+
+
+def unwritten(servername):
+    """Say whether vim has work in it that is not on the disk yet.
+
+    Three answers, because a session ending has three things to do with them.
+    Something unwritten means vim heard the word to go and is refusing on the
+    work, and such a vim is left alone until the reader has saved. Nothing
+    unwritten means vim never had the word, since a vim that has it and has
+    nothing to keep goes at once, so the word is said again. No answer at all
+    means only that vim cannot be seen: it has a question up, or it is held up
+    in something long, or it has gone. Nothing is decided on that, and nothing
+    is ever taken away on it, since work that cannot be seen is work that may
+    well be there.
+
+    It is the dear one. Every question put to vim waits half a second on the
+    client that carries it, whatever the question, so this is asked where the
+    answer changes what happens next and not on the way to anything a reader is
+    waiting for.
+    """
+    said = ask(servername, UNWRITTEN)
+    return None if not said else said != NOTHING
 
 
 def vim_string(text):

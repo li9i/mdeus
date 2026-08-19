@@ -99,6 +99,7 @@ SETTLE_TRIES = 100
 SETTLE_WAIT = 0.01
 STATE_ADD = 1
 STATE_FROM_APP = 1
+TELLINGS = 2
 UNPLACED = f'{NAME}: vim is in a window of its own, wherever the desktop put it'
 WINDOW_WAIT = 15
 WITHDRAW_WAIT = 5
@@ -605,21 +606,40 @@ def hold(d, container, panes, divider, vim, reading, ending):
     nothing until it has been, and what puts a question up is the document
     having changed underneath the reading, so a press meant to end the reading
     can land in the middle of one and go nowhere. Such a press is not thrown
-    away. A second later, if vim is still there, it is asked whether it was
-    listening: where it was, it heard and is refusing, and is left alone; where
-    it was not, the telling is made again, and so on until vim has it. That is
-    the only road the half second is ever spent on, and nobody is waiting at the
-    end of it, since a reader whose vim is asking them something is answering
-    vim rather than watching for the page.
+    away. A second later, if vim is still there, it is asked what it has
+    unwritten, which is the one thing that tells a word vim refused from a word
+    vim never had: a vim with nothing unwritten goes the moment it hears, so one
+    still standing with nothing unwritten did not hear, and the telling is made
+    again, and so on until vim has it. That is the only road the half second is
+    ever spent on, and nobody is waiting at the end of it, since a reader whose
+    vim is asking them something is answering vim rather than watching for the
+    page.
 
-    A vim that heard the asking and refused it is another matter, and is left
-    alone: it is refusing because something in it is unwritten, and asking again
-    on every turn would be four asks a second for as long as the reader takes to
-    save, each of them pulling them out of whatever they were typing. It is the
-    next press of the box that asks again, which is why the presses are counted
-    rather than only read. Two of them say the same thing about what is wanted
-    and are still two separate askings, and a reader who writes their work and
-    presses again means it exactly as they did the first time.
+    A vim that says it has something unwritten is another matter, and is left
+    alone: it heard and is refusing on the work, and asking again on every turn
+    would be four asks a second for as long as the reader takes to save, each of
+    them pulling them out of whatever they were typing. It is the next press of
+    the box that asks again, which is why the presses are counted rather than
+    only read. Two of them say the same thing about what is wanted and are still
+    two separate askings, and a reader who writes their work and presses again
+    means it exactly as they did the first time.
+
+    A reading that is ending is asked again for as long as it takes, since the
+    press that would ask for it belonged to a page whose window has closed. A
+    vim refusing over unwritten work is asked what it has unwritten once a
+    second until it has none, and the word is said again the moment that is the
+    answer. The question is what repeats and not the telling, because telling a
+    refusing vim again puts vim's own message up under the hands of somebody
+    saving their work.
+
+    Such a reading is not left waiting on a vim that will not go and has nothing
+    to lose either. A vim told twice over that still has nothing unwritten
+    either cannot hear the word or will not act on it, and nothing of the
+    reader's goes with it, so it is ended outright and the reading ends with it.
+    Twice rather than once, because the first word is the one that goes astray
+    and a vim that has since heard it is already leaving. A vim that answers
+    nothing at all is left exactly where it stands, since what it has unwritten
+    cannot be seen from here and none of it is the reading's to throw away.
 
     The count is also the whole of how the asking is let go of. Every press
     passes through it, including the one that says the reading is to go on
@@ -657,16 +677,22 @@ def hold(d, container, panes, divider, vim, reading, ending):
     sent = False
     again = 0.0
     presses = reading.asks
+    tellings = 0
     while vim.poll() is None:
         going = ending.is_set() or not reading.wanted
         if presses != reading.asks:
             presses = reading.asks
             heard = sent = False
-        if going and not heard and time.monotonic() >= again:
+            tellings = 0
+        if going and time.monotonic() >= again and (ending.is_set() or not heard):
             if sent:
-                heard = sent = vimlink.listening(reading.servername)
+                work = vimlink.unwritten(reading.servername)
+                heard = sent = work is True
+                if work is False and ending.is_set() and tellings >= TELLINGS:
+                    vim.kill()
             else:
                 sent = vimlink.quit_vim(reading.servername)
+                tellings += 1
             again = time.monotonic() + ASK_AGAIN
         if container is None:
             if going:
