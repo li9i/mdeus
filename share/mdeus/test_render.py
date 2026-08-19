@@ -11,6 +11,32 @@ import sys
 import render
 
 
+def aim_ranges(html):
+    """Return the lines every finer mark in some rendered HTML says it owns."""
+    return [
+        (int(start), int(end))
+        for start, end in re.findall(r'data-start="(\d+)" data-end="(\d+)"', html)
+    ]
+
+
+AIM_FIXTURE = """\
+* first item
+* parent text
+  * child a
+  * child b
+
+| Left | Right |
+| --- | --- |
+| one | two |
+
+> A quote of one paragraph
+> on two source lines.
+
+1. a numbered item
+
+   A second paragraph under it.
+"""
+
 ALERT_FIXTURE = """\
 > [!NOTE]
 > Something worth knowing.
@@ -151,6 +177,57 @@ TWO_HEADING_FIXTURE = """\
 
 ## Two
 """
+
+
+def test_aimed_parts_carry_the_lines_they_own():
+    """Every part of a block holding fewer lines than the block says which they are.
+
+    A list, a table and a quote are each one block however far they run, and
+    without this a click anywhere in one answers with the whole of it. An item,
+    a row and a paragraph carry lines of their own, so each is marked with them
+    and a click lands where it was made.
+    """
+    html = ''.join(
+        block['html'] for block in render.render_document(AIM_FIXTURE, aimed=True)['blocks']
+    )
+    assert aim_ranges(html) == [
+        (1, 1), (2, 2), (3, 3), (4, 4), (6, 6), (8, 8), (13, 13), (15, 15)
+    ], aim_ranges(html)
+
+
+def test_aimed_tight_item_marks_its_own_text():
+    """An item in a tight list is marked through its text and not through the item.
+
+    Such an item has no paragraph of its own in the markup GitHub renders, so
+    its text is wrapped to carry the mark. An item with a list under it is
+    therefore marked over its own line alone, and the items beneath it keep
+    theirs.
+    """
+    bullets = render.render_document(AIM_FIXTURE, aimed=True)['blocks'][0]['html']
+    assert '<span class="aim" data-start="2" data-end="2">parent text</span>' in bullets, bullets
+    assert '<span class="aim" data-start="3" data-end="3">child a</span>' in bullets, bullets
+    assert '<li class="aim"' not in bullets, bullets
+
+
+def test_aimed_whole_block_parts_are_left_unmarked():
+    """A part holding exactly the block's own lines is not marked a second time."""
+    quote = render.render_document(AIM_FIXTURE, aimed=True)['blocks'][2]['html']
+    assert '<blockquote>' in quote, quote
+    assert 'aim' not in quote, quote
+
+
+def test_aims_are_only_drawn_where_a_click_can_be_answered():
+    """A reading carries the finer marks and a printed copy carries none of them."""
+    copied = ''.join(block['html'] for block in render.render_blocks(AIM_FIXTURE))
+    assert 'aim' not in copied, copied
+    assert 'data-start' not in copied, copied
+
+
+def test_aims_leave_a_task_list_box_where_a_press_can_find_it():
+    """An item marked for aiming still carries the box and the line to tick."""
+    bullets = render.render_document(TASK_FIXTURE, aimed=True, tickable=True)['blocks'][0]['html']
+    assert 'data-start="1" data-end="1"' in bullets, bullets
+    assert f'class="{render.CHECKBOX}" data-line="1"' in bullets, bullets
 
 
 def test_only_images_beside_the_document_are_retargeted():

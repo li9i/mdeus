@@ -41,7 +41,41 @@ ALERT_MARKER = re.compile(r'\[!([a-zA-Z]+)\][ \t]*(?:\n|$)')
 CHECKBOX = 'task-list-item-checkbox'
 CHECKED = 'checked="checked"'
 FULLY_QUALIFIED = STATUS['fully_qualified']
+PARTS = ('code_block', 'fence', 'heading', 'hr', 'paragraph', 'tr')
 SHORTCODE = re.compile(r':[a-z0-9_+-]+:')
+
+
+def aim(node, span):
+    """Mark every part of a block that owns fewer source lines than the block does.
+
+    A block is as fine as a click can be aimed without this. A list, a table and
+    a quote are each one block however far they run, so a click anywhere inside
+    one answers with the whole of it. The parts within carry lines of their own,
+    and each part carrying fewer lines than the block does is marked with them,
+    so a click lands on the item, the row or the paragraph it was made in.
+
+    What is marked is the parts that hold words rather than the parts that hold
+    other parts. A list item is marked through its own text, so an item with a
+    list under it answers for the line it was written on and leaves the items
+    beneath it to answer for theirs. An item in a tight list has no paragraph of
+    its own in the markup GitHub renders, so its text is wrapped in a span,
+    which is drawn exactly as the bare text was.
+
+    A part whose lines are the block's own lines is passed over, since the block
+    already answers for those and nothing finer is there to aim at. So is a raw
+    HTML block, which is written out as it stands and carries nothing of ours.
+    """
+    for inside in node.walk(include_self=False):
+        if inside.type not in PARTS or not inside.map or list(inside.map) == list(span):
+            continue
+        opening = inside.nester_tokens.opening if inside.is_nested else inside.token
+        opening.attrJoin('class', 'aim')
+        opening.attrSet('data-start', str(inside.map[0] + 1))
+        opening.attrSet('data-end', str(inside.map[1]))
+        if opening.hidden:
+            closing = inside.nester_tokens.closing
+            opening.hidden = closing.hidden = False
+            opening.tag = closing.tag = 'span'
 
 
 def alert_kind(tokens, index):
@@ -56,7 +90,12 @@ def alert_kind(tokens, index):
 
 
 def alert_title(opening, kind):
-    """Return the tokens for the title GitHub puts at the head of a callout."""
+    """Return the tokens for the title GitHub puts at the head of a callout.
+
+    The title carries no source lines of its own. It is drawn out of the marker
+    line, and the body of the callout already answers for that line, so a title
+    naming it as well would put two answers on one line of the document.
+    """
     level = opening.level + 1
     return [
         Token(
@@ -66,7 +105,6 @@ def alert_title(opening, kind):
             attrs={'class': 'markdown-alert-title'},
             block=True,
             level=level,
-            map=opening.map,
         ),
         Token(
             'inline',
@@ -76,7 +114,6 @@ def alert_title(opening, kind):
             children=[],
             content=ALERTS[kind],
             level=level + 1,
-            map=opening.map,
         ),
         Token('paragraph_close', 'p', -1, block=True, level=level),
     ]
@@ -226,8 +263,13 @@ def render_blocks(source):
     return render_document(source)['blocks']
 
 
-def render_document(source, image_src=None, tickable=False):
+def render_document(source, aimed=False, image_src=None, tickable=False):
     """Return a document's blocks and heading outline.
+
+    aimed says whether the parts inside a block are marked with the lines they
+    own. A reading has a vim beside it that answers a click with a jump, so the
+    finer the mark the closer the jump lands. A printed copy has nothing to
+    answer a click with, so it keeps the plain markup a rendered document gets.
 
     image_src, where it is given, says what every image beside the document is
     written as: the address a server answers for the file at, or the bytes of
@@ -260,6 +302,8 @@ def render_document(source, image_src=None, tickable=False):
         span = block_span(node)
         if span is None:
             continue
+        if aimed:
+            aim(node, span)
         blocks.append(
             {
                 'type': node.type,

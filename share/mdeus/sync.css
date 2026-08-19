@@ -1,32 +1,32 @@
+.doc .aim,
 .doc .block {
   position: relative;
   transition: background-color 0.4s ease-out;
 }
 
-.doc .block.mdeus-cursor::before {
+.doc .aim:not(tr).mdeus-cursor::before,
+.doc .block.mdeus-cursor::before,
+.doc tr.aim.mdeus-cursor > :first-child::before {
   background: currentColor;
   bottom: 0;
   content: '';
-  left: var(--mdeus-rule);
+  left: var(--mdeus-rule, -7px);
   position: absolute;
   top: 0;
   width: 3px;
 }
 
+.doc tr.aim.mdeus-cursor > :first-child {
+  --mdeus-rule: 0;
+  position: relative;
+}
+
+.doc .aim.mdeus-click,
 .doc .block.mdeus-click {
   background-color: var(--mdeus-flash, #e6e6e6);
   transition: none;
 }
 
-.browser .doc {
-  --mdeus-rule: -7px;
-}
-
-.report .doc {
-  --mdeus-rule: -13px;
-}
-
 .github .doc {
   --mdeus-flash: #dbe2e9;
-  --mdeus-rule: -7px;
 }

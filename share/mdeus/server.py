@@ -635,7 +635,9 @@ class ReadingHandler(BaseHTTPRequestHandler):
             source = self.reading.current.read_text(encoding='utf-8')
         except (OSError, UnicodeDecodeError):
             return dict(common, gone=True)
-        rendered = render_document(source, image_src=self.image_src, tickable=True)
+        rendered = render_document(
+            source, aimed=True, image_src=self.image_src, tickable=True
+        )
         return dict(common, blocks=rendered['blocks'], outline=rendered['outline'])
 
     def tick(self, line, done):

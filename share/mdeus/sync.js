@@ -1,5 +1,6 @@
 'use strict';
 
+const AIMS = '.aim, .block';
 const CURSOR_MS = 200;
 const DEFAULT_SHARE = 0.25;
 const FLASH_MS = 1000;
@@ -14,8 +15,21 @@ let lineAt = null;
 let ruleAt = null;
 let shareAt = DEFAULT_SHARE;
 
+function aimIn(block, line) {
+  let finest = null;
+  for (const aim of block.querySelectorAll('.aim')) {
+    if (Number(aim.dataset.start) > line || Number(aim.dataset.end) < line) {
+      continue;
+    }
+    if (!finest || span(aim) < span(finest)) {
+      finest = aim;
+    }
+  }
+  return finest;
+}
+
 function begin() {
-  pane.addEventListener('dblclick', onBlockDouble);
+  pane.addEventListener('dblclick', onDouble);
   document.addEventListener('mdeus:editing', onEditing);
 }
 
@@ -37,19 +51,19 @@ function blockForLine(line) {
   return holding || above;
 }
 
-function flash(block) {
+function flash(mark) {
   const lit = pane.querySelector('.mdeus-click');
   if (lit) {
     lit.classList.remove('mdeus-click');
   }
   window.clearTimeout(flashTimer);
-  block.classList.add('mdeus-click');
-  flashTimer = window.setTimeout(() => block.classList.remove('mdeus-click'), FLASH_MS);
+  mark.classList.add('mdeus-click');
+  flashTimer = window.setTimeout(() => mark.classList.remove('mdeus-click'), FLASH_MS);
 }
 
 function forget() {
-  pane.querySelectorAll('.mdeus-click, .mdeus-cursor').forEach((block) => {
-    block.classList.remove('mdeus-click', 'mdeus-cursor');
+  pane.querySelectorAll('.mdeus-click, .mdeus-cursor').forEach((mark) => {
+    mark.classList.remove('mdeus-click', 'mdeus-cursor');
   });
   window.clearTimeout(flashTimer);
   clicksAt = null;
@@ -59,33 +73,34 @@ function forget() {
 
 function markCursor(line, clicked) {
   const block = shownFor(blockForLine(line));
+  const mark = (block && aimIn(block, line)) || block;
   const ruled = pane.querySelector('.mdeus-cursor');
-  if (ruled && ruled !== block) {
+  if (ruled && ruled !== mark) {
     ruled.classList.remove('mdeus-cursor');
   }
-  if (!block) {
+  if (!mark) {
     ruleAt = null;
     return;
   }
-  block.classList.add('mdeus-cursor');
-  ruleAt = Number(block.dataset.start);
+  mark.classList.add('mdeus-cursor');
+  ruleAt = Number(mark.dataset.start);
   if (clicked) {
-    flash(block);
-    show(block);
+    flash(mark);
+    show(mark);
   }
 }
 
-function onBlockDouble(event) {
-  const block = event.target.closest('.block');
-  if (!block || cursorTimer === null) {
+function onDouble(event) {
+  const aim = event.target.closest(AIMS);
+  if (!aim || cursorTimer === null) {
     return;
   }
   window.getSelection().removeAllRanges();
-  flash(block);
+  flash(aim);
   fetch('/api/jump', {
     body: JSON.stringify({
-      last: Number(block.dataset.end),
-      line: Number(block.dataset.start),
+      last: Number(aim.dataset.end),
+      line: Number(aim.dataset.start),
     }),
     headers: { 'Content-Type': 'application/json' },
     method: 'POST',
@@ -132,10 +147,10 @@ function ruleStands() {
   return ruled === null ? ruleAt === null : Number(ruled.dataset.start) === ruleAt;
 }
 
-function show(block) {
+function show(mark) {
   const head = controls.getBoundingClientRect().bottom;
   const room = window.innerHeight - head;
-  window.scrollBy(0, block.getBoundingClientRect().top - head - room * shareAt);
+  window.scrollBy(0, mark.getBoundingClientRect().top - head - room * shareAt);
 }
 
 function shownFor(block) {
@@ -145,6 +160,10 @@ function shownFor(block) {
     }
   }
   return block;
+}
+
+function span(mark) {
+  return Number(mark.dataset.end) - Number(mark.dataset.start);
 }
 
 begin();

@@ -226,9 +226,14 @@ def said_down(reading):
 
 
 def served_blocks(source):
-    """Return the blocks a reading sends: the renderer's, images pointed at /file/."""
+    """Return the blocks a reading sends.
+
+    The renderer's own, with the images pointed at /file/, the parts inside a
+    block marked with the lines they own and the task list boxes live, which is
+    every way a served reading differs from a printed copy.
+    """
     return render.render_document(
-        source, image_src=lambda target: f'/file/{target}'
+        source, aimed=True, image_src=lambda target: f'/file/{target}', tickable=True
     )['blocks']
 
 
@@ -1127,6 +1132,22 @@ def test_export_boxes_cannot_be_pressed():
         assert 'task-list-item-checkbox' in printed, printed[:200]
         assert 'disabled' in printed, printed[:200]
         assert 'data-line' not in printed, 'a copy carries a box that can be pressed'
+    finally:
+        stop()
+
+
+def test_export_carries_no_finer_marks():
+    """A printed copy leaves the parts inside a block unmarked.
+
+    The marks are there for a click to be answered with a jump into vim, and a
+    copy carries neither the script that sends one nor a vim to send it to, so
+    what a copy would carry is markup nothing there can use.
+    """
+    root, stop = start_export()
+    try:
+        printed = export.write_export(root / 'start.md').read_text(encoding='utf-8')
+        assert 'first item' in printed, printed[:200]
+        assert 'class=\\"aim\\"' not in printed, 'a copy carries marks nothing can aim by'
     finally:
         stop()
 
