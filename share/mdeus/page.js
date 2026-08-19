@@ -7,10 +7,10 @@ const SHORTCUTS = { c: 'contents', e: 'edit', f: 'wide', m: 'middle' };
 const TASK_BOX = '.task-list-item-checkbox';
 const THEMES = [
   ['browser', 'Browser default'],
-  ['report', 'Mono headings'],
   ['github', 'GitHub'],
   ['wikipedia', 'Wikipedia'],
   ['wikipedia-classic', 'Wikipedia classic'],
+  ['report', 'Mono headings'],
 ];
 const TREE = 'file:///tree/';
 
