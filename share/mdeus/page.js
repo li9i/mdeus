@@ -32,6 +32,7 @@ let wide = null;
 function anchor() {
   const blocks = docNode.querySelectorAll('.block');
   const barFoot = controlsNode.getBoundingClientRect().bottom;
+  let above = null;
   for (const block of blocks) {
     if (block.hidden) {
       continue;
@@ -40,8 +41,9 @@ function anchor() {
     if (top >= barFoot) {
       return { start: block.dataset.start, top };
     }
+    above = { start: block.dataset.start, top };
   }
-  return null;
+  return above;
 }
 
 function applyEditing(now) {
