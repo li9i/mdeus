@@ -22,6 +22,7 @@ const imageSizes = new Map();
 let contentsOpen = false;
 let doc = null;
 let editing = false;
+let gWaiting = false;
 let headingIds = [];
 let middle = null;
 let mtime = null;
@@ -421,10 +422,32 @@ function onEdit() {
 }
 
 function onKey(event) {
-  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+  if (event.altKey || event.ctrlKey || event.metaKey) {
+    return;
+  }
+  if (event.key === 'Shift') {
     return;
   }
   if (event.target.closest && event.target.closest('input, select, textarea, [contenteditable]')) {
+    return;
+  }
+  const waited = gWaiting;
+  gWaiting = false;
+  if (event.key === 'G') {
+    event.preventDefault();
+    window.scrollTo(0, document.documentElement.scrollHeight);
+    return;
+  }
+  if (event.key === 'g') {
+    event.preventDefault();
+    if (waited) {
+      window.scrollTo(0, 0);
+    } else {
+      gWaiting = true;
+    }
+    return;
+  }
+  if (event.shiftKey) {
     return;
   }
   const button = document.getElementById(SHORTCUTS[event.key] || '');
