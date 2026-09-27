@@ -220,7 +220,7 @@ function drawCopyButtons() {
 }
 
 function drawDocument() {
-  document.title = doc.name;
+  document.title = doc.path;
   keepImageSizes();
   if (doc.gone) {
     docNode.innerHTML = `<p class="gone">${esc(doc.name || 'The file')} is gone.</p>`;

@@ -435,6 +435,10 @@ class ReadingHandler(BaseHTTPRequestHandler):
         except ValueError as error:
             self.send_json({'error': str(error)}, code=400)
 
+    def full_path(self):
+        """Return the current document's full path, for the window title."""
+        return str(self.reading.current)
+
     def hold_open(self):
         """Answer the page's headers, then hold its connection and say what moves down it.
 
@@ -619,7 +623,7 @@ class ReadingHandler(BaseHTTPRequestHandler):
             '    <script src="/assets/page.js" defer></script>',
             '    <script src="/assets/sync.js" defer></script>',
         ]
-        page = page_html(self.name(), load_state(self.reading.current), '\n'.join(head))
+        page = page_html(self.full_path(), load_state(self.reading.current), '\n'.join(head))
         self.send_bytes(page.encode('utf-8'), 'text/html')
 
     def snapshot(self):
@@ -629,6 +633,7 @@ class ReadingHandler(BaseHTTPRequestHandler):
             'editing': self.reading.editing,
             'mtime': self.mtime(),
             'name': self.name(),
+            'path': self.full_path(),
             'state': load_state(self.reading.current),
         }
         try:

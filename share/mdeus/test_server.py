@@ -1363,31 +1363,31 @@ def test_page_is_served_under_the_reading_s_own_name():
             status, content_type, page = fetch(port, path)
             assert status == 200, (path, status)
             assert content_type.startswith('text/html'), (path, content_type)
-            assert b'<title>start.md</title>' in page, page[:200]
+            assert f'<title>{root / "start.md"}</title>'.encode() in page, page[:200]
         assert fetch_json(port, '/MDEUSOTHER')[0] == 404, 'another reading was answered for'
     finally:
         stop()
 
 
 def test_page_title_says_the_document_and_nothing_else():
-    """The title is the document's name, and travels with the document.
+    """The title is the document's full path, and travels with the document.
 
     The tab, and the window on the panel while a reading is editing, both read
     it. The page writes its own title as it draws, so that following a link to
     another document takes the title along with it, and what it writes is the
-    name the server sent rather than one put together again there.
+    path the server sent rather than one put together again there.
 
     It reads the same in both states, since either way it is one reading of one
     document.
     """
     root, port, reading, stop = start_reading()
     try:
-        assert b'<title>start.md</title>' in fetch(port, '/')[2]
-        assert fetch_json(port, '/doc')[1]['name'] == 'start.md'
+        assert f'<title>{root / "start.md"}</title>'.encode() in fetch(port, '/')[2]
+        assert fetch_json(port, '/doc')[1]['path'] == str(root / 'start.md')
         moved = fetch_json(port, '/doc?' + urlencode({'path': 'notes/other.md'}))[1]
-        assert moved['name'] == 'notes/other.md', moved
+        assert moved['path'] == str(root / 'notes' / 'other.md'), moved
         reading.editing = True
-        assert fetch_json(port, '/doc')[1]['name'] == 'notes/other.md'
+        assert fetch_json(port, '/doc')[1]['path'] == str(root / 'notes' / 'other.md')
     finally:
         stop()
 
@@ -1422,6 +1422,7 @@ def test_removed_file_gives_the_gone_reply_and_recovers():
     root, port, reading, stop = start_reading()
     try:
         gone = {'editable': False, 'editing': False, 'name': 'start.md',
+                'path': str(root / 'start.md'),
                 'gone': True,
                 'state': {'contents': False, 'middle': False, 'theme': 'browser',
                           'wide': False}}

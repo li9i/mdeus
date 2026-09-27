@@ -430,7 +430,7 @@ def edit(reading, url, ending, opening=False, app_window=True, waiting=None):
             meet(d, container, panes, divider)
             if 'browser' in panes:
                 panes['browser'].change_attributes(event_mask=X.PropertyChangeMask)
-                follow_title(d, container, reading, panes['browser'])
+                follow_title(d, container, panes['browser'])
             focus_pane(d, panes, OPENS_FOCUSED)
         hold(d, container, panes, divider, vim, reading, ending)
     finally:
@@ -468,15 +468,12 @@ def focus_pane(d, panes, focused):
     focus(d, panes.get(focused) or panes.get('vim'))
 
 
-def follow_title(d, container, reading, page):
-    """Put the full path of the document the page is showing on the reading's
-    title bar and panel entry.
+def follow_title(d, container, page):
+    """Put what the page calls itself on the reading's title bar and panel entry.
 
-    The page's own title carries the document being read, relative to where the
-    reading started, and follows a link to another document, so the reading is
-    named from the page rather than from the document it started at. It is
-    joined back to the reading's root here, so the title bar always carries the
-    full path rather than a name that reads the same in two different folders.
+    The page's own title carries the full path of the document being read and
+    follows a link to another document, so the reading is named from the page
+    rather than from the document it started at.
 
     What the pane calls itself before the page has arrived is the address it is
     loading, which names no document, so a title beginning at the host a
@@ -485,7 +482,7 @@ def follow_title(d, container, reading, page):
     """
     title = window_name(d, page)
     if title and not title.startswith(HOST):
-        set_title(d, container, str(reading.root / title))
+        set_title(d, container, title)
 
 
 def grab_switch(d, container):
@@ -740,7 +737,7 @@ def hold(d, container, panes, divider, vim, reading, ending):
             elif event.type == X.PropertyNotify and event.atom == named:
                 page = panes.get('browser')
                 if page is not None and event.window.id == page.id:
-                    follow_title(d, container, reading, page)
+                    follow_title(d, container, page)
             elif event.type == X.ClientMessage:
                 if event.data[1][0] == d.intern_atom('WM_DELETE_WINDOW'):
                     ending.set()
