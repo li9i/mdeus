@@ -399,7 +399,7 @@ def edit(reading, url, ending, opening=False, app_window=True, waiting=None):
     if waiting is not None:
         container = waiting.container
     else:
-        container = make_container(d, reading.current.name) if d is not None else None
+        container = make_container(d, str(reading.current)) if d is not None else None
     if app_window and container is None:
         print(UNPLACED, flush=True)
     if container is None:
@@ -1532,7 +1532,7 @@ def warm(reading, url):
     area = work_area(d)
     boxes = pane_boxes(area[2], area[3])
     vim = start_vim(reading, url, boxes[1], (area[0], area[1]))
-    container = make_container(d, reading.current.name)
+    container = make_container(d, str(reading.current))
     pane = vim_window(d, container, vim, boxes[1])
     if pane is None:
         container.destroy()
