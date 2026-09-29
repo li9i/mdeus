@@ -5,9 +5,10 @@ Settings belong to the document they were set on. One file holds them for every
 document that has any, each under its own path: the theme, whether the contents
 list was open, whether a theme that will run its lines the full width of the
 pane is left to, whether a theme that will stand its lines in the middle of the
-pane is left to, and where the divider between the browser and vim was left. A
-document nothing was ever set on opens the way the very first reading did, so
-what one document is left in never reaches another.
+pane is left to, where the divider between the browser and vim was left, and
+where the page was last scrolled to. A document nothing was ever set on opens
+the way the very first reading did, so what one document is left in never
+reaches another.
 
 Each thing that stores into the file writes only its own fields of its own
 document, since a reading in a browser and a reading with vim beside it know
@@ -19,6 +20,7 @@ business.
 """
 
 import json
+import math
 import uuid
 from pathlib import Path
 
@@ -27,6 +29,20 @@ MAX_SPLIT = 0.85
 MIN_SPLIT = 0.15
 STATE_PATH = Path.home() / '.config' / 'mdeus' / 'state.json'
 THEMES = ('browser', 'report', 'github', 'wikipedia', 'wikipedia-classic')
+
+
+def as_place(raw):
+    """Return a place as the page keeps one, or nothing where raw is not one.
+
+    A place is the first source line of the block the page was anchored on and
+    how far down the window that block stood, in pixels. Both have to be
+    numbers JSON can carry back to the page.
+    """
+    try:
+        start, top = int(raw['start']), float(raw['top'])
+    except (KeyError, OverflowError, TypeError, ValueError):
+        return None
+    return {'start': start, 'top': top} if math.isfinite(top) else None
 
 
 def document_state(document):
@@ -39,6 +55,14 @@ def document_state(document):
     """
     stored = stored_documents().get(str(document))
     return stored if isinstance(stored, dict) else {}
+
+
+def load_place(document):
+    """Return where a document was last left in the page, or nothing.
+
+    Nothing means the document opens at its top, the way a first reading does.
+    """
+    return as_place(document_state(document).get('place'))
 
 
 def load_split(document):
@@ -78,6 +102,11 @@ def load_state(document):
     return {'contents': False, 'middle': False, 'theme': 'browser', 'wide': False}
 
 
+def save_place(document, place):
+    """Store where a document was left, for its next reading to open at."""
+    save_state(document, {'place': place})
+
+
 def save_split(document, share):
     """Store where a document's divider was left, for its next reading to open at."""
     save_state(document, {'split': round(share, 4)})
@@ -89,8 +118,9 @@ def save_state(document, state):
     What is written is merged into what is already there for that document, and
     every other document is left exactly as it was. Two things store into this
     file and neither knows the other's field: the page stores the theme, the
-    contents setting, the full width setting and the centring setting, and a
-    reading with vim beside it stores where the divider was left.
+    contents setting, the full width setting, the centring setting and where it
+    was scrolled to, and a reading with vim beside it stores where the divider
+    was left.
     """
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     temp = STATE_PATH.with_name(f'{STATE_PATH.name}.{uuid.uuid4().hex}.tmp')

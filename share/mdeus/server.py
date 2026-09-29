@@ -3,9 +3,10 @@ Serve one markdown document to a browser on this machine.
 
 The page is an empty shell. Everything in it is drawn from what this server
 sends: the document as blocks carrying their source lines, the heading outline
-the contents list is built from, and the stored theme. This server watches the
-source file and tells the page the moment it is written, so a write from any
-editor is on the screen as soon as it lands on the disk.
+the contents list is built from, the stored theme, and where the document was
+last left. This server watches the source file and tells the page the moment it
+is written, so a write from any editor is on the screen as soon as it lands on
+the disk.
 
 A reading is either viewing, which is the page alone, or editing, which is the
 page with vim beside it. The page asks to move between the two through
@@ -50,7 +51,9 @@ from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 import vimlink
 from render import render_document
-from state import THEMES, load_state, save_state
+from state import (
+    THEMES, as_place, load_place, load_state, save_place, save_state,
+)
 
 ASSET_DIR = Path(__file__).resolve().parent
 DEFAULT_PORT = 8766
@@ -204,6 +207,20 @@ def wanted_line(body):
         return int(body['line'])
     except (KeyError, TypeError) as error:
         raise ValueError('no line') from error
+
+
+def wanted_place(root, body):
+    """Return the document a place is for, and the place, or raise ValueError.
+
+    The page names the document along with the place, since the place of a
+    document being left is sent as a link out of it is followed, and the
+    reading may be on the next document by the time it arrives.
+    """
+    document = resolve_inside(root, str(body.get('name', '')))
+    place = as_place(body)
+    if document is None or place is None:
+        raise ValueError('no place')
+    return document, place
 
 
 def wanted_share(body):
@@ -424,6 +441,10 @@ class ReadingHandler(BaseHTTPRequestHandler):
             elif self.path == '/api/jump' and self.reading.editing:
                 vimlink.jump(self.reading.servername, *wanted_block(body))
                 self.send_json({'ok': True})
+            elif self.path == '/api/place':
+                document, place = wanted_place(self.reading.root, body)
+                save_place(document, place)
+                self.send_json(place)
             elif self.path == '/api/state':
                 state = wanted_state(body)
                 save_state(self.reading.current, state)
@@ -643,7 +664,12 @@ class ReadingHandler(BaseHTTPRequestHandler):
         rendered = render_document(
             source, aimed=True, image_src=self.image_src, tickable=True
         )
-        return dict(common, blocks=rendered['blocks'], outline=rendered['outline'])
+        return dict(
+            common,
+            blocks=rendered['blocks'],
+            outline=rendered['outline'],
+            place=load_place(self.reading.current),
+        )
 
     def tick(self, line, done):
         """Write a tick into the document, and say whether it landed.

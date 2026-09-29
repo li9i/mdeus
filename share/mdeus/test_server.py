@@ -375,7 +375,7 @@ def test_a_body_the_page_could_not_have_sent_is_refused():
     """
     root, port, reading, stop = start_reading(editable=True)
     try:
-        for path in ('/api/edit', '/api/state', '/api/tick'):
+        for path in ('/api/edit', '/api/place', '/api/state', '/api/tick'):
             for body in (b'[1, 2, 3]', b'"words"', b'3', b'true', b'null',
                          b'[' * 2000 + b']' * 2000):
                 status, _, _ = fetch(port, path, 'POST', body)
@@ -849,6 +849,40 @@ def test_a_page_that_says_nothing_keeps_the_reading():
         watching.join(timeout=TIMEOUT)
 
 
+def test_a_place_the_page_could_not_have_kept_is_refused():
+    """A place naming no document in the tree, or no place, is not stored.
+
+    A place read back from the file is held to the same terms, so one written
+    there by hand that JSON could not carry back to the page opens the document
+    at its top rather than breaking the reply the page draws from.
+    """
+    root, port, reading, stop = start_reading()
+    try:
+        good = {'name': 'start.md', 'start': 3, 'top': 20}
+        for body in (
+            dict(good, name='escape.md'),
+            dict(good, name='../outside/secret.md'),
+            dict(good, name='missing.md'),
+            {'start': 3, 'top': 20},
+            {'name': 'start.md', 'top': 20},
+            dict(good, start='three'),
+            dict(good, top=None),
+            dict(good, top=float('nan')),
+            dict(good, top=float('inf')),
+        ):
+            status, reply = fetch_json(port, '/api/place', 'POST', body)
+            assert status == 400, (body, status)
+        assert not state.STATE_PATH.exists(), state.STATE_PATH
+        entry = '{"documents": {"%s": {"place": %%s}}}' % (root / 'start.md')
+        for stored in ('"here"', '{"start": 3}', '{"start": 3, "top": NaN}',
+                       '{"start": 1e400, "top": 0}'):
+            state.STATE_PATH.write_text(entry % stored, encoding='utf-8')
+            status, doc = fetch_json(port, '/doc')
+            assert (status, doc['place']) == (200, None), (stored, status, doc)
+    finally:
+        stop()
+
+
 def test_absolute_and_parent_paths_are_not_served():
     """A file named by ../ or by an absolute path is not found, on either route."""
     root, port, reading, stop = start_reading()
@@ -1023,6 +1057,44 @@ def test_each_document_keeps_its_own_look():
         assert doc['state'] == {'contents': False, 'middle': False,
                                 'theme': 'github', 'wide': False}, doc['state']
         assert b'class="github reader"' in fetch(port, '/')[2]
+    finally:
+        stop()
+
+
+def test_each_document_keeps_its_own_place():
+    """A document opens where it was last left, and no other document does.
+
+    The page names the document a place belongs to, since the place of a
+    document being left is sent as a link out of it is followed, and the
+    reading can be on the next document by the time it lands. The place is kept
+    beside the look, and neither puts the other out.
+    """
+    root, port, reading, stop = start_reading()
+    to_other = '/doc?' + urlencode({'path': 'notes/other.md'})
+    to_start = '/doc?' + urlencode({'path': 'start.md'})
+
+    def keep(name, start, top):
+        """Keep a place the way the page keeps one, and return the reply."""
+        body = {'name': name, 'start': start, 'top': top}
+        return fetch_json(port, '/api/place', 'POST', body)
+
+    try:
+        assert fetch_json(port, '/doc')[1]['place'] is None
+        fetch_json(port, '/api/state', 'POST', {'theme': 'github'})
+        status, reply = keep('start.md', 7, -12.5)
+        assert (status, reply) == (200, {'start': 7, 'top': -12.5}), reply
+        assert fetch_json(port, to_other)[1]['place'] is None
+        keep('start.md', 9, 40)
+        assert fetch_json(port, '/doc')[1]['place'] is None
+        keep('notes/other.md', 1, 30)
+        status, doc = fetch_json(port, to_start)
+        assert doc['place'] == {'start': 9, 'top': 40.0}, doc['place']
+        assert doc['state']['theme'] == 'github', doc['state']
+        fetch_json(port, '/api/state', 'POST', {'theme': 'report'})
+        place = fetch_json(port, '/doc')[1]['place']
+        assert place == {'start': 9, 'top': 40.0}, place
+        place = fetch_json(port, to_other)[1]['place']
+        assert place == {'start': 1, 'top': 30.0}, place
     finally:
         stop()
 

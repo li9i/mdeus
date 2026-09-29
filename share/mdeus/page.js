@@ -3,6 +3,7 @@
 const CONTENTS_MINIMUM = 3;
 const COPIED_MS = 1500;
 const PLACE_KEY = 'mdeus:place';
+const PLACE_SETTLE_MS = 500;
 const SHORTCUTS = { c: 'contents', e: 'edit', f: 'wide', m: 'middle' };
 const TASK_BOX = '.task-list-item-checkbox';
 const THEMES = [
@@ -24,9 +25,12 @@ let doc = null;
 let editing = false;
 let gWaiting = false;
 let headingIds = [];
+let landings = 0;
 let middle = null;
 let mtime = null;
+let placeTimer = null;
 let sectionLines = new Set();
+let settling = false;
 let theme = null;
 let wide = null;
 
@@ -286,6 +290,7 @@ function foldSection(heading, folded) {
 }
 
 async function follow(relative, push) {
+  savePlace();
   const response = await fetch(`/doc?path=${encodeURIComponent(relative)}`);
   if (!response.ok) {
     return;
@@ -299,6 +304,7 @@ async function follow(relative, push) {
   drawDocument();
   drawContents();
   window.scrollTo(0, 0);
+  landOn(landing(doc.place));
 }
 
 async function hold() {
@@ -345,15 +351,12 @@ function keepImageSizes() {
 }
 
 function keepPlace() {
-  const mark = doc && !doc.gone ? anchor() : null;
-  if (!mark) {
+  const place = placeNow();
+  if (!place) {
     sessionStorage.removeItem(PLACE_KEY);
     return;
   }
-  sessionStorage.setItem(
-    PLACE_KEY,
-    JSON.stringify({ name: doc.name, start: mark.start, top: mark.top })
-  );
+  sessionStorage.setItem(PLACE_KEY, JSON.stringify(place));
 }
 
 function keptPlace() {
@@ -364,6 +367,40 @@ function keptPlace() {
   }
   const place = JSON.parse(kept);
   return place.name === doc.name ? place : null;
+}
+
+async function landOn(mark) {
+  const turn = ++landings;
+  settling = false;
+  const block =
+    mark && docNode.querySelector(`.block[data-start="${mark.start}"]`);
+  if (!block) {
+    return;
+  }
+  settling = true;
+  const above = [...docNode.querySelectorAll('img')].filter(
+    (image) =>
+      block.compareDocumentPosition(image) & Node.DOCUMENT_POSITION_PRECEDING
+  );
+  await Promise.all(above.map((image) => image.decode().catch(() => {})));
+  if (turn === landings) {
+    restore(mark);
+    settling = false;
+  }
+}
+
+function landing(place) {
+  if (!place) {
+    return null;
+  }
+  let start = null;
+  for (const block of docNode.querySelectorAll('.block')) {
+    if (Number(block.dataset.start) > Number(place.start)) {
+      break;
+    }
+    start = block.dataset.start;
+  }
+  return start === null ? null : { start, top: place.top };
 }
 
 async function load() {
@@ -471,6 +508,11 @@ function onPop(event) {
   }
 }
 
+function onScroll() {
+  window.clearTimeout(placeTimer);
+  placeTimer = window.setTimeout(savePlace, PLACE_SETTLE_MS);
+}
+
 function onTheme(event) {
   const mark = anchor();
   theme = event.target.value;
@@ -510,6 +552,11 @@ function onWide(event) {
   saveState();
 }
 
+function placeNow() {
+  const mark = doc && !doc.gone && !settling ? anchor() : null;
+  return mark ? { name: doc.name, start: mark.start, top: mark.top } : null;
+}
+
 function restore(mark) {
   if (!mark) {
     return;
@@ -518,6 +565,20 @@ function restore(mark) {
   if (block) {
     window.scrollBy(0, block.getBoundingClientRect().top - mark.top);
   }
+}
+
+function savePlace() {
+  window.clearTimeout(placeTimer);
+  const place = placeNow();
+  if (!place) {
+    return;
+  }
+  fetch('/api/place', {
+    body: JSON.stringify(place),
+    headers: { 'Content-Type': 'application/json' },
+    keepalive: true,
+    method: 'POST',
+  }).catch(() => {});
 }
 
 function saveState() {
@@ -560,8 +621,10 @@ async function start() {
   history.scrollRestoration = 'manual';
   hold();
   await load();
-  restore(keptPlace());
+  landOn(landing(keptPlace() || doc.place));
   window.addEventListener('pagehide', keepPlace);
+  window.addEventListener('pagehide', savePlace);
+  window.addEventListener('scroll', onScroll);
   history.replaceState({ path: doc.name }, '');
   docNode.addEventListener('click', onClick);
   docNode.addEventListener('change', onTick);
