@@ -23,6 +23,7 @@ const imageSizes = new Map();
 let contentsOpen = false;
 let doc = null;
 let editing = false;
+let following = Promise.resolve();
 let gWaiting = false;
 let headingIds = [];
 let landings = 0;
@@ -84,6 +85,24 @@ function applyTheme() {
 
 function applyWide() {
   document.documentElement.classList.toggle('wide', wide);
+}
+
+async function arrive(relative, push) {
+  savePlace();
+  const response = await fetch(`/doc?path=${encodeURIComponent(relative)}`);
+  if (!response.ok) {
+    return;
+  }
+  doc = await response.json();
+  foldedAt.clear();
+  mtime = doc.mtime;
+  if (push) {
+    history.pushState({ path: doc.name }, '');
+  }
+  drawDocument();
+  drawContents();
+  window.scrollTo(0, 0);
+  landOn(landing(doc.place));
 }
 
 function blockHtml(block) {
@@ -289,22 +308,10 @@ function foldSection(heading, folded) {
   }
 }
 
-async function follow(relative, push) {
-  savePlace();
-  const response = await fetch(`/doc?path=${encodeURIComponent(relative)}`);
-  if (!response.ok) {
-    return;
-  }
-  doc = await response.json();
-  foldedAt.clear();
-  mtime = doc.mtime;
-  if (push) {
-    history.pushState({ path: doc.name }, '');
-  }
-  drawDocument();
-  drawContents();
-  window.scrollTo(0, 0);
-  landOn(landing(doc.place));
+function follow(relative, push) {
+  const arriving = arrive(relative, push);
+  following = arriving.catch(() => {});
+  return arriving;
 }
 
 async function hold() {
@@ -651,6 +658,7 @@ async function told(said) {
     return;
   }
   applyEditing(Boolean(said.editing));
+  await following;
   if (said.mtime === mtime) {
     return;
   }
