@@ -29,6 +29,7 @@ import window
 from Xlib import X, error
 
 ENDS_WITHIN = 3
+EVENTS_AT_MOST = 50
 SERVERNAME = 'MDEUSTEST'
 WATCH_FOR = 1.5
 
@@ -197,6 +198,92 @@ class Handed(Page):
 
     def unmap(self):
         """Take the window down."""
+
+
+class Named:
+    """A stand in for a window named on its title bar and on the panel.
+
+    It keeps each name under the atom it was written to, as an X window keeps
+    its properties, and answers what it is called the way a browser's window
+    does. It remembers every name the panel was given, in turn, and which names
+    the reading wrote at all, since the browser's own name is not the reading's
+    to write. Each write is also kept for the desktop to tell of, which is what
+    an X server does with a change to a window somebody is listening to.
+    """
+
+    def __init__(self, d, title=None):
+        self.d = d
+        self.heard = []
+        self.id = 42
+        self.names = {} if title is None else {'_NET_WM_NAME': title}
+        self.panel = []
+        self.written = set()
+
+    def change_attributes(self, **wanted):
+        """Take what the window is to be listened to for."""
+
+    def change_property(self, atom, kind, format, value):
+        """Take one of the window's names, written as UTF-8."""
+        self.write(self.d.named(atom), bytes(value).decode('utf-8'))
+
+    def get_full_property(self, atom, kind):
+        """Say what the window is called under this atom, or nothing."""
+        name = self.names.get(self.d.named(atom))
+        if name is None:
+            return None
+        return SimpleNamespace(value=name.encode('utf-8'))
+
+    def set_wm_icon_name(self, name):
+        """Take the old name for the panel."""
+        self.write('WM_ICON_NAME', name)
+
+    def set_wm_name(self, name):
+        """Take the old name for the title bar."""
+        self.write('WM_NAME', name)
+
+    def write(self, atom, name):
+        """Keep a name the reading wrote, and the change for the desktop."""
+        self.names[atom] = name
+        self.written.add(atom)
+        self.heard.append(atom)
+        if atom == '_NET_WM_ICON_NAME':
+            self.panel.append(name)
+
+
+class Renaming(Desktop):
+    """A stand in for the desktop while a reader follows links.
+
+    The page's window starts at the first title and each event handed over is
+    the browser renaming it to the next, and once the titles run out the window
+    goes, which is the browser closing it. What the reading writes on the window
+    comes back to it as an event first, as it does from a real X server, so a
+    reading that answered its own writing would go round for ever. It is stopped
+    and told so instead.
+    """
+
+    def __init__(self, titles):
+        super().__init__(None)
+        self.handed = 0
+        self.page = Named(self, titles[0])
+        self.titles = list(titles[1:])
+
+    def next_event(self):
+        """Tell of the next change to the page's window."""
+        self.handed += 1
+        assert self.handed <= EVENTS_AT_MOST, (
+            'the reading kept answering its own writing')
+        if self.page.heard:
+            return self.told(self.page.heard.pop(0))
+        if not self.titles:
+            return SimpleNamespace(type=X.DestroyNotify, window=self.page)
+        self.page.names['_NET_WM_NAME'] = self.titles.pop(0)
+        return self.told('_NET_WM_NAME')
+
+    def told(self, atom):
+        """Return the event that says this name of the window changed."""
+        return SimpleNamespace(
+            type=X.PropertyNotify, atom=self.intern_atom(atom), window=self.page
+        )
 
 
 class Pane:
@@ -873,6 +960,53 @@ def test_vim_leaving_on_a_write_and_quit_takes_the_reading_with_it():
             assert ending.is_set() == wanted, (said, ending.is_set())
         finally:
             stop()
+
+
+def test_the_panel_names_a_page_by_its_file_and_follows_it_from_link_to_link():
+    """The page's own window is on the panel by its file name alone.
+
+    The browser names the window after the page's title, which is the full path
+    of the document, and a window list wide enough for a full path is wider
+    than a panel has room for. The panel reads a window's icon name first, and
+    a browser writes none, so the reading writes the file name there itself and
+    leaves the title bar to the browser.
+
+    It writes it again each time the page follows a link to another document,
+    and writes nothing while the page is still loading and is named after its
+    address, which names no document. What the reading writes comes back to it
+    as a change to the window, and it is not answered, or the reading would
+    write the same name for ever.
+    """
+    start = '/home/reader/docs/start.md'
+    other = '/home/reader/docs/notes/other.md'
+    desktop = Renaming([f'{server.HOST}:8766/{SERVERNAME}', start, other])
+    page = desktop.page
+    window.follow_name(desktop, page)
+    assert page.panel == ['start.md', 'other.md'], page.panel
+    assert page.names['WM_ICON_NAME'] == 'other.md', page.names
+    assert page.names['_NET_WM_NAME'] == other, page.names
+    assert not page.written & {'WM_NAME', '_NET_WM_NAME'}, page.written
+
+
+def test_an_editing_reading_is_named_by_its_file_on_the_panel_alone():
+    """While vim is up, the title bar carries the full path, the panel the file.
+
+    The window an editing session is drawn in is the reading's own, and it
+    takes its names from the page inside it. The title bar has room for the
+    full path, and keeps it, so two documents of the same name in different
+    folders still read apart there. The panel has room for little more than a
+    file name, so it is given that alone, under both the modern name and the
+    old one.
+    """
+    desktop = Desktop(None)
+    path = '/home/reader/docs/notes/other.md'
+    page = Named(desktop, path)
+    container = Named(desktop)
+    window.follow_title(desktop, container, page)
+    names = container.names
+    assert names['_NET_WM_NAME'] == names['WM_NAME'] == path, names
+    panel = names['_NET_WM_ICON_NAME'], names['WM_ICON_NAME']
+    assert panel == ('other.md', 'other.md'), names
 
 
 if __name__ == '__main__':

@@ -364,6 +364,10 @@ def edit(reading, url, ending, opening=False, app_window=True, waiting=None):
     the way in, so that it can be put back exactly there on the way out. The
     container fills the work area, so a page read in a small window grows as it
     goes in, and it should shrink again as it comes out.
+
+    A page asked for by --edit reaches the desktop for the first time as this
+    session hands it back, so that is when its name on the panel starts to be
+    kept. A page opened the plain way has had its name kept since it opened.
     """
     global browser_share
     browser_share = load_split(reading.current)
@@ -439,6 +443,8 @@ def edit(reading, url, ending, opening=False, app_window=True, waiting=None):
         release(d, container, panes, ending.is_set(), was_at, was_full)
         if d is not None:
             d.close()
+    if opening and app_window and not ending.is_set():
+        name_page(reading.servername)
     return ending.is_set()
 
 
@@ -468,20 +474,45 @@ def focus_pane(d, panes, focused):
     focus(d, panes.get(focused) or panes.get('vim'))
 
 
+def follow_name(d, page):
+    """Keep the page's own window named on the panel by its file, until it goes.
+
+    The browser names the window after the page's title, which carries the full
+    path of the document and follows a link to another document, and writes
+    that one name for the title bar and the panel both. So the panel's name is
+    written again from the title each time the title changes, and the browser
+    is left to write the title bar's.
+
+    The window is listened to before its title is first read, so a title that
+    changes in between is heard rather than missed. Only a change to the title
+    is answered: writing the panel's name is a change to the window as well,
+    and answering that would write the same name for ever.
+    """
+    named = d.intern_atom('_NET_WM_NAME')
+    page.change_attributes(
+        event_mask=X.PropertyChangeMask | X.StructureNotifyMask
+    )
+    while True:
+        title = page_title(d, page)
+        if title:
+            set_panel_name(d, page, title)
+        event = d.next_event()
+        while event.type != X.PropertyNotify or event.atom != named:
+            if event.type == X.DestroyNotify:
+                return
+            event = d.next_event()
+
+
 def follow_title(d, container, page):
     """Put what the page calls itself on the reading's title bar and panel entry.
 
     The page's own title carries the full path of the document being read and
     follows a link to another document, so the reading is named from the page
-    rather than from the document it started at.
-
-    What the pane calls itself before the page has arrived is the address it is
-    loading, which names no document, so a title beginning at the host a
-    reading is served from is left where it is and the window keeps the name it
-    already has.
+    rather than from the document it started at. A title that names no document
+    yet is left where it is and the window keeps the name it already has.
     """
-    title = window_name(d, page)
-    if title and not title.startswith(HOST):
+    title = page_title(d, page)
+    if title:
         set_title(d, container, title)
 
 
@@ -944,13 +975,9 @@ def maximise_page(servername):
         if d is None:
             return
         try:
-            deadline = time.monotonic() + WINDOW_WAIT
-            while time.monotonic() < deadline:
-                window = page_window(d, client_list(d), servername)
-                if window is not None:
-                    maximise(d, window)
-                    return
-                time.sleep(SETTLE_WAIT)
+            window = wait_for_page(d, servername)
+            if window is not None:
+                maximise(d, window)
         finally:
             d.close()
 
@@ -1027,6 +1054,34 @@ def meet(d, container, panes, divider):
     d.sync()
 
 
+def name_page(servername):
+    """Keep the page's own window named on the panel by its file while it is up.
+
+    The window is the browser's, which names it by the full path for the panel
+    as well as for the title bar, so the reading watches for it the way it
+    watches to maximise it, and from then on writes the panel's name itself.
+
+    The watching is done on a thread and a connection of its own, because it
+    lasts as long as the window does, and editing sessions come and go in the
+    meantime with connections of their own. Nothing is lost where any of it
+    fails: the panel shows the full path, as it would without this.
+    """
+
+    def while_it_is_up():
+        """Watch the desktop for the page's window, then keep its panel name."""
+        d = x_display()
+        if d is None:
+            return
+        try:
+            page = wait_for_page(d, servername)
+            if page is not None:
+                follow_name(d, page)
+        finally:
+            d.close()
+
+    threading.Thread(target=while_it_is_up, daemon=True).start()
+
+
 def open_page(url, servername, app_window=True, box=None, origin=(0, 0)):
     """Open the reading's page, in a window of its own where a browser can give one.
 
@@ -1050,6 +1105,19 @@ def open_page(url, servername, app_window=True, box=None, origin=(0, 0)):
         )
         return
     threading.Thread(target=webbrowser.open, args=(page, 2), daemon=True).start()
+
+
+def page_title(d, page):
+    """Return the title of the document the page is showing, or nothing yet.
+
+    What the page's window calls itself before the page has arrived is the
+    address it is loading, which names no document, so a title beginning at
+    the host a reading is served from is read as no title at all.
+    """
+    title = window_name(d, page)
+    if title and not title.startswith(HOST):
+        return title
+    return None
 
 
 def page_window(d, listed, servername):
@@ -1204,17 +1272,36 @@ def set_maximised(d, window):
     window.change_property(d.intern_atom(NAMED_STATE), Xatom.ATOM, 32, filling(d))
 
 
+def set_panel_name(d, window, title):
+    """Name a window on the panel by the file at the end of its title alone.
+
+    The title is a full path, and a window list has room for a file name and
+    little more. The panel reads a window's icon name where it has one, so the
+    title bar keeps the full path and only the panel is shortened.
+
+    The modern name and the old one both, since which of the two a desktop
+    reads is the desktop's business and the two are meant to agree.
+    """
+    name = os.path.basename(title)
+    window.set_wm_icon_name(name)
+    window.change_property(
+        d.intern_atom('_NET_WM_ICON_NAME'), d.intern_atom('UTF8_STRING'), 8,
+        name.encode('utf-8'),
+    )
+
+
 def set_title(d, container, title):
     """Say what the reading is called, on its title bar and on the panel.
 
     The modern name and the old one both, since which of the two a desktop
     reads is the desktop's business and the two are meant to agree.
     """
-    utf8 = d.intern_atom('UTF8_STRING')
     container.set_wm_name(title)
-    container.set_wm_icon_name(title)
-    for atom in ('_NET_WM_NAME', '_NET_WM_ICON_NAME'):
-        container.change_property(d.intern_atom(atom), utf8, 8, title.encode('utf-8'))
+    container.change_property(
+        d.intern_atom('_NET_WM_NAME'), d.intern_atom('UTF8_STRING'), 8,
+        title.encode('utf-8'),
+    )
+    set_panel_name(d, container, title)
 
 
 def settle(window):
@@ -1506,6 +1593,17 @@ def wait(files, timeout):
     for file in ready:
         if isinstance(file, int):
             os.read(file, DRAIN)
+
+
+def wait_for_page(d, servername):
+    """Return the page's window once the desktop lists it, or nothing."""
+    deadline = time.monotonic() + WINDOW_WAIT
+    while time.monotonic() < deadline:
+        window = page_window(d, client_list(d), servername)
+        if window is not None:
+            return window
+        time.sleep(SETTLE_WAIT)
+    return None
 
 
 def warm(reading, url):

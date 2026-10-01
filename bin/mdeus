@@ -172,6 +172,7 @@ def read(document, edit, tab):
         window.open_page(url, servername, app_window)
         if app_window:
             window.maximise_page(servername)
+            window.name_page(servername)
 
     waiting = None
     warmed = False
