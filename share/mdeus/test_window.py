@@ -223,8 +223,10 @@ class Named:
         """Take what the window is to be listened to for."""
 
     def change_property(self, atom, kind, format, value):
-        """Take one of the window's names, written as UTF-8."""
-        self.write(self.d.named(atom), bytes(value).decode('utf-8'))
+        """Take one of the window's names, read as the encoding it names."""
+        utf8 = kind == self.d.intern_atom('UTF8_STRING')
+        name = bytes(value).decode('utf-8' if utf8 else 'latin-1')
+        self.write(self.d.named(atom), name)
 
     def get_full_property(self, atom, kind):
         """Say what the window is called under this atom, or nothing."""
@@ -232,14 +234,6 @@ class Named:
         if name is None:
             return None
         return SimpleNamespace(value=name.encode('utf-8'))
-
-    def set_wm_icon_name(self, name):
-        """Take the old name for the panel."""
-        self.write('WM_ICON_NAME', name)
-
-    def set_wm_name(self, name):
-        """Take the old name for the title bar."""
-        self.write('WM_NAME', name)
 
     def write(self, atom, name):
         """Keep a name the reading wrote, and the change for the desktop."""
@@ -1007,6 +1001,27 @@ def test_an_editing_reading_is_named_by_its_file_on_the_panel_alone():
     assert names['_NET_WM_NAME'] == names['WM_NAME'] == path, names
     panel = names['_NET_WM_ICON_NAME'], names['WM_ICON_NAME']
     assert panel == ('other.md', 'other.md'), names
+
+
+def test_a_document_named_in_greek_names_its_window_like_any_other():
+    """A file name outside Latin-1 is on the title bar and the panel as itself.
+
+    The old names were written as Latin-1, which has no Greek letters and
+    refuses them outright, so a reading of a document named in Greek could not
+    be named at all. They are written as UTF-8 instead, which is what the
+    browser writes its own in.
+    """
+    path = '/home/reader/σημειώσεις/αρχή.md'
+    desktop = Desktop(None)
+    container = Named(desktop)
+    window.follow_title(desktop, container, Named(desktop, path))
+    names = container.names
+    assert names['_NET_WM_NAME'] == names['WM_NAME'] == path, names
+    panel = names['_NET_WM_ICON_NAME'], names['WM_ICON_NAME']
+    assert panel == ('αρχή.md', 'αρχή.md'), names
+    renaming = Renaming([path])
+    window.follow_name(renaming, renaming.page)
+    assert renaming.page.panel == ['αρχή.md'], renaming.page.panel
 
 
 if __name__ == '__main__':

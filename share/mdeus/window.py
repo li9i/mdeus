@@ -1283,11 +1283,7 @@ def set_panel_name(d, window, title):
     reads is the desktop's business and the two are meant to agree.
     """
     name = os.path.basename(title)
-    window.set_wm_icon_name(name)
-    window.change_property(
-        d.intern_atom('_NET_WM_ICON_NAME'), d.intern_atom('UTF8_STRING'), 8,
-        name.encode('utf-8'),
-    )
+    write_names(d, window, ('WM_ICON_NAME', '_NET_WM_ICON_NAME'), name)
 
 
 def set_title(d, container, title):
@@ -1296,11 +1292,7 @@ def set_title(d, container, title):
     The modern name and the old one both, since which of the two a desktop
     reads is the desktop's business and the two are meant to agree.
     """
-    container.set_wm_name(title)
-    container.change_property(
-        d.intern_atom('_NET_WM_NAME'), d.intern_atom('UTF8_STRING'), 8,
-        title.encode('utf-8'),
-    )
+    write_names(d, container, ('WM_NAME', '_NET_WM_NAME'), title)
     set_panel_name(d, container, title)
 
 
@@ -1714,6 +1706,20 @@ def work_area(d):
     if area:
         return tuple(area.value[:4])
     return (0, 0, d.screen().width_in_pixels, d.screen().height_in_pixels)
+
+
+def write_names(d, window, atoms, name):
+    """Write one name on a window under each of these atoms, as UTF-8.
+
+    The old names as well as the modern ones, which is how the browser writes
+    its own. The old names were Latin-1 once, and Latin-1 has no Greek letters
+    and refuses them outright, so a document named in Greek named nothing.
+    """
+    utf8 = d.intern_atom('UTF8_STRING')
+    for atom in atoms:
+        window.change_property(
+            d.intern_atom(atom), utf8, 8, name.encode('utf-8')
+        )
 
 
 def x_display():
