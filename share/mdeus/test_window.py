@@ -28,8 +28,10 @@ import vimlink
 import window
 from Xlib import X, error
 
+BROWSER_PID = 4343
 ENDS_WITHIN = 3
 EVENTS_AT_MOST = 50
+READING_PID = 4242
 SERVERNAME = 'MDEUSTEST'
 WATCH_FOR = 1.5
 
@@ -198,6 +200,32 @@ class Handed(Page):
 
     def unmap(self):
         """Take the window down."""
+
+
+class Listed:
+    """A stand in for a window on the desktop, known by its class and process.
+
+    It answers the two questions asked of a window in looking for a reading
+    among the desktop's windows: what the window calls itself, and which
+    process put it up.
+    """
+
+    def __init__(self, classes, pid):
+        self.classes = classes
+        self.id = 42
+        self.pid = pid
+
+    def __index__(self):
+        """Answer as the window's own number, which a message names it by."""
+        return self.id
+
+    def get_full_property(self, atom, kind):
+        """Say which process put the window up."""
+        return SimpleNamespace(value=[self.pid])
+
+    def get_wm_class(self):
+        """Say what the window calls itself."""
+        return self.classes
 
 
 class Named:
@@ -374,6 +402,25 @@ def a_split_of(share):
     finally:
         window.browser_share = was
         window.save_split = stored
+
+
+def brought_forward(listed):
+    """Bring a reading forward on a one window desktop, and return what moved.
+
+    What comes back is every window the desktop was asked to put in front.
+    """
+    desktop = Desktop(listed)
+    was = window.x_display
+    window.x_display = lambda: desktop
+    try:
+        window.bring_forward(READING_PID)
+    finally:
+        window.x_display = was
+    assert desktop.closed, 'the reading left its connection to the desktop open'
+    return [
+        message.window for message in desktop.sent
+        if desktop.named(message.client_type) == '_NET_ACTIVE_WINDOW'
+    ]
 
 
 def held(reading, vim, ending=None):
@@ -892,6 +939,42 @@ def test_a_reading_ended_in_the_terminal_takes_its_page_with_it():
     wanted = desktop.named(message.data[1][0])
     assert wanted == 'WM_DELETE_WINDOW', wanted
     assert desktop.closed, 'the reading left its connection to the desktop open'
+
+
+def test_a_page_opened_again_is_brought_to_the_front():
+    """A document opened again brings the page already showing it forward.
+
+    The page's window is the browser's, so it is known by the reading's name
+    in it rather than by the process that put it up. It is asked in front of
+    everything, minimised or buried as it may be, and no second window opens.
+    """
+    page = Listed(
+        ('mdeus', f'127.0.0.1__8766_{server.reading_name(READING_PID)}'),
+        BROWSER_PID,
+    )
+    assert brought_forward(page) == [page]
+
+
+def test_a_reading_being_edited_opened_again_is_brought_to_the_front():
+    """A document opened again while vim is up brings its window forward.
+
+    The page is inside the reading's own window then, and off the desktop's
+    list, so the window found is the one the reading made, known by the
+    process that made it.
+    """
+    container = Listed(('mdeus', 'Mdeus'), READING_PID)
+    assert brought_forward(container) == [container]
+
+
+def test_a_reading_in_a_tab_opened_again_moves_no_window():
+    """A document open in a tab brings nothing forward, owning no window.
+
+    The window the tab is in is named after the browser and was put up by it,
+    so nothing on the desktop answers to the reading, and a window that is not
+    the reading's is never pulled in front by it.
+    """
+    browser = Listed(('google-chrome', 'Google-chrome'), BROWSER_PID)
+    assert brought_forward(browser) == []
 
 
 def test_vim_is_told_to_go_once_however_long_it_refuses():

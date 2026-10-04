@@ -35,7 +35,9 @@ closed all ask vim to quit, and vim refuses while anything in it is unwritten,
 so nothing is taken away from under unsaved work.
 
 Several readings run at once, each on its own port, each under a name of its
-own. The document is read and not written, with one thing excepted: a task list
+own, and one to a document. mdeus run on a document a reading already has
+opens nothing: it brings the window of that reading to the front, and says so.
+The document is read and not written, with one thing excepted: a task list
 box pressed in the page is that box's own line of the source rewritten, one
 character of it and nothing else. While vim is up even that goes to vim rather
 than to the file, so a document somebody is editing is never written round the
@@ -54,8 +56,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'share' / 'mdeus'))
 import vimlink
 import window
 from browser import browser_path
+from claim import claim, holder
 from export import write_export
-from server import NAME, serve, start
+from server import NAME, reading_name, serve, start
 
 WAKE = 1
 
@@ -99,6 +102,11 @@ def main(argv=None):
     if args.edit and not on_a_desktop():
         print(f'{NAME}: --edit needs a desktop session', file=sys.stderr)
         return 1
+    held = claim(document)
+    if held is None:
+        window.bring_forward(holder(document))
+        print(f'{NAME}: {document.name} is already open')
+        return 0
     read(document, args.edit, args.tab)
     return 0
 
@@ -155,7 +163,7 @@ def read(document, edit, tab):
     warmed again after each session, since a reading may edit as many times as
     the box is ticked and only the first vim was warmed for free.
     """
-    servername = f'{NAME.upper()}{os.getpid()}'
+    servername = reading_name(os.getpid())
     app_window = bool(browser_path()) and not tab
     bound, reading, url = start(document, servername, editable=on_a_desktop())
     print(f'reading {document.name}')

@@ -62,7 +62,7 @@ import webbrowser
 
 import vimlink
 from browser import app_command, browser_path
-from server import HOST, NAME, icon_path
+from server import HOST, NAME, icon_path, reading_name
 from state import DEFAULT_SPLIT, MAX_SPLIT, MIN_SPLIT, load_split, save_split
 
 try:
@@ -82,6 +82,7 @@ DIVIDER_CURSOR = 108
 DIVIDER_LINE = 0xDCDCDC
 DRAIN = 1024
 FILLING = ('_NET_WM_STATE_MAXIMIZED_HORZ', '_NET_WM_STATE_MAXIMIZED_VERT')
+FROM_PAGER = 2
 ICONS = tuple(icon_path(size) for size in (24, 128))
 IN_A_TAB = (
     f'{NAME}: the page is in a tab rather than a window of its own, so vim opens\n'
@@ -134,6 +135,24 @@ class Waiting:
         return self.vim is None or self.vim.poll() is not None
 
 
+def activate(d, window):
+    """Ask the desktop to put a window in front, as its own window list would.
+
+    Asked as the window list asks, because that is the asking a desktop always
+    honours: a window minimised comes back, a window buried comes to the top,
+    and the keyboard goes to it.
+    """
+    d.screen().root.send_event(
+        protocol.event.ClientMessage(
+            window=window,
+            client_type=d.intern_atom('_NET_ACTIVE_WINDOW'),
+            data=(32, [FROM_PAGER, X.CurrentTime, 0, 0, 0]),
+        ),
+        event_mask=X.SubstructureRedirectMask | X.SubstructureNotifyMask,
+    )
+    d.sync()
+
+
 def active_window(d):
     """Return the window the desktop has in front, or None where it does not say."""
     active = d.screen().root.get_full_property(
@@ -153,6 +172,29 @@ def adopt(d, container, window, box):
     """
     withdraw(d, window)
     put_in(d, container, window, box)
+
+
+def bring_forward(pid):
+    """Bring the reading one process is running to the front of the desktop.
+
+    What comes forward is the window the reading has on the desktop: the
+    page's own while it is only the page, and the window it is edited in while
+    vim is up. A reading in a tab has no window of its own to find, and
+    nothing is brought forward for it.
+    """
+    d = x_display()
+    if d is None:
+        return
+    try:
+        listed = client_list(d)
+        found = (
+            page_window(d, listed, reading_name(pid))
+            or container_of(d, listed, pid)
+        )
+        if found is not None:
+            activate(d, found)
+    finally:
+        d.close()
 
 
 def browser_command(browser, url, box, origin):
@@ -201,6 +243,23 @@ def close_page(d, window):
         except Exception:
             return
         time.sleep(SETTLE_WAIT)
+
+
+def container_of(d, listed, pid):
+    """Return the window a reading is edited in, or nothing while it is not.
+
+    It is the one window on the desktop's list that the reading's own process
+    put up, and it carries that process's id from the moment it is made. The
+    page's window carries the browser's, and the panes are not on the list.
+    """
+    for xid in listed:
+        window = d.create_resource_object('window', xid)
+        owner = window.get_full_property(
+            d.intern_atom('_NET_WM_PID'), Xatom.CARDINAL
+        )
+        if owner and owner.value[0] == pid:
+            return window
+    return None
 
 
 def cool(reading, waiting):

@@ -119,6 +119,11 @@ def page_html(title, state, head, body_tail=''):
 """
 
 
+def reading_name(pid):
+    """Return the name the reading run by one process serves its page under."""
+    return f'{NAME.upper()}{pid}'
+
+
 def resolve_inside(root, relative):
     """Return the file a request names, or None if it is not a file inside the tree.
 
