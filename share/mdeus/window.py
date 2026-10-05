@@ -755,6 +755,14 @@ def hold(d, container, panes, divider, vim, reading, ending):
     the keyboard is handed straight back so that whatever else is typed while
     alt is still down goes where it was always going.
 
+    Coming back to the reading by alt and tab names no pane at all, and the
+    pointer says nothing about which one was meant, since it rests wherever it
+    was left. The desktop puts the keyboard on the window while it is still
+    holding the keyboard for its alt and tab, which is how that road is told
+    from a click, and the keyboard goes back to the pane it was last on.
+    Without that, the keyboard stayed on the window as a whole, and every key
+    went to whichever pane the pointer was over.
+
     The pane a session opens on is the page, so the letter that opened vim
     closes it again without the pointer being reached for. Handing the keyboard
     to vim instead would leave that letter meaning what it means in vim, which
@@ -819,6 +827,8 @@ def hold(d, container, panes, divider, vim, reading, ending):
             elif event.type == X.FocusIn and event.window.id == container.id:
                 if event.mode == X.NotifyNormal:
                     focused = under_pointer(container, panes) or focused
+                    focus_pane(d, panes, focused)
+                elif event.mode == X.NotifyWhileGrabbed:
                     focus_pane(d, panes, focused)
             elif event.type == X.KeyPress and event.detail in switching:
                 d.ungrab_keyboard(event.time)

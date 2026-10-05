@@ -13,6 +13,7 @@ vim, a process of its own that ends when the test lets it, and a stand in over
 the call that asks vim to quit.
 """
 
+import os
 import shutil
 import subprocess
 import sys
@@ -26,7 +27,7 @@ from types import SimpleNamespace
 import server
 import vimlink
 import window
-from Xlib import X, error
+from Xlib import X, XK, error
 
 BROWSER_PID = 4343
 ENDS_WITHIN = 3
@@ -118,6 +119,7 @@ class Desktop(Display):
         listed = SimpleNamespace(value=[self.page.id])
         return SimpleNamespace(
             root=SimpleNamespace(
+                id=1,
                 get_full_property=lambda atom, kind: listed,
                 send_event=lambda message, event_mask: self.sent.append(message),
             )
@@ -200,6 +202,22 @@ class Handed(Page):
 
     def unmap(self):
         """Take the window down."""
+
+
+class Keyed:
+    """A stand in for a pane, which the keyboard can be pointed at.
+
+    It tells the desktop it stands in for that it now holds the keyboard, the
+    way an X server moves the focus the moment it is asked to.
+    """
+
+    def __init__(self, d, xid):
+        self.d = d
+        self.id = xid
+
+    def set_input_focus(self, revert, when):
+        """Take the keyboard."""
+        self.d.focus = self.id
 
 
 class Listed:
@@ -306,6 +324,69 @@ class Renaming(Desktop):
         return SimpleNamespace(
             type=X.PropertyNotify, atom=self.intern_atom(atom), window=self.page
         )
+
+
+class Returning(Desktop):
+    """A stand in for the desktop as a reader comes back to a reading.
+
+    The reading's window is the one window on it, in front and holding the
+    keyboard, with the two panes inside it and the pointer resting on the page.
+    The events are what the desktop sends as the reader moves the keyboard to
+    vim with alt and the right arrow, goes to another window with alt and tab
+    and comes back the same way. Coming back is two events, recorded off the
+    desktop this was written on: the keyboard is put on the reading's window
+    while the desktop still holds the keyboard for its alt and tab, and the
+    desktop then lets go of it. The first is also where the keyboard moves to
+    the reading's window, so it is moved there as that event is handed over.
+    """
+
+    def __init__(self):
+        holder = SimpleNamespace(
+            id=50,
+            get_full_property=lambda atom, kind: True,
+            query_pointer=lambda: SimpleNamespace(child=self.panes['browser']),
+        )
+        super().__init__(holder)
+        self.events = [
+            SimpleNamespace(type=X.KeyPress, detail=XK.XK_Right, time=0),
+            SimpleNamespace(
+                type=X.FocusIn, window=holder,
+                mode=X.NotifyWhileGrabbed, detail=X.NotifyNonlinear,
+            ),
+            SimpleNamespace(
+                type=X.FocusIn, window=holder,
+                mode=X.NotifyUngrab, detail=X.NotifyAncestor,
+            ),
+        ]
+        self.focus = holder.id
+        self.panes = {'browser': Keyed(self, 51), 'vim': Keyed(self, 52)}
+        self.quiet, self.loud = os.pipe()
+
+    def fileno(self):
+        """Answer as a connection that has nothing more to say."""
+        return self.quiet
+
+    def get_input_focus(self):
+        """Say which window holds the keyboard."""
+        return SimpleNamespace(focus=self.focus)
+
+    def keysym_to_keycode(self, keysym):
+        """Say which key sends this symbol, which here is the symbol itself."""
+        return keysym
+
+    def next_event(self):
+        """Hand over the next event, moving the keyboard where it moved."""
+        event = self.events.pop(0)
+        if event.type == X.FocusIn and event.mode == X.NotifyWhileGrabbed:
+            self.focus = self.page.id
+        return event
+
+    def pending_events(self):
+        """Say how many events are still waiting."""
+        return len(self.events)
+
+    def ungrab_keyboard(self, when):
+        """Give the keyboard back, as a reading does once it has read a key."""
 
 
 class Pane:
@@ -1105,6 +1186,34 @@ def test_a_document_named_in_greek_names_its_window_like_any_other():
     renaming = Renaming([path])
     window.follow_name(renaming, renaming.page)
     assert renaming.page.panel == ['αρχή.md'], renaming.page.panel
+
+
+def test_a_reading_come_back_to_by_alt_and_tab_types_where_it_was_left():
+    """Alt and tab back to a reading puts the keyboard on the pane it left.
+
+    The desktop puts the keyboard on the reading's window as a whole, and the
+    reading hands it to a pane. Only a click used to be answered, and a click
+    names its pane by where the pointer is. Alt and tab names none, and the
+    reading left the keyboard on the window as a whole, where every key goes
+    to whichever pane the pointer happens to rest on. A reader who left vim
+    came back typing into the page.
+    """
+    desktop = Returning()
+    vim = SimpleNamespace(
+        poll=lambda: None if desktop.events else 0, stdout=desktop.quiet
+    )
+    reading = SimpleNamespace(
+        asks=0, ends=False, heard=desktop.quiet, wanted=True
+    )
+    try:
+        window.hold(
+            desktop, desktop.page, desktop.panes, None, vim, reading,
+            threading.Event(),
+        )
+    finally:
+        os.close(desktop.quiet)
+        os.close(desktop.loud)
+    assert desktop.focus == desktop.panes['vim'].id, desktop.focus
 
 
 if __name__ == '__main__':
