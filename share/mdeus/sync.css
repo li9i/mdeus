@@ -27,6 +27,11 @@
   transition: none;
 }
 
+::highlight(mdeus-word) {
+  background-color: var(--mdeus-word, #c4c4c4);
+}
+
 .github .doc {
   --mdeus-flash: #dbe2e9;
+  --mdeus-word: #b4c4d6;
 }

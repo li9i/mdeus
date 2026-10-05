@@ -51,21 +51,29 @@ def edit(servername, path):
     remote(servername, '--remote-silent', str(path))
 
 
-def jump(servername, first, last):
-    """Send vim to a block of the document it has open, and light the whole of it.
+def jump(servername, first, last, word, nth):
+    """Send vim to a word in a block of its document, and light the two of them.
 
     What vim does on arrival is a function of vim's own, sourced when the
     reading started, since centring the block and marking it for a moment is
     more than a line of typed keys can carry.
+
+    The word is the copy of it with nth copies before it in the block. It goes
+    as a list of character codes, because typed text is read as keys and as a
+    command line, and a quote, an angle bracket or a bar in it would change
+    what the call says.
     """
-    tell(servername, f'{NORMAL_MODE}:call MdeusJumpTo({int(first)}, {int(last)})<CR>')
+    codes = [ord(character) for character in word]
+    call = f'MdeusJumpTo({int(first)}, {int(last)}, {codes}, {int(nth)})'
+    tell(servername, f'{NORMAL_MODE}:call {call}<CR>')
 
 
 def main(argv):
     """Run the small job the reading asks for from the command line."""
     what = argv[0]
     if what == 'cursor':
-        report_cursor(argv[1], argv[2], argv[3], argv[4:5] == ['click'])
+        clicked = argv[4:5] == ['click']
+        report_cursor(argv[1], argv[2], argv[3], clicked, *argv[5:7])
     elif what == 'ending':
         report_ending(argv[1])
     return 0
@@ -136,7 +144,7 @@ def remote(servername, *args):
         return None
 
 
-def report_cursor(url, line, share, clicked=False):
+def report_cursor(url, line, share, clicked=False, word='', earlier='[]'):
     """Tell the reading where the vim cursor is now.
 
     vim starts this and leaves it to itself, so a server that has stopped
@@ -151,12 +159,20 @@ def report_cursor(url, line, share, clicked=False):
     already looking at rather than to one of the page's choosing. Both halves
     are panes of the one window and so stand the same height, and a share of
     that height means the same thing on either side of the seam.
+
+    A click names the word it landed on as well, and the lines of every copy of
+    that word before it, which vim writes as a list. The page counts the copies
+    inside the block it comes to and marks the next one.
     """
     request = urllib.request.Request(
         f'{url}/api/cursor',
-        data=json.dumps(
-            {'clicked': clicked, 'line': int(line), 'share': float(share)}
-        ).encode('utf-8'),
+        data=json.dumps({
+            'clicked': clicked,
+            'earlier': json.loads(earlier),
+            'line': int(line),
+            'share': float(share),
+            'word': word,
+        }).encode('utf-8'),
         headers={'Content-Type': 'application/json'},
     )
     try:

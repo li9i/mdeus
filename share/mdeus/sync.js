@@ -4,6 +4,8 @@ const AIMS = '.aim, .block';
 const CURSOR_MS = 200;
 const DEFAULT_SHARE = 0.25;
 const FLASH_MS = 1000;
+const KEYWORD = '[\\p{L}\\p{N}_]';
+const WORD = 'mdeus-word';
 
 const controls = document.querySelector('.controls');
 const pane = document.querySelector('.doc');
@@ -51,14 +53,26 @@ function blockForLine(line) {
   return holding || above;
 }
 
-function flash(mark) {
+function* copiesOf(word, mark) {
+  yield* rangesOf(new RegExp(
+    `(?<!${KEYWORD})${RegExp.escape(word)}(?!${KEYWORD})`, 'gu'), mark);
+}
+
+function flash(mark, word) {
   const lit = pane.querySelector('.mdeus-click');
   if (lit) {
     lit.classList.remove('mdeus-click');
   }
   window.clearTimeout(flashTimer);
+  CSS.highlights.delete(WORD);
   mark.classList.add('mdeus-click');
-  flashTimer = window.setTimeout(() => mark.classList.remove('mdeus-click'), FLASH_MS);
+  if (word) {
+    CSS.highlights.set(WORD, new Highlight(word));
+  }
+  flashTimer = window.setTimeout(() => {
+    mark.classList.remove('mdeus-click');
+    CSS.highlights.delete(WORD);
+  }, FLASH_MS);
 }
 
 function forget() {
@@ -66,12 +80,13 @@ function forget() {
     mark.classList.remove('mdeus-click', 'mdeus-cursor');
   });
   window.clearTimeout(flashTimer);
+  CSS.highlights.delete(WORD);
   clicksAt = null;
   lineAt = null;
   ruleAt = null;
 }
 
-function markCursor(line, clicked) {
+function markCursor(line, clicked, word, earlier) {
   const block = shownFor(blockForLine(line));
   const mark = (block && aimIn(block, line)) || block;
   const ruled = pane.querySelector('.mdeus-cursor');
@@ -85,7 +100,8 @@ function markCursor(line, clicked) {
   mark.classList.add('mdeus-cursor');
   ruleAt = Number(mark.dataset.start);
   if (clicked) {
-    flash(mark);
+    const nth = earlier.filter((at) => at >= ruleAt).length;
+    flash(mark, copiesOf(word, mark).drop(nth).next().value);
     show(mark);
   }
 }
@@ -95,12 +111,23 @@ function onDouble(event) {
   if (!aim || cursorTimer === null) {
     return;
   }
-  window.getSelection().removeAllRanges();
-  flash(aim);
+  const selection = window.getSelection();
+  const word = wordAt(selection.getRangeAt(0).cloneRange(), aim);
+  selection.removeAllRanges();
+  let nth = 0;
+  for (const copy of copiesOf(word.toString(), aim)) {
+    if (copy.compareBoundaryPoints(Range.START_TO_START, word) >= 0) {
+      break;
+    }
+    nth += 1;
+  }
+  flash(aim, word);
   fetch('/api/jump', {
     body: JSON.stringify({
       last: Number(aim.dataset.end),
       line: Number(aim.dataset.start),
+      nth,
+      word: word.toString(),
     }),
     headers: { 'Content-Type': 'application/json' },
     method: 'POST',
@@ -135,11 +162,23 @@ async function pollCursor() {
   if (typeof where.line === 'number') {
     const clicked = clicksAt !== null && where.clicks !== clicksAt;
     if (clicked || where.line !== lineAt || !ruleStands()) {
-      markCursor(where.line, clicked);
+      markCursor(where.line, clicked, where.word, where.earlier);
     }
     lineAt = where.line;
   }
   clicksAt = where.clicks;
+}
+
+function* rangesOf(pattern, mark) {
+  const walker = document.createTreeWalker(mark, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    for (const found of walker.currentNode.data.matchAll(pattern)) {
+      const range = document.createRange();
+      range.setStart(walker.currentNode, found.index);
+      range.setEnd(walker.currentNode, found.index + found[0].length);
+      yield range;
+    }
+  }
 }
 
 function ruleStands() {
@@ -164,6 +203,15 @@ function shownFor(block) {
 
 function span(mark) {
   return Number(mark.dataset.end) - Number(mark.dataset.start);
+}
+
+function wordAt(clicked, aim) {
+  if (new RegExp(KEYWORD, 'u').test(clicked.toString())) {
+    return clicked;
+  }
+  const after = rangesOf(new RegExp(`${KEYWORD}+`, 'gu'), aim).find(
+    (run) => run.compareBoundaryPoints(Range.START_TO_START, clicked) >= 0);
+  return after || clicked;
 }
 
 begin();

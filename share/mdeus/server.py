@@ -194,14 +194,21 @@ def tick_line(path, line, done):
 
 
 def wanted_block(body):
-    """Return the first and last source lines a request names, or raise ValueError.
+    """Return the block and the word a jump names, or raise ValueError.
 
     The page knows which lines every block was built from, so a jump carries
     both ends of them and vim marks the whole of the block without this having
     to read the document again to find where it ends.
+
+    The word is the one the double click landed on, with how many copies of it
+    stand before it in the block, so vim can find that same copy in the lines
+    and mark it more strongly than the block around it.
     """
     try:
-        return int(body['line']), int(body['last'])
+        return (
+            int(body['line']), int(body['last']),
+            str(body['word']), int(body['nth']),
+        )
     except (KeyError, TypeError) as error:
         raise ValueError('no block') from error
 
@@ -270,6 +277,19 @@ def wanted_tick(body):
         raise ValueError('no tick') from error
 
 
+def wanted_word(body):
+    """Return a click's word and where its earlier copies stand, or ValueError.
+
+    The lines are where every copy of the word before the clicked one stands.
+    The page counts those inside the block it comes to, and that count is
+    which copy in the block to mark.
+    """
+    try:
+        return str(body['word']), [int(line) for line in body['earlier']]
+    except (KeyError, TypeError) as error:
+        raise ValueError('no word') from error
+
+
 def watch_pages(server, reading):
     """Stop the server once no page is holding the reading open any longer.
 
@@ -314,6 +334,7 @@ class Reading:
         self.current = document.resolve()
         self.cursor = None
         self.drawn = threading.Event()
+        self.earlier = []
         self.editable = editable
         self.editing = False
         self.ends = False
@@ -328,6 +349,7 @@ class Reading:
         self.ticks = threading.Lock()
         self.waiting = False
         self.wanted = False
+        self.word = ''
 
     def ask(self, editing):
         """Record what the page asked for and wake whoever acts on it.
@@ -408,8 +430,10 @@ class ReadingHandler(BaseHTTPRequestHandler):
         elif path == '/api/cursor' and self.reading.editing:
             self.send_json({
                 'clicks': self.reading.clicks,
+                'earlier': self.reading.earlier,
                 'line': self.reading.cursor,
                 'share': self.reading.share,
+                'word': self.reading.word,
             })
         elif path.startswith('/assets/'):
             self.send_from(ASSET_DIR, unquote(path[len('/assets/') :]))
@@ -433,6 +457,7 @@ class ReadingHandler(BaseHTTPRequestHandler):
                 self.reading.share = wanted_share(body)
                 if body.get('clicked'):
                     self.reading.clicks += 1
+                    self.reading.word, self.reading.earlier = wanted_word(body)
                 self.send_json({'ok': True})
             elif self.path == '/api/drawn':
                 self.reading.drawn.set()

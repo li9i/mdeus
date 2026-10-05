@@ -7,6 +7,8 @@ what it says afterwards about whether the sending landed. The vim client command
 is stood in for, since what it does is talk to a vim that a test has none of.
 """
 
+import io
+import json
 import sys
 
 import vimlink
@@ -62,6 +64,44 @@ def spoken_to(vim, what):
         return what()
     finally:
         vimlink.remote = was
+
+
+def test_a_click_reports_the_word_under_it_and_where_it_was_seen_before():
+    """A click in vim names its word and where the earlier copies of it are.
+
+    vim hands the earlier lines over as it writes a list, and the page reads
+    them as numbers. A move names no word at all.
+    """
+    sent = []
+    was = vimlink.urllib.request.urlopen
+    vimlink.urllib.request.urlopen = lambda request, timeout: sent.append(
+        json.loads(request.data)) or io.BytesIO()
+    try:
+        vimlink.main(
+            ['cursor', 'http://x', '9', '0.5', 'click', 'cat', '[3, 7]'])
+        vimlink.main(['cursor', 'http://x', '12', '0.5'])
+    finally:
+        vimlink.urllib.request.urlopen = was
+    assert sent == [
+        {'clicked': True, 'earlier': [3, 7], 'line': 9, 'share': 0.5,
+         'word': 'cat'},
+        {'clicked': False, 'earlier': [], 'line': 12, 'share': 0.5, 'word': ''},
+    ], sent
+
+
+def test_a_jump_carries_the_word_as_numbers_vim_cannot_misread():
+    """The clicked word reaches vim as character codes, not as typed text.
+
+    Typed text is read by vim as keys and a command line, so a quote, an angle
+    bracket or a bar in a word could end the call early or start another one.
+    """
+    vim = Vim()
+    spoken_to(vim, lambda: vimlink.jump(SERVERNAME, 3, 4, "a'<b|", 1))
+    assert vim.sent == [(
+        '--remote-send',
+        f'{vimlink.NORMAL_MODE}:call '
+        'MdeusJumpTo(3, 4, [97, 39, 60, 98, 124], 1)<CR>',
+    )], vim.sent
 
 
 def test_a_tick_names_the_line_and_the_document_it_belongs_to():

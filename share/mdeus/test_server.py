@@ -551,6 +551,25 @@ def test_a_box_pressed_while_another_is_being_written_waits_its_turn():
         stop()
 
 
+def test_a_click_in_vim_carries_the_word_and_where_it_was_seen_before():
+    """The page is told the word a click in vim landed on, and where else it is.
+
+    The page marks that word inside the block the click brings it to. Only vim
+    can see the source, and only the page knows where the block begins, so vim
+    sends the line of every earlier copy of the word and the page counts the
+    ones that fall inside the block.
+    """
+    root, port, reading, stop = start_reading(editing=True)
+    try:
+        fetch_json(port, '/api/cursor', 'POST', {
+            'clicked': True, 'earlier': [3, 7, 7], 'line': 9, 'word': 'cat',
+        })
+        state = fetch_json(port, '/api/cursor')[1]
+        assert (state['word'], state['earlier']) == ('cat', [3, 7, 7]), state
+    finally:
+        stop()
+
+
 def test_a_click_in_vim_is_counted_and_a_move_is_not():
     """The page is told how many clicks vim has reported, so it can follow every one.
 
@@ -1647,17 +1666,18 @@ def test_the_vim_routes_answer_only_while_editing():
     root, port, reading, stop = start_reading(editable=True)
     jumped = []
     was = vimlink.jump
-    vimlink.jump = lambda servername, first, last: jumped.append((first, last))
+    vimlink.jump = lambda servername, *block: jumped.append(block)
+    clicked = {'last': 4, 'line': 3, 'nth': 1, 'word': 'cat'}
     try:
         assert fetch_json(port, '/api/cursor')[0] == 404
         assert fetch_json(port, '/api/cursor', 'POST', {'line': 3})[0] == 404
-        assert fetch_json(port, '/api/jump', 'POST', {'line': 3, 'last': 4})[0] == 404
+        assert fetch_json(port, '/api/jump', 'POST', clicked)[0] == 404
         assert jumped == [], jumped
         reading.editing = True
         assert fetch_json(port, '/api/cursor')[0] == 200
         assert fetch_json(port, '/api/cursor', 'POST', {'line': 3})[0] == 200
-        assert fetch_json(port, '/api/jump', 'POST', {'line': 3, 'last': 4})[0] == 200
-        assert jumped == [(3, 4)], jumped
+        assert fetch_json(port, '/api/jump', 'POST', clicked)[0] == 200
+        assert jumped == [(3, 4, 'cat', 1)], jumped
         reading.editing = False
         assert fetch_json(port, '/api/cursor')[0] == 404
     finally:
