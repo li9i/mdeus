@@ -2,6 +2,7 @@
 
 const CONTENTS_MINIMUM = 3;
 const COPIED_MS = 1500;
+const LINE_PX = 40;
 const PLACE_KEY = 'mdeus:place';
 const PLACE_SETTLE_MS = 500;
 const SHORTCUTS = { c: 'contents', e: 'edit', f: 'wide', m: 'middle' };
@@ -477,6 +478,12 @@ function onKey(event) {
   }
   const waited = gWaiting;
   gWaiting = false;
+  const step = scrollStep(event.key);
+  if (step) {
+    event.preventDefault();
+    window.scrollBy(0, step);
+    return;
+  }
   if (event.key === 'G') {
     event.preventDefault();
     window.scrollTo(0, document.documentElement.scrollHeight);
@@ -594,6 +601,11 @@ function saveState() {
     headers: { 'Content-Type': 'application/json' },
     method: 'POST',
   }).catch(() => {});
+}
+
+function scrollStep(key) {
+  const half = window.innerHeight / 2;
+  return { d: half, j: LINE_PX, k: -LINE_PX, u: -half }[key];
 }
 
 function setPressed(button, on) {
