@@ -25,6 +25,26 @@
   z-index: 1;
 }
 
+.browser .controls .keys,
+.report .controls .keys,
+:where(.github) .controls .keys,
+.wikipedia .controls .keys,
+.wikipedia-classic .controls .keys {
+  display: flex;
+  gap: 1em;
+  margin-left: auto;
+}
+
+.browser .controls kbd,
+.report .controls kbd,
+:where(.github) .controls kbd,
+.wikipedia .controls kbd,
+.wikipedia-classic .controls kbd {
+  font: inherit;
+  font-weight: 700;
+  text-transform: none;
+}
+
 .browser .code-block,
 .report .code-block,
 :where(.github) .code-block,
@@ -127,7 +147,8 @@
   padding: 0.5em 0;
 }
 
-.browser .controls label {
+.browser .controls label,
+.browser .controls .keys {
   font-size: 0.85em;
 }
 

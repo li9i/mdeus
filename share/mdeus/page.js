@@ -5,6 +5,12 @@ const COPIED_MS = 1500;
 const DIAGRAM = 'pre > code.language-mermaid';
 const GLIDE_MS_PER_LINE = 30;
 const GLIDES = { j: 1, k: -1 };
+const KEY_HINTS = [
+  ['j k', 'line'],
+  ['d u', 'half'],
+  ['f b', 'page'],
+  ['gg G', 'ends'],
+];
 const LINE_PX = 40;
 const PLACE_KEY = 'mdeus:place';
 const PLACE_SETTLE_MS = 500;
@@ -144,6 +150,12 @@ function buildControls() {
   if (doc.editable) {
     controlsNode.append(toggleButton('edit', 'Edit', editing, onEdit));
   }
+  const keys = document.createElement('span');
+  keys.className = 'keys';
+  keys.innerHTML = KEY_HINTS.map(
+    ([letters, word]) => `<span><kbd>${letters}</kbd> ${word}</span>`
+  ).join('');
+  controlsNode.append(keys);
 }
 
 function contentsHtml() {
