@@ -5,7 +5,7 @@ const COPIED_MS = 1500;
 const LINE_PX = 40;
 const PLACE_KEY = 'mdeus:place';
 const PLACE_SETTLE_MS = 500;
-const SHORTCUTS = { c: 'contents', e: 'edit', f: 'wide', m: 'middle' };
+const SHORTCUTS = { c: 'contents', e: 'edit', m: 'middle', w: 'wide' };
 const TASK_BOX = '.task-list-item-checkbox';
 const THEMES = [
   ['browser', 'Browser default'],
@@ -605,7 +605,10 @@ function saveState() {
 
 function scrollStep(key) {
   const half = window.innerHeight / 2;
-  return { d: half, j: LINE_PX, k: -LINE_PX, u: -half }[key];
+  const page = window.innerHeight - controlsNode.offsetHeight - LINE_PX;
+  return {
+    b: -page, d: half, f: page, j: LINE_PX, k: -LINE_PX, u: -half,
+  }[key];
 }
 
 function setPressed(button, on) {
@@ -655,11 +658,13 @@ async function start() {
 
 function toggleButton(id, text, pressed, handler) {
   const button = document.createElement('button');
-  const letter = text.slice(0, 1);
+  const letter = Object.keys(SHORTCUTS).find((key) => SHORTCUTS[key] === id);
+  const at = text.toLowerCase().indexOf(letter);
   button.addEventListener('click', handler);
   button.id = id;
-  button.innerHTML = `<u>${letter}</u>${text.slice(1)}`;
-  button.title = `${text} (${letter.toLowerCase()})`;
+  button.innerHTML =
+    `${text.slice(0, at)}<u>${text[at]}</u>${text.slice(at + 1)}`;
+  button.title = `${text} (${letter})`;
   button.type = 'button';
   setPressed(button, pressed);
   return button;
