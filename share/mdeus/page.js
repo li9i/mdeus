@@ -2,6 +2,8 @@
 
 const CONTENTS_MINIMUM = 3;
 const COPIED_MS = 1500;
+const GLIDE_MS_PER_LINE = 30;
+const GLIDES = { j: 1, k: -1 };
 const LINE_PX = 40;
 const PLACE_KEY = 'mdeus:place';
 const PLACE_SETTLE_MS = 500;
@@ -25,6 +27,7 @@ let contentsOpen = false;
 let doc = null;
 let editing = false;
 let following = Promise.resolve();
+let glide = null;
 let gWaiting = false;
 let headingIds = [];
 let landings = 0;
@@ -315,6 +318,35 @@ function follow(relative, push) {
   return arriving;
 }
 
+function glideFrame(now) {
+  if (!glide.held && glide.moved >= LINE_PX) {
+    glide = null;
+    return;
+  }
+  const elapsed = now - (glide.last ?? now);
+  const step = Math.min(
+    (LINE_PX * elapsed) / GLIDE_MS_PER_LINE,
+    glide.held ? Infinity : LINE_PX - glide.moved
+  );
+  window.scrollBy(0, GLIDES[glide.key] * step);
+  glide.frame = requestAnimationFrame(glideFrame);
+  glide.last = now;
+  glide.moved += step;
+}
+
+function glideStart(key) {
+  if (glide) {
+    cancelAnimationFrame(glide.frame);
+  }
+  glide = {
+    frame: requestAnimationFrame(glideFrame),
+    held: true,
+    key,
+    last: null,
+    moved: 0,
+  };
+}
+
 async function hold() {
   let response;
   try {
@@ -478,6 +510,13 @@ function onKey(event) {
   }
   const waited = gWaiting;
   gWaiting = false;
+  if (event.key in GLIDES) {
+    event.preventDefault();
+    if (!event.repeat) {
+      glideStart(event.key);
+    }
+    return;
+  }
   const step = scrollStep(event.key);
   if (step) {
     event.preventDefault();
@@ -507,6 +546,12 @@ function onKey(event) {
   }
   event.preventDefault();
   button.click();
+}
+
+function onKeyUp(event) {
+  if (glide && event.key === glide.key) {
+    glide.held = false;
+  }
 }
 
 function onMiddle(event) {
@@ -606,9 +651,7 @@ function saveState() {
 function scrollStep(key) {
   const half = window.innerHeight / 2;
   const page = window.innerHeight - controlsNode.offsetHeight - LINE_PX;
-  return {
-    b: -page, d: half, f: page, j: LINE_PX, k: -LINE_PX, u: -half,
-  }[key];
+  return { b: -page, d: half, f: page, u: -half }[key];
 }
 
 function setPressed(button, on) {
@@ -651,6 +694,7 @@ async function start() {
   docNode.addEventListener('click', onClick);
   docNode.addEventListener('change', onTick);
   document.addEventListener('keydown', onKey);
+  document.addEventListener('keyup', onKeyUp);
   new ResizeObserver(measureBar).observe(controlsNode, { box: 'border-box' });
   window.addEventListener('popstate', onPop);
   drawn();
