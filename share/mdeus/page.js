@@ -2,6 +2,7 @@
 
 const CONTENTS_MINIMUM = 3;
 const COPIED_MS = 1500;
+const DIAGRAM = 'pre > code.language-mermaid';
 const GLIDE_MS_PER_LINE = 30;
 const GLIDES = { j: 1, k: -1 };
 const LINE_PX = 40;
@@ -24,6 +25,8 @@ const foldedAt = new Set();
 const imageSizes = new Map();
 
 let contentsOpen = false;
+let diagrams = new Map();
+let diagramsDrawn = 0;
 let doc = null;
 let editing = false;
 let following = Promise.resolve();
@@ -98,6 +101,7 @@ async function arrive(relative, push) {
     return;
   }
   doc = await response.json();
+  await renderDiagrams();
   foldedAt.clear();
   mtime = doc.mtime;
   if (push) {
@@ -246,6 +250,18 @@ function drawCopyButtons() {
   });
 }
 
+function drawDiagrams() {
+  docNode.querySelectorAll(DIAGRAM).forEach((code) => {
+    const svg = diagrams.get(code.textContent);
+    if (svg) {
+      const figure = document.createElement('div');
+      figure.className = 'diagram';
+      figure.innerHTML = svg;
+      code.parentNode.replaceWith(figure);
+    }
+  });
+}
+
 function drawDocument() {
   document.title = doc.path;
   keepImageSizes();
@@ -276,6 +292,7 @@ function drawDocument() {
     }
     return id;
   });
+  drawDiagrams();
   drawCopyButtons();
   drawTableBlocks();
   applyFolds();
@@ -447,6 +464,7 @@ async function load() {
   const mark = anchor();
   const response = await fetch('/doc');
   doc = await response.json();
+  await renderDiagrams();
   mtime = doc.mtime;
   if (theme === null) {
     theme = doc.state.theme;
@@ -616,6 +634,31 @@ function placeNow() {
   return mark ? { name: doc.name, start: mark.start, top: mark.top } : null;
 }
 
+async function renderDiagram(source) {
+  if (!(await mermaid.parse(source, { suppressErrors: true }))) {
+    return null;
+  }
+  diagramsDrawn += 1;
+  return (await mermaid.render(`diagram-${diagramsDrawn}`, source)).svg;
+}
+
+async function renderDiagrams() {
+  if (!window.mermaid || doc.gone) {
+    return;
+  }
+  const holder = document.createElement('template');
+  holder.innerHTML = doc.blocks.map((block) => block.html).join('');
+  const kept = new Map();
+  for (const code of holder.content.querySelectorAll(DIAGRAM)) {
+    const source = code.textContent;
+    kept.set(
+      source,
+      diagrams.has(source) ? diagrams.get(source) : await renderDiagram(source)
+    );
+  }
+  diagrams = kept;
+}
+
 function restore(mark) {
   if (!mark) {
     return;
@@ -684,6 +727,9 @@ function slug(text, used) {
 
 async function start() {
   history.scrollRestoration = 'manual';
+  if (window.mermaid) {
+    mermaid.initialize({ startOnLoad: false });
+  }
   hold();
   await load();
   landOn(landing(keptPlace() || doc.place));

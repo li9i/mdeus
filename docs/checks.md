@@ -138,3 +138,10 @@ Run all of it after touching anything to do with the browser, the windows or vim
 83. Take the page out of step with the file on purpose: press `Edit` off, add a dozen lines at the top of the document from another terminal without letting the page redraw, which is what `--print` and a paused reading are for, and then press an old box. It goes back where it was rather than ticking whatever now sits on that line.
 84. Press `Edit`, then close the window with nothing unwritten in vim. The reading ends within a few seconds even where the word to quit went astray on the way, since a vim still standing with nothing unwritten is told again and then taken away. Do it with something unwritten instead and the reading stays whole: save then, with nothing pressed anywhere, and it ends by itself within a second or two. Do it while vim has a question up as well: that one ends by itself once the question is answered, and never before it.
 
+
+### Diagrams
+
+85. Open a document holding a mermaid flowchart, a sequence diagram and a fence of some other language. Both diagrams are drawn as pictures where their fences stood, in every one of the five themes, and neither carries a copy button. The other fence stays code and keeps its button.
+86. Break a diagram in vim, ending a line on a bare `-->` will do, and save. That fence comes back as its source in a code box and the rest of the page redraws as usual. Mend it and save, and it is a picture again.
+87. Scroll below a diagram, change it so it grows, `graph LR` to `graph TB` is enough, and save. The diagram redraws taller and the place you were reading stays where it was. Then, while editing, double click a word in a diagram: vim goes to the fence it was written in.
+88. `mdeus --print` on the same document. Every diagram is in the copy as its source, in a code box, since the script that draws them is not carried into a copy.

@@ -671,6 +671,7 @@ class ReadingHandler(BaseHTTPRequestHandler):
             f'    <link rel="icon" href="{ICON_ROUTE}" />',
             '    <link rel="stylesheet" href="/assets/themes.css" />',
             '    <link rel="stylesheet" href="/assets/sync.css" />',
+            '    <script src="/assets/mermaid.min.js" defer></script>',
             '    <script src="/assets/page.js" defer></script>',
             '    <script src="/assets/sync.js" defer></script>',
         ]

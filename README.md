@@ -52,7 +52,7 @@ Everything else is the standard library. Nothing is fetched at runtime, no page 
 
 [MIT](LICENSE), with one exception. The application icon under `share/icons` was cut from Buuf by Paul Davey, which is Creative Commons Attribution-NonCommercial-ShareAlike, so those two PNG files carry that licence instead and may not be used commercially. Nothing depends on them: delete them, or put your own image there, and everything left is MIT.
 
-The stylesheet embeds seven of GitHub's Octicons, which are MIT too. [NOTICE](NOTICE) carries their notice and the full detail on both.
+The stylesheet embeds seven of GitHub's Octicons, which are MIT too. `share/mdeus/mermaid.min.js` is mermaid's own script, MIT as well, and carries DOMPurify inside it, which is Apache 2.0 or MPL 2.0 at your choice. [NOTICE](NOTICE) carries their notices and the full detail on all three.
 
 ## Disclaimer
 

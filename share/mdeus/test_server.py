@@ -902,6 +902,28 @@ def test_a_place_the_page_could_not_have_kept_is_refused():
         stop()
 
 
+def test_a_reading_draws_diagrams_with_a_script_it_serves_itself():
+    """The page asks this server for the script that draws a mermaid fence.
+
+    Nothing in a reading is fetched from the network, so the script comes from
+    the checkout, whole. It is named before page.js, since page.js draws the
+    document as it starts and a diagram can only be drawn once it is there.
+    """
+    root, port, reading, stop = start_reading()
+    try:
+        page = fetch(port, '/')[2].decode('utf-8')
+        named = '<script src="/assets/mermaid.min.js" defer></script>'
+        assert named in page, page[:600]
+        assert page.index(named) < page.index('/assets/page.js'), page[:600]
+        status, content_type, data = fetch(port, '/assets/mermaid.min.js')
+        assert status == 200, status
+        assert 'javascript' in content_type, content_type
+        shipped = (server.ASSET_DIR / 'mermaid.min.js').read_bytes()
+        assert data == shipped, 'the script was not sent whole'
+    finally:
+        stop()
+
+
 def test_absolute_and_parent_paths_are_not_served():
     """A file named by ../ or by an absolute path is not found, on either route."""
     root, port, reading, stop = start_reading()
@@ -1282,6 +1304,27 @@ def test_export_embeds_images_and_reaches_for_nothing():
             assert value.startswith('#'), value
         assert '<link' not in rest, 'the copy loads a file of its own'
         assert '<script src' not in rest, 'the copy loads a script of its own'
+    finally:
+        stop()
+
+
+def test_export_leaves_a_diagram_as_its_source():
+    """A printed copy shows a mermaid fence as the code it was written as.
+
+    The script that draws one would add megabytes to every copy, so a copy
+    carries the fence and none of the script.
+    """
+    root, stop = start_export()
+    try:
+        source = root / 'diagram.md'
+        fence = '```mermaid\ngraph LR\n  A --> B\n```\n'
+        source.write_text(fence, encoding='utf-8')
+        printed = export.write_export(source).read_text(encoding='utf-8')
+        assert 'language-mermaid' in printed, printed[-600:]
+        assert 'A --&gt; B' in printed, printed[-600:]
+        script = server.ASSET_DIR / 'mermaid.min.js'
+        opening = script.read_text(encoding='utf-8')[:200]
+        assert opening not in printed, 'the copy carries the script'
     finally:
         stop()
 

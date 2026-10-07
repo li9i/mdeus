@@ -14,6 +14,10 @@ document by the short script below, and everything else it would ask for is
 refused. Changing the theme or opening the contents list therefore affects
 that one file and stores nothing.
 
+The one script a reading loads that a copy leaves out is the one that draws a
+mermaid diagram. It is megabytes, and a copy would carry it whatever it held,
+so a diagram in a copy reads as the fence it was written as.
+
 Links to other markdown documents are left exactly as they were written. There
 is nothing behind the file to render a target, so following one is the
 browser's business and not this module's.
