@@ -6,10 +6,10 @@ const DIAGRAM = 'pre > code.language-mermaid';
 const GLIDE_MS_PER_LINE = 30;
 const GLIDES = { j: 1, k: -1 };
 const KEY_HINTS = [
-  ['j k', 'line'],
-  ['d u', 'half'],
-  ['f b', 'page'],
-  ['gg G', 'ends'],
+  ['j/k', 'line'],
+  ['d/u', 'half'],
+  ['f/b', 'page'],
+  ['gg/G', 'ends'],
 ];
 const LINE_PX = 40;
 const PLACE_KEY = 'mdeus:place';
@@ -152,9 +152,10 @@ function buildControls() {
   }
   const keys = document.createElement('span');
   keys.className = 'keys';
-  keys.innerHTML = KEY_HINTS.map(
+  const hints = KEY_HINTS.map(
     ([letters, word]) => `<span><kbd>${letters}</kbd> ${word}</span>`
-  ).join('');
+  );
+  keys.innerHTML = `${hints.join('')}`;
   controlsNode.append(keys);
 }
 

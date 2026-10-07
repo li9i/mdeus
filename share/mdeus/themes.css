@@ -25,14 +25,26 @@
   z-index: 1;
 }
 
+.wikipedia-classic .controls .keys {
+  margin-bottom: calc(0.45em - 0.7rem);
+}
+
 .browser .controls .keys,
 .report .controls .keys,
 :where(.github) .controls .keys,
 .wikipedia .controls .keys,
 .wikipedia-classic .controls .keys {
-  display: flex;
-  gap: 1em;
+  align-self: flex-end;
+  font-size: smaller;
   margin-left: auto;
+}
+
+.browser .controls .keys > span + span,
+.report .controls .keys > span + span,
+:where(.github) .controls .keys > span + span,
+.wikipedia .controls .keys > span + span,
+.wikipedia-classic .controls .keys > span + span {
+  margin-left: 1em;
 }
 
 .browser .controls kbd,
@@ -147,9 +159,13 @@
   padding: 0.5em 0;
 }
 
-.browser .controls label,
-.browser .controls .keys {
+.browser .controls label {
   font-size: 0.85em;
+}
+
+.browser .controls .keys {
+  font-size: calc(0.85em / 1.2);
+  margin-bottom: calc(0.45em - 8px);
 }
 
 .browser .controls select,
@@ -315,6 +331,10 @@
   margin-bottom: 2.6rem;
   padding: 0.9rem 0;
   text-transform: uppercase;
+}
+
+.report .controls .keys {
+  margin-bottom: calc(0.45em - 0.9rem);
 }
 
 .report .controls select,
@@ -557,6 +577,10 @@
   margin: 0 auto 1.5rem;
   max-width: 1012px;
   padding: 0.8rem 0;
+}
+
+:where(.github) .controls .keys {
+  margin-bottom: calc(0.45em - 0.8rem);
 }
 
 :where(.github) .controls select,
@@ -971,6 +995,10 @@
   gap: 0.6em;
   margin: 0 -2rem 1.6rem;
   padding: 0.7rem 2rem;
+}
+
+.wikipedia .controls .keys {
+  margin-bottom: calc(0.45em - 0.7rem);
 }
 
 .wikipedia .controls select,
