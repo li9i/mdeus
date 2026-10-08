@@ -288,14 +288,8 @@ function drawDocument() {
   sectionLines = new Set(
     doc.outline.filter((entry) => entry.level === 1).map((entry) => entry.line)
   );
-  const parts = doc.blocks.map(blockHtml);
   const meta = `<p class="meta">${esc(doc.name)}</p>`;
-  if (doc.blocks.length && doc.blocks[0].type === 'heading') {
-    parts.splice(1, 0, meta);
-  } else {
-    parts.unshift(meta);
-  }
-  docNode.innerHTML = parts.join('');
+  docNode.innerHTML = meta + doc.blocks.map(blockHtml).join('');
   sizeImages();
   const headings = docNode.querySelectorAll('h1, h2, h3, h4, h5, h6');
   const used = [];
