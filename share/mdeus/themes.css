@@ -170,7 +170,8 @@
 
 .browser .controls select,
 .browser .controls button,
-.browser .code-block .copy {
+.browser .code-block .copy,
+.browser .copy-path {
   font-family: inherit;
 }
 
@@ -182,7 +183,8 @@
 
 .browser .controls select:focus-visible,
 .browser .controls button:focus-visible,
-.browser .code-block .copy:focus-visible {
+.browser .code-block .copy:focus-visible,
+.browser .copy-path:focus-visible {
   outline: 2px solid #000000;
   outline-offset: 1px;
 }
@@ -339,7 +341,8 @@
 
 .report .controls select,
 .report .controls button,
-.report .code-block .copy {
+.report .code-block .copy,
+.report .copy-path {
   background: #ffffff;
   border: 1px solid #141414;
   color: #141414;
@@ -349,7 +352,8 @@
 }
 
 .report .controls button,
-.report .code-block .copy {
+.report .code-block .copy,
+.report .copy-path {
   cursor: pointer;
   text-transform: uppercase;
 }
@@ -361,7 +365,8 @@
 
 .report .controls select:focus-visible,
 .report .controls button:focus-visible,
-.report .code-block .copy:focus-visible {
+.report .code-block .copy:focus-visible,
+.report .copy-path:focus-visible {
   outline: 2px solid #141414;
   outline-offset: 2px;
 }
@@ -584,7 +589,8 @@
 }
 
 :where(.github) .controls select,
-:where(.github) .controls button {
+:where(.github) .controls button,
+:where(.github) .copy-path {
   background: var(--canvas-inset, #f6f8fa);
   border: 1px solid var(--border, #d1d9e0);
   border-radius: 6px;
@@ -597,6 +603,12 @@
 
 :where(.github) .controls button {
   cursor: pointer;
+}
+
+:where(.github) .copy-path {
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
 }
 
 :where(.github) .controls button[aria-pressed='true'] {
@@ -642,7 +654,8 @@
 
 :where(.github) .controls select:focus-visible,
 :where(.github) .controls button:focus-visible,
-:where(.github) .code-block .copy:focus-visible {
+:where(.github) .code-block .copy:focus-visible,
+:where(.github) .copy-path:focus-visible {
   outline: 2px solid var(--accent, #0969da);
   outline-offset: 1px;
 }
@@ -1003,7 +1016,8 @@
 
 .wikipedia .controls select,
 .wikipedia .controls button,
-.wikipedia .code-block .copy {
+.wikipedia .code-block .copy,
+.wikipedia .copy-path {
   background: #f8f9fa;
   border: 1px solid #a2a9b1;
   border-radius: 2px;
@@ -1013,7 +1027,8 @@
 }
 
 .wikipedia .controls button,
-.wikipedia .code-block .copy {
+.wikipedia .code-block .copy,
+.wikipedia .copy-path {
   cursor: pointer;
 }
 
@@ -1025,7 +1040,8 @@
 
 .wikipedia .controls select:focus-visible,
 .wikipedia .controls button:focus-visible,
-.wikipedia .code-block .copy:focus-visible {
+.wikipedia .code-block .copy:focus-visible,
+.wikipedia .copy-path:focus-visible {
   outline: 2px solid #3366cc;
   outline-offset: 1px;
 }
@@ -1293,7 +1309,8 @@
 
 .wikipedia-classic .controls select,
 .wikipedia-classic .controls button,
-.wikipedia-classic .code-block .copy {
+.wikipedia-classic .code-block .copy,
+.wikipedia-classic .copy-path {
   background: #f8f9fa;
   border: 1px solid #a7d7f9;
   border-radius: 2px;
@@ -1303,7 +1320,8 @@
 }
 
 .wikipedia-classic .controls button,
-.wikipedia-classic .code-block .copy {
+.wikipedia-classic .code-block .copy,
+.wikipedia-classic .copy-path {
   cursor: pointer;
 }
 
@@ -1315,7 +1333,8 @@
 
 .wikipedia-classic .controls select:focus-visible,
 .wikipedia-classic .controls button:focus-visible,
-.wikipedia-classic .code-block .copy:focus-visible {
+.wikipedia-classic .code-block .copy:focus-visible,
+.wikipedia-classic .copy-path:focus-visible {
   outline: 2px solid #2a4b8d;
   outline-offset: 1px;
 }

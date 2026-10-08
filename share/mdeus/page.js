@@ -185,14 +185,13 @@ function contentsHtml() {
   );
 }
 
-function copyFence(pre, button) {
-  const text = pre.textContent;
+function copyText(text, button, label) {
   const sayCopied = () => {
     button.classList.add('copied');
     button.textContent = 'Copied';
     window.setTimeout(() => {
       button.classList.remove('copied');
-      button.textContent = 'Copy';
+      button.textContent = label;
     }, COPIED_MS);
   };
   const bySelection = () => {
@@ -258,7 +257,9 @@ function drawCopyButtons() {
     button.className = 'copy';
     button.textContent = 'Copy';
     button.type = 'button';
-    button.addEventListener('click', () => copyFence(pre, button));
+    button.addEventListener('click', () =>
+      copyText(pre.textContent, button, 'Copy')
+    );
     wrapper.append(button);
   });
 }
@@ -307,8 +308,24 @@ function drawDocument() {
   });
   drawDiagrams();
   drawCopyButtons();
+  drawPathButton();
   drawTableBlocks();
   applyFolds();
+}
+
+function drawPathButton() {
+  if (!doc.path) {
+    return;
+  }
+  const button = document.createElement('button');
+  button.className = 'copy-path';
+  button.textContent = doc.name;
+  button.title = `Copy ${doc.path}`;
+  button.type = 'button';
+  button.addEventListener('click', () =>
+    copyText(doc.path, button, doc.name)
+  );
+  docNode.querySelector('.meta').replaceChildren(button);
 }
 
 function drawTableBlocks() {

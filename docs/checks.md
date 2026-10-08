@@ -145,3 +145,10 @@ Run all of it after touching anything to do with the browser, the windows or vim
 86. Break a diagram in vim, ending a line on a bare `-->` will do, and save. That fence comes back as its source in a code box and the rest of the page redraws as usual. Mend it and save, and it is a picture again.
 87. Scroll below a diagram, change it so it grows, `graph LR` to `graph TB` is enough, and save. The diagram redraws taller and the place you were reading stays where it was. Then, while editing, double click a word in a diagram: vim goes to the fence it was written in.
 88. `mdeus --print` on the same document. Every diagram is in the copy as its source, in a code box, since the script that draws them is not carried into a copy.
+
+
+### The file name
+
+89. Open a document in each of the five themes. The file name under the first heading is a button, drawn exactly as `Contents` and `Full width` are in the row above when they are not pressed. Hovering it names the full path of the document after the word `Copy`. Tab to it and it takes the same focus ring as the buttons in the row.
+90. Press it and paste into a terminal. You get the full path, `/home/you/notes/plan.md` and not `notes/plan.md`. The name says `Copied` for a second and a half, then comes back. Follow a link to another document and press it again: the path is the new document's. Write the file from an editor and the name is still there once, and still copies.
+91. `mdeus --print doc.md`, then open the file it names. The file name is there as plain text, and pressing it does nothing, since a printed copy does not carry the full path of the file it came from.
