@@ -314,7 +314,7 @@ function drawPathButton() {
   const button = document.createElement('button');
   button.className = 'copy-path';
   button.textContent = doc.name;
-  button.title = `Copy ${doc.path}`;
+  button.title = 'Copy the path of this file';
   button.type = 'button';
   button.addEventListener('click', () =>
     copyText(doc.path, button, doc.name)

@@ -149,6 +149,6 @@ Run all of it after touching anything to do with the browser, the windows or vim
 
 ### The file name
 
-89. Open a document in each of the five themes. The file name above the first heading is a button, drawn exactly as `Contents` and `Full width` are in the row above when they are not pressed. Hovering it names the full path of the document after the word `Copy`. Tab to it and it takes the same focus ring as the buttons in the row.
+89. Open a document in each of the five themes. The file name above the first heading is a button, drawn exactly as `Contents` and `Full width` are in the row above when they are not pressed. Hovering it says `Copy the path of this file`. Tab to it and it takes the same focus ring as the buttons in the row.
 90. Press it and paste into a terminal. You get the full path, `/home/you/notes/plan.md` and not `notes/plan.md`. The name says `Copied` for a second and a half, then comes back. Follow a link to another document and press it again: the path is the new document's. Write the file from an editor and the name is still there once, and still copies.
 91. `mdeus --print doc.md`, then open the file it names. The file name is there as plain text, and pressing it does nothing, since a printed copy does not carry the full path of the file it came from.
