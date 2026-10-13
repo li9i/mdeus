@@ -7,6 +7,8 @@ BIN_DIR="$HOME/.local/bin"
 COMPLETION_DIR="$HOME/.local/share/bash-completion/completions"
 DESKTOP_DIR="$HOME/.local/share/applications"
 ICON_DIR="$HOME/.local/share/icons/hicolor"
+PACKAGES=(python3-markdown-it python3-mdit-py-plugins python3-linkify-it
+  python3-emoji python3-xlib python3-pil vim-gtk3)
 
 say() {
   printf '\n==> %s\n' "$1"
@@ -23,9 +25,19 @@ echo "Installing mdeus from $REPO"
 
 say "1. Packages"
 if command -v apt-get >/dev/null 2>&1; then
-  echo "This needs root."
-  sudo apt-get install -y python3-markdown-it python3-mdit-py-plugins \
-    python3-linkify-it python3-emoji python3-xlib python3-pil vim-gtk3
+  MISSING=()
+  for package in "${PACKAGES[@]}"; do
+    if [ "$(dpkg-query -W -f='${db:Status-Status}' "$package" 2>/dev/null)" \
+        != installed ]; then
+      MISSING+=("$package")
+    fi
+  done
+  if [ "${#MISSING[@]}" -gt 0 ]; then
+    echo "This needs root."
+    sudo apt-get install -y "${MISSING[@]}"
+  else
+    echo "  already installed"
+  fi
 else
   echo "No apt-get here, so install these yourself:"
   echo "  markdown-it-py, mdit-py-plugins, linkify-it-py, emoji, python-xlib, pillow"
