@@ -12,10 +12,33 @@ const KEY_HINTS = [
   ['gg/G', 'ends'],
 ];
 const LINE_PX = 40;
+const MERMAID = { startOnLoad: false };
+const PAINT_RGBA = /^rgba\((.*), ([\d.]+)\)$/;
 const PLACE_KEY = 'mdeus:place';
 const PLACE_SETTLE_MS = 500;
+const PNG_SCALE = 2;
+const SAVES = [
+  { extension: 'svg', label: 'Save as SVG', type: 'image/svg+xml' },
+  { extension: 'png', label: 'Save as PNG', type: 'image/png' },
+];
 const SHORTCUTS = { c: 'contents', e: 'edit', m: 'middle', w: 'wide' };
+const SVG_STYLES = [
+  'dominant-baseline',
+  'fill',
+  'fill-opacity',
+  'font-family',
+  'font-size',
+  'font-style',
+  'font-weight',
+  'opacity',
+  'stroke',
+  'stroke-dasharray',
+  'stroke-opacity',
+  'stroke-width',
+  'text-anchor',
+];
 const TASK_BOX = '.task-list-item-checkbox';
+const TEXT_LABELS = { flowchart: { htmlLabels: false }, htmlLabels: false };
 const THEMES = [
   ['browser', 'Browser default'],
   ['github', 'GitHub'],
@@ -24,6 +47,7 @@ const THEMES = [
   ['report', 'Mono headings'],
 ];
 const TREE = 'file:///tree/';
+const XML_NS = 'http://www.w3.org/XML/1998/namespace';
 
 const controlsNode = document.querySelector('.controls');
 const docNode = document.querySelector('.doc');
@@ -40,6 +64,7 @@ let glide = null;
 let gWaiting = false;
 let headingIds = [];
 let landings = 0;
+let menu = null;
 let middle = null;
 let mtime = null;
 let placeTimer = null;
@@ -159,6 +184,13 @@ function buildControls() {
   controlsNode.append(keys);
 }
 
+function closeMenu() {
+  if (menu) {
+    menu.remove();
+    menu = null;
+  }
+}
+
 function contentsHtml() {
   const out = [];
   const levels = [];
@@ -270,6 +302,7 @@ function drawDiagrams() {
     if (svg) {
       const figure = document.createElement('div');
       figure.className = 'diagram';
+      figure.dataset.source = code.textContent;
       figure.innerHTML = svg;
       code.parentNode.replaceWith(figure);
     }
@@ -419,6 +452,23 @@ async function hold() {
   hold();
 }
 
+function inlineStyle(computed) {
+  const style = {};
+  SVG_STYLES.forEach((name) => {
+    style[name] = computed.getPropertyValue(name);
+  });
+  ['fill', 'stroke'].forEach((paint) => {
+    const rgba = style[paint].match(PAINT_RGBA);
+    if (rgba) {
+      style[paint] = `rgb(${rgba[1]})`;
+      style[`${paint}-opacity`] *= Number(rgba[2]);
+    }
+  });
+  return Object.entries(style)
+    .map(([name, value]) => `${name}:${value}`)
+    .join(';');
+}
+
 function isSection(block) {
   return sectionLines.has(Number(block.dataset.start));
 }
@@ -547,6 +597,10 @@ function onKey(event) {
   if (event.key === 'Shift') {
     return;
   }
+  if (event.key === 'Escape') {
+    closeMenu();
+    return;
+  }
   if (event.target.closest && event.target.closest('input, select, textarea, [contenteditable]')) {
     return;
   }
@@ -596,11 +650,40 @@ function onKeyUp(event) {
   }
 }
 
+function onMenu(event) {
+  const figure = event.target.closest('.diagram');
+  if (!figure) {
+    return;
+  }
+  event.preventDefault();
+  menu = document.createElement('div');
+  menu.className = 'diagram-menu';
+  menu.style.left = `${event.pageX}px`;
+  menu.style.top = `${event.pageY}px`;
+  SAVES.forEach((save) => {
+    const button = document.createElement('button');
+    button.textContent = save.label;
+    button.type = 'button';
+    button.addEventListener('click', () => {
+      closeMenu();
+      saveDiagram(figure, save);
+    });
+    menu.append(button);
+  });
+  document.body.append(menu);
+}
+
 function onMiddle(event) {
   middle = !middle;
   applyMiddle();
   setPressed(event.currentTarget, middle);
   saveState();
+}
+
+function onPointerDown(event) {
+  if (menu && !menu.contains(event.target)) {
+    closeMenu();
+  }
 }
 
 function onPop(event) {
@@ -658,6 +741,41 @@ function placeNow() {
   return mark ? { name: doc.name, start: mark.start, top: mark.top } : null;
 }
 
+async function pngBlob(svg) {
+  const box = svg.getBoundingClientRect();
+  const sized = svg.cloneNode(true);
+  sized.setAttribute('height', Math.ceil(box.height * PNG_SCALE));
+  sized.setAttribute('width', Math.ceil(box.width * PNG_SCALE));
+  const image = new Image();
+  image.src =
+    `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgText(sized))}`;
+  await image.decode();
+  const canvas = document.createElement('canvas');
+  canvas.height = image.naturalHeight;
+  canvas.width = image.naturalWidth;
+  canvas.getContext('2d').drawImage(image, 0, 0);
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+}
+
+async function portableSvg(source) {
+  mermaid.initialize({ ...MERMAID, ...TEXT_LABELS });
+  const holder = document.createElement('div');
+  holder.hidden = true;
+  holder.innerHTML = await renderDiagram(source);
+  mermaid.initialize(MERMAID);
+  document.body.append(holder);
+  const svg = holder.firstElementChild;
+  const nodes = [svg, ...svg.querySelectorAll('*')];
+  const styles = nodes.map((node) => inlineStyle(getComputedStyle(node)));
+  nodes.forEach((node, index) => node.setAttribute('style', styles[index]));
+  holder.remove();
+  svg.querySelectorAll('style').forEach((style) => style.remove());
+  svg.setAttribute('height', svg.viewBox.baseVal.height);
+  svg.setAttribute('width', svg.viewBox.baseVal.width);
+  svg.setAttributeNS(XML_NS, 'xml:space', 'preserve');
+  return svgText(svg);
+}
+
 async function renderDiagram(source) {
   if (!(await mermaid.parse(source, { suppressErrors: true }))) {
     return null;
@@ -691,6 +809,24 @@ function restore(mark) {
   if (block) {
     window.scrollBy(0, block.getBoundingClientRect().top - mark.top);
   }
+}
+
+async function saveDiagram(figure, save) {
+  const stem = doc.name.split('/').pop().replace(/\.md$/, '');
+  const number = [...docNode.querySelectorAll('.diagram')].indexOf(figure) + 1;
+  const handle = await window.showSaveFilePicker({
+    suggestedName: `${stem}-diagram-${number}.${save.extension}`,
+    types: [{ accept: { [save.type]: [`.${save.extension}`] } }],
+  });
+  const blob =
+    save.extension === 'png'
+      ? await pngBlob(figure.querySelector('svg'))
+      : new Blob([await portableSvg(figure.dataset.source)], {
+          type: save.type,
+        });
+  const writable = await handle.createWritable();
+  await writable.write(blob);
+  await writable.close();
 }
 
 function savePlace() {
@@ -752,7 +888,7 @@ function slug(text, used) {
 async function start() {
   history.scrollRestoration = 'manual';
   if (window.mermaid) {
-    mermaid.initialize({ startOnLoad: false });
+    mermaid.initialize(MERMAID);
   }
   hold();
   await load();
@@ -763,11 +899,17 @@ async function start() {
   history.replaceState({ path: doc.name }, '');
   docNode.addEventListener('click', onClick);
   docNode.addEventListener('change', onTick);
+  docNode.addEventListener('contextmenu', onMenu);
+  document.addEventListener('pointerdown', onPointerDown);
   document.addEventListener('keydown', onKey);
   document.addEventListener('keyup', onKeyUp);
   new ResizeObserver(measureBar).observe(controlsNode, { box: 'border-box' });
   window.addEventListener('popstate', onPop);
   drawn();
+}
+
+function svgText(svg) {
+  return new XMLSerializer().serializeToString(svg);
 }
 
 function toggleButton(id, text, pressed, handler) {

@@ -85,6 +85,26 @@
   transition: opacity 0.15s;
 }
 
+.browser .diagram-menu,
+.report .diagram-menu,
+:where(.github) .diagram-menu,
+.wikipedia .diagram-menu,
+.wikipedia-classic .diagram-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: absolute;
+  z-index: 2;
+}
+
+.browser .diagram-menu button,
+.report .diagram-menu button,
+:where(.github) .diagram-menu button,
+.wikipedia .diagram-menu button,
+.wikipedia-classic .diagram-menu button {
+  text-align: left;
+}
+
 .browser .doc .folded h1::after,
 .report .doc .folded h1::after,
 :where(.github) .doc .folded h1::after,
@@ -171,7 +191,8 @@
 .browser .controls select,
 .browser .controls button,
 .browser .code-block .copy,
-.browser .copy-path {
+.browser .copy-path,
+.browser .diagram-menu button {
   font-family: inherit;
 }
 
@@ -184,7 +205,8 @@
 .browser .controls select:focus-visible,
 .browser .controls button:focus-visible,
 .browser .code-block .copy:focus-visible,
-.browser .copy-path:focus-visible {
+.browser .copy-path:focus-visible,
+.browser .diagram-menu button:focus-visible {
   outline: 2px solid #000000;
   outline-offset: 1px;
 }
@@ -342,7 +364,8 @@
 .report .controls select,
 .report .controls button,
 .report .code-block .copy,
-.report .copy-path {
+.report .copy-path,
+.report .diagram-menu button {
   background: #ffffff;
   border: 1px solid #141414;
   color: #141414;
@@ -353,7 +376,8 @@
 
 .report .controls button,
 .report .code-block .copy,
-.report .copy-path {
+.report .copy-path,
+.report .diagram-menu button {
   cursor: pointer;
   text-transform: uppercase;
 }
@@ -366,7 +390,8 @@
 .report .controls select:focus-visible,
 .report .controls button:focus-visible,
 .report .code-block .copy:focus-visible,
-.report .copy-path:focus-visible {
+.report .copy-path:focus-visible,
+.report .diagram-menu button:focus-visible {
   outline: 2px solid #141414;
   outline-offset: 2px;
 }
@@ -590,7 +615,8 @@
 
 :where(.github) .controls select,
 :where(.github) .controls button,
-:where(.github) .copy-path {
+:where(.github) .copy-path,
+:where(.github) .diagram-menu button {
   background: var(--canvas-inset, #f6f8fa);
   border: 1px solid var(--border, #d1d9e0);
   border-radius: 6px;
@@ -605,7 +631,8 @@
   cursor: pointer;
 }
 
-:where(.github) .copy-path {
+:where(.github) .copy-path,
+:where(.github) .diagram-menu button {
   cursor: pointer;
   font-size: 12px;
   line-height: 1;
@@ -655,7 +682,8 @@
 :where(.github) .controls select:focus-visible,
 :where(.github) .controls button:focus-visible,
 :where(.github) .code-block .copy:focus-visible,
-:where(.github) .copy-path:focus-visible {
+:where(.github) .copy-path:focus-visible,
+:where(.github) .diagram-menu button:focus-visible {
   outline: 2px solid var(--accent, #0969da);
   outline-offset: 1px;
 }
@@ -1017,7 +1045,8 @@
 .wikipedia .controls select,
 .wikipedia .controls button,
 .wikipedia .code-block .copy,
-.wikipedia .copy-path {
+.wikipedia .copy-path,
+.wikipedia .diagram-menu button {
   background: #f8f9fa;
   border: 1px solid #a2a9b1;
   border-radius: 2px;
@@ -1028,7 +1057,8 @@
 
 .wikipedia .controls button,
 .wikipedia .code-block .copy,
-.wikipedia .copy-path {
+.wikipedia .copy-path,
+.wikipedia .diagram-menu button {
   cursor: pointer;
 }
 
@@ -1041,7 +1071,8 @@
 .wikipedia .controls select:focus-visible,
 .wikipedia .controls button:focus-visible,
 .wikipedia .code-block .copy:focus-visible,
-.wikipedia .copy-path:focus-visible {
+.wikipedia .copy-path:focus-visible,
+.wikipedia .diagram-menu button:focus-visible {
   outline: 2px solid #3366cc;
   outline-offset: 1px;
 }
@@ -1310,7 +1341,8 @@
 .wikipedia-classic .controls select,
 .wikipedia-classic .controls button,
 .wikipedia-classic .code-block .copy,
-.wikipedia-classic .copy-path {
+.wikipedia-classic .copy-path,
+.wikipedia-classic .diagram-menu button {
   background: #f8f9fa;
   border: 1px solid #a7d7f9;
   border-radius: 2px;
@@ -1321,7 +1353,8 @@
 
 .wikipedia-classic .controls button,
 .wikipedia-classic .code-block .copy,
-.wikipedia-classic .copy-path {
+.wikipedia-classic .copy-path,
+.wikipedia-classic .diagram-menu button {
   cursor: pointer;
 }
 
@@ -1334,7 +1367,8 @@
 .wikipedia-classic .controls select:focus-visible,
 .wikipedia-classic .controls button:focus-visible,
 .wikipedia-classic .code-block .copy:focus-visible,
-.wikipedia-classic .copy-path:focus-visible {
+.wikipedia-classic .copy-path:focus-visible,
+.wikipedia-classic .diagram-menu button:focus-visible {
   outline: 2px solid #2a4b8d;
   outline-offset: 1px;
 }
