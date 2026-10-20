@@ -25,15 +25,16 @@ git clone https://github.com/li9i/mdeus.git ~/mdeus
 ## Use
 
 ```
-mdeus notes.md            read it in a window of its own
-mdeus --edit notes.md     the same, with vim beside it from the start
-mdeus --tab notes.md      read it in a tab of your default browser
-mdeus --print notes.md    write one self contained HTML file, print its path
+mdeus notes.md              read it in a window of its own
+mdeus --edit notes.md       the same, with vim beside it from the start
+mdeus --tab notes.md        read it in a tab of your default browser
+mdeus --print notes.md      write one self contained HTML file, print its path
+mdeus --diff old.md new.md  show what changed from old.md to new.md on one page
 ```
 
 Only a document named `.md` or `.markdown` opens. Anything else is refused in one line: `mdeus: not a markdown document: run.py`.
 
-`git difftool -t mdeus` shows what changed in a markdown document as one page: the new words on a green ground, the old ones in dark red on a pale red ground, and everything else as a reading draws it. `git difftool -t mdeus HEAD~3 -- notes.md` compares `notes.md` three commits back with how it reads now. git opens the documents one at a time, the next when you close the page, and mdeus turns away any file that is not markdown. The page is read only and redraws when the file is written, so `git difftool -t mdeus` on its own follows your edits as you save them.
+`mdeus --diff old.md new.md` shows what changed from one document to the other as one page: the new words on a green ground, the old ones in dark red on a pale red ground, and everything else as a reading draws it. `git difftool -t mdeus` does the same for a change git knows about. `git difftool -t mdeus HEAD~3 -- notes.md` compares `notes.md` three commits back with how it reads now. git opens the documents one at a time, the next when you close the page, and mdeus turns away any file that is not markdown. The page is read only and redraws when the file is written, so `git difftool -t mdeus` on its own follows your edits as you save them.
 
 ## What it needs
 

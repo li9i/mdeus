@@ -32,7 +32,7 @@ from contextlib import redirect_stderr
 from http.client import HTTPConnection
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 TEST_HOME = tempfile.mkdtemp(prefix='mdeus-test-home-')
 os.environ['HOME'] = TEST_HOME
@@ -221,6 +221,18 @@ def home_state_snapshot():
         return exists, None
 
 
+def quiet_environment(home):
+    """Return the environment the command is run in by a test.
+
+    The browser it is pointed at does nothing and there is no desktop, so a
+    page served is opened in no window. The home is the test's own, so that
+    whatever a reading stores lands in the fixture rather than in the run's.
+    """
+    quiet = dict(os.environ, BROWSER='true', HOME=str(home))
+    quiet.pop('DISPLAY', None)
+    return quiet
+
+
 def request_head(port, method, path, *headers):
     """Return one request as bytes, said exactly rather than by http.client."""
     lines = [f'{method} {path} HTTP/1.1', f'Host: {server.HOST}:{port}',
@@ -247,6 +259,29 @@ def served_blocks(source):
     return render.render_document(
         source, aimed=True, image_src=lambda target: f'/file/{target}', tickable=True
     )['blocks']
+
+
+def served_comparison(arguments, home):
+    """Return what the page of a comparison started by the command is sent.
+
+    The command opens no window and stores into the home it is given, and it
+    is stopped once the page's document has been read.
+    """
+    reading = subprocess.Popen(
+        [sys.executable, str(COMMAND), '--tab', '--diff', *arguments],
+        env=quiet_environment(home), stderr=subprocess.PIPE,
+        stdout=subprocess.PIPE, text=True,
+    )
+    try:
+        for line in reading.stdout:
+            if line.strip().startswith('http://'):
+                return fetch_json(urlsplit(line.strip()).port, '/doc')[1]
+        raise AssertionError(
+            f'{arguments} served nothing: {reading.stderr.read()}'
+        )
+    finally:
+        reading.terminate()
+        reading.wait(timeout=TIMEOUT)
 
 
 def served_image(target):
@@ -644,6 +679,41 @@ def test_a_comparison_is_drawn_read_only_and_keeps_no_place():
         stop()
 
 
+def test_a_comparison_opens_from_two_names_or_from_git_s_three():
+    """Two documents named by hand are compared under the newer one's name.
+
+    git names a third, the document as the repository has it, and hands over
+    an empty file for a side the document is missing from. That third name is
+    the one the page goes under, and the one that says whether the document
+    is markdown, since the empty file is named as nothing at all.
+    """
+    tree = Path(tempfile.mkdtemp(prefix='mdeus-test-diff-'))
+    try:
+        older, newer = tree / 'old.md', tree / 'new.md'
+        older.write_text('# Plan\n\nShip on Friday.\n', encoding='utf-8')
+        newer.write_text('# Plan\n\nShip on Monday.\n', encoding='utf-8')
+        by_hand = served_comparison([str(older), str(newer)], tree)
+        assert by_hand['diff'] is True, by_hand
+        assert by_hand['name'] == 'new.md', by_hand['name']
+        assert by_hand['blocks'] == render.render_diff(
+            older.read_text(encoding='utf-8'),
+            newer.read_text(encoding='utf-8'),
+            image_src=served_image,
+        )['blocks'], by_hand['blocks']
+        (tree / 'blob').mkdir()
+        blob = tree / 'blob' / 'plan.md'
+        blob.write_text('# Plan\n', encoding='utf-8')
+        from_git = served_comparison(
+            ['/dev/null', str(blob), str(tree / 'plan.md')], tree
+        )
+        assert from_git['name'] == 'plan.md', from_git['name']
+        assert from_git['blocks'] == render.render_diff(
+            '', '# Plan\n', image_src=served_image
+        )['blocks'], from_git['blocks']
+    finally:
+        shutil.rmtree(tree, ignore_errors=True)
+
+
 def test_a_cursor_report_carries_how_far_down_its_window_the_cursor_sits():
     """The page needs where vim is holding the line, not only which line it is.
 
@@ -677,26 +747,29 @@ def test_a_document_that_is_not_markdown_is_refused():
     than refused is printed into the home it is given.
     """
     tree = Path(tempfile.mkdtemp(prefix='mdeus-test-kind-'))
-    quiet = dict(os.environ, BROWSER='true', HOME=str(tree))
-    quiet.pop('DISPLAY', None)
+    quiet = quiet_environment(tree)
+    other = str(tree / 'other.md')
     try:
         for name in ('notes.txt', 'run.py'):
             document = tree / name
             document.write_text('# Title\n', encoding='utf-8')
-            for opening in (
-                ['--print'], ['--tab'], ['--tab', '--diff', name, name]
+            path = str(document)
+            for arguments in (
+                ['--print', path],
+                ['--tab', path],
+                ['--tab', '--diff', path, path, path],
+                ['--tab', '--diff', other, path],
+                ['--tab', '--diff', path, other],
             ):
                 try:
                     done = subprocess.run(
-                        [sys.executable, str(COMMAND), *opening, str(document)],
+                        [sys.executable, str(COMMAND), *arguments],
                         capture_output=True, env=quiet, text=True,
                         timeout=TIMEOUT,
                     )
                 except subprocess.TimeoutExpired:
-                    raise AssertionError(
-                        f'{opening} {name} was read, not refused'
-                    )
-                assert done.returncode == 1, (opening, name, done.returncode)
+                    raise AssertionError(f'{arguments} was read, not refused')
+                assert done.returncode == 1, (arguments, done.returncode)
                 assert done.stderr == (
                     f'mdeus: not a markdown document: {document}\n'
                 ), done.stderr
@@ -1819,6 +1892,15 @@ def test_state_is_stored_and_reported_back():
         assert doc['state'] == wanted, doc['state']
     finally:
         stop()
+
+
+def test_the_help_lists_the_comparison():
+    """The help names the comparison, since it is one way to open a page."""
+    done = subprocess.run(
+        [sys.executable, str(COMMAND), '--help'],
+        capture_output=True, text=True, timeout=TIMEOUT,
+    )
+    assert '--diff OLDER NEWER' in done.stdout, done.stdout
 
 
 def test_the_page_says_when_it_has_drawn():
