@@ -29,9 +29,11 @@ from html import escape, unescape
 from urllib.parse import urlsplit
 
 from emoji import EMOJI_DATA, STATUS
+from lxml.html import fragment_fromstring, tostring
 from lxml.html.diff import (
     fixup_ins_del_tags,
     htmldiff_tokens,
+    start_tag,
     token,
     tokenize,
 )
@@ -58,9 +60,11 @@ GLUED_AFTER = re.compile('\ue000(?:(</ins>)(?= <del>)|(</(?:del|ins)>)? ?)')
 GLUED_BEFORE = re.compile(
     '(</ins> <del>)\ue001|(</(?:del|ins)>)? ?(<(?:del|ins)>)?\ue001'
 )
+LIKENESS = 0.5
 PARTS = ('code_block', 'fence', 'heading', 'hr', 'paragraph', 'tr')
 PUNCTUATION = re.compile(r'(\W*)(.*?)(\W*)', re.S)
 SHORTCODE = re.compile(r':[a-z0-9_+-]+:')
+WORD = re.compile(r'\w+')
 
 
 def aim(node, span):
@@ -169,6 +173,18 @@ def alerts(state):
     state.tokens = tokens
 
 
+def alike(older, newer):
+    """Say whether two texts share enough words to stand for one another.
+
+    Only the words are weighed, so a full stop or a bracket that came or went
+    does not count against them.
+    """
+    words = SequenceMatcher(
+        None, WORD.findall(older), WORD.findall(newer), autojunk=False
+    )
+    return words.ratio() >= LIKENESS
+
+
 def block_span(node):
     """Return the source lines a top level block was built from.
 
@@ -183,6 +199,49 @@ def block_span(node):
     if not spans:
         return None
     return min(span[0] for span in spans), max(span[1] for span in spans)
+
+
+def changed_blocks(older, after, start, end):
+    """Return the blocks one run of changed blocks is drawn as.
+
+    older holds the run as the older version has it, and the newer version
+    has it from start to end of after. A table both versions have in the run
+    is compared on its own, row by row and cell by cell. Compared word by word
+    with the rest, the words of one cell drift into the next once a column or
+    a row comes or goes. The blocks between those tables are compared
+    together, the last stretch running to the end of the run.
+    """
+    newer = after[start:end]
+    matcher = SequenceMatcher(
+        None,
+        [block['type'] for block in older],
+        [block['type'] for block in newer],
+        autojunk=False,
+    )
+    tables = [
+        (i + n, j + n)
+        for i, j, size in matcher.get_matching_blocks()
+        for n in range(size)
+        if older[i + n]['type'] == 'table'
+    ]
+    blocks = []
+    i = j = 0
+    for table_i, table_j in tables + [(len(older), len(newer))]:
+        if i < table_i or j < table_j:
+            compared = compared_html(
+                joined_html(older[i:table_i]), joined_html(newer[j:table_j])
+            )
+            blocks.append(
+                diff_block(after, start + j, start + table_j, compared)
+            )
+        if table_i < len(older):
+            compared = compared_table(
+                older[table_i]['html'], newer[table_j]['html']
+            )
+            index = start + table_j
+            blocks.append(diff_block(after, index, index + 1, compared))
+        i, j = table_i + 1, table_j + 1
+    return blocks
 
 
 def changed_lines(after, start, end):
@@ -222,6 +281,30 @@ def closing_index(tokens, index):
     return len(tokens) - 1
 
 
+def compared_cells(old_row, new_row, columns):
+    """Return one row of a compared table, with a cell for every column.
+
+    columns pairs the place of each column in the older version with its
+    place in the newer, None for the version a column is missing from. A row
+    only one version has is None in the other. A cell is compared with the
+    cell it stands for, or with nothing where there is none.
+    """
+    cells = []
+    for i, j in columns:
+        old = None if old_row is None or i is None else old_row[i]
+        new = None if new_row is None or j is None else new_row[j]
+        cell = old if new is None else new
+        if cell is None:
+            cells.append('<td></td>')
+            continue
+        old_html = '' if old is None else inner_html(old)
+        new_html = '' if new is None else inner_html(new)
+        if old_html != new_html:
+            new_html = compared_html(old_html, new_html)
+        cells.append(f'{start_tag(cell)}{new_html}</{cell.tag}>')
+    return f'<tr>{"".join(cells)}</tr>'
+
+
 def compared_html(old, new):
     """Return two pieces of HTML as one, with the words that changed marked.
 
@@ -240,6 +323,58 @@ def compared_html(old, new):
     return fixup_ins_del_tags(marked.strip())
 
 
+def compared_table(old, new):
+    """Return two versions of one table as one, compared cell by cell.
+
+    The columns are paired by their headings, and the rows by their words in
+    the columns the two share. A column or a row only one version has is
+    drawn in the place it had, inserted or deleted whole, so every cell keeps
+    its place in the grid.
+    """
+    old_head, *old_body = fragment_fromstring(old).iter('tr')
+    new_head, *new_body = fragment_fromstring(new).iter('tr')
+    columns = paired(
+        [cell.text_content() for cell in old_head],
+        [cell.text_content() for cell in new_head],
+    )
+    shared = [(i, j) for i, j in columns if i is not None and j is not None]
+    rows = paired(
+        [
+            '\n'.join(row[i].text_content() for i, _ in shared)
+            for row in old_body
+        ],
+        [
+            '\n'.join(row[j].text_content() for _, j in shared)
+            for row in new_body
+        ],
+    )
+    head = compared_cells(old_head, new_head, columns)
+    body = ''.join(
+        compared_cells(
+            None if i is None else old_body[i],
+            None if j is None else new_body[j],
+            columns,
+        )
+        for i, j in rows
+    )
+    return f'<table><thead>{head}</thead><tbody>{body}</tbody></table>'
+
+
+def diff_block(after, start, end, html):
+    """Return one block of a comparison, drawn from some compared HTML.
+
+    It stands on the lines the newer blocks from start to end of after stand
+    on.
+    """
+    line_start, line_end = changed_lines(after, start, end)
+    return {
+        'type': 'diff',
+        'line_start': line_start,
+        'line_end': line_end,
+        'html': f'<div class="diff">{html}</div>',
+    }
+
+
 def diff_tokens(html):
     """Return the words of some HTML to compare, with the marks at their ends.
 
@@ -252,9 +387,14 @@ def diff_tokens(html):
     A link is compared by its words alone. lxml would write its address out
     as words beside them, which the page never shows, so a link whose address
     alone changed is left unmarked.
+
+    HTML with nothing in it, such as an empty cell, gives no words. lxml gives
+    one empty word for it, which a comparison marks as an empty change.
     """
     tokens = []
     for word in tokenize(html, include_hrefs=False):
+        if not (word or word.pre_tags):
+            continue
         found = PUNCTUATION.fullmatch(unescape(word))
         parts = [token(escape(part)) for part in found.groups() if part]
         if type(word) is not token or len(parts) < 2:
@@ -326,6 +466,13 @@ def heading_text(node):
     ).strip()
 
 
+def inner_html(element):
+    """Return what an element holds, as HTML, without the element itself."""
+    return escape(element.text or '', quote=False) + ''.join(
+        tostring(child, encoding='unicode') for child in element
+    )
+
+
 def is_relative(target):
     """Say whether a link or image target names a file beside the document."""
     parts = urlsplit(target or '')
@@ -340,6 +487,37 @@ def is_relative(target):
 def joined_html(blocks):
     """Return a run of blocks as the one piece of HTML they draw."""
     return ''.join(block['html'] for block in blocks)
+
+
+def paired(older, newer):
+    """Return which texts of two versions stand for one another, in order.
+
+    Texts the two share are paired first. Between those, where as many texts
+    went as came, they are paired in order, since that is a text edited where
+    it stands. Otherwise each older text is paired with the first newer text
+    after the last pair that it is alike to. A text left over stands alone.
+    Each pair holds the places of its two texts in their lists, None for the
+    version a text is missing from.
+    """
+    pairs = []
+    matcher = SequenceMatcher(None, older, newer, autojunk=False)
+    for kind, i1, i2, j1, j2 in matcher.get_opcodes():
+        if i2 - i1 == j2 - j1:
+            pairs.extend(zip(range(i1, i2), range(j1, j2)))
+            continue
+        j = j1
+        for i in range(i1, i2):
+            match = next(
+                (k for k in range(j, j2) if alike(older[i], newer[k])), None
+            )
+            if match is None:
+                pairs.append((i, None))
+                continue
+            pairs.extend((None, k) for k in range(j, match))
+            pairs.append((i, match))
+            j = match + 1
+        pairs.extend((None, k) for k in range(j, j2))
+    return pairs
 
 
 def render_blocks(source):
@@ -357,7 +535,8 @@ def render_diff(old, new, image_src=None):
     A run of blocks that changed is compared word by word, the new words in an
     ins element and the old ones in a del element, inside the paragraph, item
     or cell they belong to. That comparison writes its markup out again, so it
-    is spent only where something changed.
+    is spent only where something changed. A table both versions have in such
+    a run is compared on its own, cell by cell, see changed_blocks.
 
     The blocks are matched however often one repeats, since a rule or a blank
     callout recurring through a long document is still a block of it.
@@ -378,18 +557,7 @@ def render_diff(old, new, image_src=None):
         if kind == 'equal':
             blocks.extend(after[j1:j2])
             continue
-        start, end = changed_lines(after, j1, j2)
-        compared = compared_html(
-            joined_html(before[i1:i2]), joined_html(after[j1:j2])
-        )
-        blocks.append(
-            {
-                'type': 'diff',
-                'line_start': start,
-                'line_end': end,
-                'html': f'<div class="diff">{compared}</div>',
-            }
-        )
+        blocks.extend(changed_blocks(before[i1:i2], after, j1, j2))
     return {'blocks': blocks, 'outline': []}
 
 

@@ -216,6 +216,37 @@ def deleted_words(html):
     return ''.join(re.findall(r'<del>(.*?)</del>', html, re.S)).split()
 
 
+def table_cells(html):
+    """Return what every cell of every row of a table holds, row by row."""
+    return [
+        [
+            cell.strip()
+            for cell in re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', row, re.S)
+        ]
+        for row in re.findall(r'<tr>(.*?)</tr>', html, re.S)
+    ]
+
+
+def test_a_comparison_keeps_a_removed_column_and_row_on_red():
+    """What a table lost stays in its grid, every cell of it deleted.
+
+    A column only the older version has is still drawn, in the place it had,
+    so its words are not lost from the comparison. A row only the older
+    version has is drawn where it stood.
+    """
+    older = (
+        '| Step | Size | Waits on |\n|---|---|---|\n'
+        '| 1 | Small | Nothing |\n| 2 | Large | Step 1 |\n'
+    )
+    newer = '| Step | Waits on |\n|---|---|\n| 1 | Nothing |\n'
+    [table] = render.render_diff(older, newer)['blocks']
+    assert table_cells(table['html']) == [
+        ['Step', '<del>Size</del>', 'Waits on'],
+        ['1', '<del>Small</del>', 'Nothing'],
+        ['<del>2</del>', '<del>Large</del>', '<del>Step 1</del>'],
+    ], table
+
+
 def test_a_comparison_keeps_a_word_that_only_gained_or_lost_punctuation():
     """Only the marks around a word are marked when only they changed.
 
@@ -250,6 +281,51 @@ def test_a_comparison_marks_a_link_by_its_words_alone():
     [paragraph] = moved['blocks']
     assert '<ins>' not in paragraph['html'], paragraph
     assert '<del>' not in paragraph['html'], paragraph
+
+
+def test_a_comparison_marks_a_table_cell_by_cell():
+    """A table that gained a column and a row is compared cell by cell.
+
+    Every word stays in the cell it belongs to. The new column and the new
+    row are inserted whole, and a cell whose words changed shows the new and
+    the old words in that cell alone. The table stands on the lines the newer
+    version has it on.
+    """
+    older = (
+        '| Step | Task | Waits on |\n|---|---|---|\n'
+        '| 3 | Write the parser | Steps 1, 2 |\n'
+        '| 4 | Collect samples | Nothing |\n'
+        '| 5 | Tune the filter | Steps 2, 4 |\n'
+    )
+    newer = (
+        '\n| Step | Task | Status | Waits on |\n|---|---|---|---|\n'
+        '| 3 | Write the parser | Code done | Steps 1, 2 |\n'
+        '| 4 | Collect samples | Partly done | Lab time |\n'
+        '| 4a | Port the driver | Not started | Nothing |\n'
+        '| 5 | Tune the filter | Can start | Steps 2, 4 |\n'
+    )
+    [table] = render.render_diff(older, newer)['blocks']
+    assert table_cells(table['html']) == [
+        ['Step', 'Task', '<ins>Status</ins>', 'Waits on'],
+        ['3', 'Write the parser', '<ins>Code done</ins>', 'Steps 1, 2'],
+        [
+            '4',
+            'Collect samples',
+            '<ins>Partly done</ins>',
+            '<ins>Lab time</ins> <del>Nothing</del>',
+        ],
+        [
+            '<ins>4a</ins>',
+            '<ins>Port the driver</ins>',
+            '<ins>Not started</ins>',
+            '<ins>Nothing</ins>',
+        ],
+        ['5', 'Tune the filter', '<ins>Can start</ins>', 'Steps 2, 4'],
+    ], table
+    [drawn] = render.render_blocks(newer)
+    assert (table['line_start'], table['line_end']) == (
+        drawn['line_start'], drawn['line_end']
+    ), table
 
 
 def test_a_comparison_marks_the_words_that_changed_where_they_stand():
