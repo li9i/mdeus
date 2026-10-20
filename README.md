@@ -31,6 +31,8 @@ mdeus --tab notes.md      read it in a tab of your default browser
 mdeus --print notes.md    write one self contained HTML file, print its path
 ```
 
+Only a document named `.md` or `.markdown` opens. Anything else is refused in one line: `mdeus: not a markdown document: run.py`.
+
 ## What it needs
 
 Python 3, one of Chrome, Chromium, Brave, Vivaldi or Edge for the window with nothing in it but the page, and a vim built with `+clientserver` and a GUI for the `Edit` toggle. Without one of them a reading opens in an ordinary tab instead. On Ubuntu the installer fetches all of it:

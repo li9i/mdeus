@@ -617,6 +617,50 @@ def test_a_cursor_report_carries_how_far_down_its_window_the_cursor_sits():
         stop()
 
 
+def test_a_document_that_is_not_markdown_is_refused():
+    """A document is read only where its name says it is markdown.
+
+    The refusal comes before anything is served, so a reading that would have
+    opened a page opens nothing. The page is pointed at a browser that does
+    nothing, so a document read rather than refused would be served to no page
+    until the wait runs out, rather than opening a window on the desktop. The
+    command is given a home inside the fixture, since a document read rather
+    than refused is printed into the home it is given.
+    """
+    tree = Path(tempfile.mkdtemp(prefix='mdeus-test-kind-'))
+    quiet = dict(os.environ, BROWSER='true', HOME=str(tree))
+    quiet.pop('DISPLAY', None)
+    try:
+        for name in ('notes.txt', 'run.py'):
+            document = tree / name
+            document.write_text('# Title\n', encoding='utf-8')
+            for opening in (['--print'], ['--tab']):
+                try:
+                    done = subprocess.run(
+                        [sys.executable, str(COMMAND), *opening, str(document)],
+                        capture_output=True, env=quiet, text=True,
+                        timeout=TIMEOUT,
+                    )
+                except subprocess.TimeoutExpired:
+                    raise AssertionError(
+                        f'{opening} {name} was read, not refused'
+                    )
+                assert done.returncode == 1, (opening, name, done.returncode)
+                assert done.stderr == (
+                    f'mdeus: not a markdown document: {document}\n'
+                ), done.stderr
+                assert done.stdout == '', done.stdout
+        document = tree / 'notes.markdown'
+        document.write_text('# Title\n', encoding='utf-8')
+        done = subprocess.run(
+            [sys.executable, str(COMMAND), '--print', str(document)],
+            capture_output=True, env=quiet, text=True, timeout=TIMEOUT,
+        )
+        assert done.returncode == 0, (done.returncode, done.stderr)
+    finally:
+        shutil.rmtree(tree, ignore_errors=True)
+
+
 def test_a_held_page_is_not_told_a_file_moved_aside_and_back_is_gone():
     """A save that moves the old file aside is not a document being taken away.
 
