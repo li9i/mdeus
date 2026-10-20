@@ -247,11 +247,14 @@ def diff_tokens(html):
     different words, and a word that only gained a full stop reads as deleted
     and inserted again. A bracket, a comma or a full stop at either end of a
     word is taken off as a word of its own. One in the middle stays, so a date
-    or a hyphenated name is still one word. An image and a link's address are
-    left whole.
+    or a hyphenated name is still one word. An image is left whole.
+
+    A link is compared by its words alone. lxml would write its address out
+    as words beside them, which the page never shows, so a link whose address
+    alone changed is left unmarked.
     """
     tokens = []
-    for word in tokenize(html):
+    for word in tokenize(html, include_hrefs=False):
         found = PUNCTUATION.fullmatch(unescape(word))
         parts = [token(escape(part)) for part in found.groups() if part]
         if type(word) is not token or len(parts) < 2:

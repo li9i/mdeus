@@ -236,6 +236,22 @@ def test_a_comparison_keeps_a_word_that_only_gained_or_lost_punctuation():
     assert 'on <del>(</del>step 2<del>).</del>' in paragraph['html'], paragraph
 
 
+def test_a_comparison_marks_a_link_by_its_words_alone():
+    """A link that came or went is marked by its words and not its address.
+
+    The address is not on the page, so a comparison does not write it there
+    either. A link whose address alone changed is left unmarked.
+    """
+    added = render.render_diff('See step 4.\n', 'See [step 5](#step-5).\n')
+    [paragraph] = added['blocks']
+    assert 'step-5</a>' not in paragraph['html'], paragraph
+    assert 'Link:' not in paragraph['html'], paragraph
+    moved = render.render_diff('See [step](#a).\n', 'See [step](#b).\n')
+    [paragraph] = moved['blocks']
+    assert '<ins>' not in paragraph['html'], paragraph
+    assert '<del>' not in paragraph['html'], paragraph
+
+
 def test_a_comparison_marks_the_words_that_changed_where_they_stand():
     """Changed words are marked in their own block, and the rest is untouched.
 
