@@ -216,6 +216,26 @@ def deleted_words(html):
     return ''.join(re.findall(r'<del>(.*?)</del>', html, re.S)).split()
 
 
+def test_a_comparison_keeps_a_word_that_only_gained_or_lost_punctuation():
+    """Only the marks around a word are marked when only they changed.
+
+    A full stop, comma or bracket at either end of a word is compared as a
+    word of its own. `done` becoming `done.` reads as the full stop inserted,
+    rather than as `done.` inserted and `done` deleted, which shows the word
+    twice.
+    """
+    gained = render.render_diff(
+        '| Status |\n|---|\n| Draft done |\n',
+        '| Status |\n|---|\n| Draft done. Review next. |\n',
+    )
+    [cell] = gained['blocks']
+    assert deleted_words(cell['html']) == [], cell
+    assert 'Draft done<ins>. Review next.</ins>' in cell['html'], cell
+    lost = render.render_diff('Waits on (step 2).\n', 'Waits on step 2\n')
+    [paragraph] = lost['blocks']
+    assert 'on <del>(</del>step 2<del>).</del>' in paragraph['html'], paragraph
+
+
 def test_a_comparison_marks_the_words_that_changed_where_they_stand():
     """Changed words are marked in their own block, and the rest is untouched.
 

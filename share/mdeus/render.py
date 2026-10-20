@@ -25,10 +25,16 @@ went and the words that came each marked in the block they belong to.
 import re
 from difflib import SequenceMatcher
 from functools import lru_cache
+from html import escape, unescape
 from urllib.parse import urlsplit
 
 from emoji import EMOJI_DATA, STATUS
-from lxml.html.diff import htmldiff
+from lxml.html.diff import (
+    fixup_ins_del_tags,
+    htmldiff_tokens,
+    token,
+    tokenize,
+)
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
 from markdown_it.tree import SyntaxTreeNode
@@ -46,7 +52,14 @@ ALERT_MARKER = re.compile(r'\[!([a-zA-Z]+)\][ \t]*(?:\n|$)')
 CHECKBOX = 'task-list-item-checkbox'
 CHECKED = 'checked="checked"'
 FULLY_QUALIFIED = STATUS['fully_qualified']
+GLUE_AFTER = '\ue000'
+GLUE_BEFORE = '\ue001'
+GLUED_AFTER = re.compile('\ue000(?:(</ins>)(?= <del>)|(</(?:del|ins)>)? ?)')
+GLUED_BEFORE = re.compile(
+    '(</ins> <del>)\ue001|(</(?:del|ins)>)? ?(<(?:del|ins)>)?\ue001'
+)
 PARTS = ('code_block', 'fence', 'heading', 'hr', 'paragraph', 'tr')
+PUNCTUATION = re.compile(r'(\W*)(.*?)(\W*)', re.S)
 SHORTCODE = re.compile(r':[a-z0-9_+-]+:')
 
 
@@ -209,6 +222,51 @@ def closing_index(tokens, index):
     return len(tokens) - 1
 
 
+def compared_html(old, new):
+    """Return two pieces of HTML as one, with the words that changed marked.
+
+    This is the comparison lxml's htmldiff makes, run on the words diff_tokens
+    gives rather than on lxml's own. lxml puts a space on either side of every
+    change it marks, so each piece of a word is marked as glued to the piece
+    after it and to the piece before it. Either piece can be the one left on
+    the page, the new one or the deleted one, so both marks are written. Once
+    the changes are marked, each mark goes with the space lxml put beside it.
+    The space between an inserted word and the deleted word it stands for is
+    kept, so the two still read as two words.
+    """
+    marked = ''.join(htmldiff_tokens(diff_tokens(old), diff_tokens(new)))
+    marked = GLUED_AFTER.sub(r'\1\2', marked)
+    marked = GLUED_BEFORE.sub(r'\1\2\3', marked)
+    return fixup_ins_del_tags(marked.strip())
+
+
+def diff_tokens(html):
+    """Return the words of some HTML to compare, with the marks at their ends.
+
+    lxml splits words only at spaces, so to it `done` and `done.` are two
+    different words, and a word that only gained a full stop reads as deleted
+    and inserted again. A bracket, a comma or a full stop at either end of a
+    word is taken off as a word of its own. One in the middle stays, so a date
+    or a hyphenated name is still one word. An image and a link's address are
+    left whole.
+    """
+    tokens = []
+    for word in tokenize(html):
+        found = PUNCTUATION.fullmatch(unescape(word))
+        parts = [token(escape(part)) for part in found.groups() if part]
+        if type(word) is not token or len(parts) < 2:
+            tokens.append(word)
+            continue
+        for before, after in zip(parts, parts[1:]):
+            before.trailing_whitespace = GLUE_AFTER
+            after.pre_tags = [GLUE_BEFORE]
+        parts[0].pre_tags = word.pre_tags
+        parts[-1].post_tags = word.post_tags
+        parts[-1].trailing_whitespace = word.trailing_whitespace
+        tokens.extend(parts)
+    return tokens
+
+
 @lru_cache(maxsize=None)
 def emoji_names():
     """Return every shortcode GitHub answers to, mapped to the character it draws.
@@ -318,7 +376,7 @@ def render_diff(old, new, image_src=None):
             blocks.extend(after[j1:j2])
             continue
         start, end = changed_lines(after, j1, j2)
-        compared = htmldiff(
+        compared = compared_html(
             joined_html(before[i1:i2]), joined_html(after[j1:j2])
         )
         blocks.append(
