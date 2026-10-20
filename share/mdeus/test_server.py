@@ -69,6 +69,18 @@ SECRET_PNG = b'\x89PNG\r\n\x1a\nsecret'
 
 SERVERNAME = 'MDEUSTEST'
 
+START_BEFORE_MD = """\
+# Start
+
+An older paragraph that was rewritten since.
+
+![a pixel](images/pixel.png)
+
+## Second heading
+
+* first item
+"""
+
 START_BLOCKS = [
     ('heading', 1, 1),
     ('paragraph', 3, 3),
@@ -237,6 +249,11 @@ def served_blocks(source):
     )['blocks']
 
 
+def served_image(target):
+    """Return the address a reading serves an image beside its document at."""
+    return f'/file/{target}'
+
+
 def start_export():
     """Build a fixture tree for the printed copy and return its root and a stop call.
 
@@ -290,7 +307,7 @@ def start_holding(port):
     )
 
 
-def start_reading(editable=False, editing=False):
+def start_reading(compared=False, editable=False, editing=False):
     """Serve a fixture tree on a free port and return its root, port, reading and a stop call.
 
     The state path is redirected here rather than in each test, so that no test
@@ -299,6 +316,9 @@ def start_reading(editable=False, editing=False):
     A reading put into the editing state answers the routes that speak to vim.
     No vim answers to the name here, so only the routes that record something
     rather than send it on may be asked for under one.
+
+    A reading opened on a comparison compares start.md with an older version of
+    it kept outside the tree, where git keeps the versions it hands a viewer.
     """
     base = Path(tempfile.mkdtemp(prefix='mdeus-test-')).resolve()
     state.STATE_PATH = base / 'state.json'
@@ -314,7 +334,13 @@ def start_reading(editable=False, editing=False):
     (base / 'outside' / 'secret.png').write_bytes(SECRET_PNG)
     (root / 'escape.md').symlink_to('../outside/secret.md')
     (root / 'escape.png').symlink_to('../outside/secret.png')
-    reading = server.Reading(root / 'start.md', SERVERNAME, editable=editable)
+    (base / 'blob').mkdir()
+    older = base / 'blob' / 'start.md'
+    older.write_text(START_BEFORE_MD, encoding='utf-8')
+    versions = (older, root / 'start.md') if compared else None
+    reading = server.Reading(
+        root / 'start.md', SERVERNAME, editable=editable, versions=versions
+    )
     reading.editing = editing
     bound = server.build_server(reading, port=0)
     thread = threading.Thread(target=bound.serve_forever, daemon=True)
@@ -595,6 +621,29 @@ def test_a_click_in_vim_is_counted_and_a_move_is_not():
         stop()
 
 
+def test_a_comparison_is_drawn_read_only_and_keeps_no_place():
+    """A reading opened on two versions draws the older compared with the newer.
+
+    The page's place is neither sent nor kept for it, since the blocks of a
+    comparison are not the blocks the document is read in, and a place kept
+    from one would land a later reading of the document somewhere else.
+    """
+    root, port, reading, stop = start_reading(compared=True)
+    try:
+        status, doc = fetch_json(port, '/doc')
+        assert status == 200, status
+        compared = render.render_diff(
+            START_BEFORE_MD, START_MD, image_src=served_image
+        )
+        assert doc['blocks'] == compared['blocks'], doc['blocks']
+        assert doc['diff'] is True, doc
+        assert doc['outline'] == [], doc['outline']
+        assert doc['name'] == 'start.md', doc['name']
+        assert 'place' not in doc, doc
+    finally:
+        stop()
+
+
 def test_a_cursor_report_carries_how_far_down_its_window_the_cursor_sits():
     """The page needs where vim is holding the line, not only which line it is.
 
@@ -634,7 +683,9 @@ def test_a_document_that_is_not_markdown_is_refused():
         for name in ('notes.txt', 'run.py'):
             document = tree / name
             document.write_text('# Title\n', encoding='utf-8')
-            for opening in (['--print'], ['--tab']):
+            for opening in (
+                ['--print'], ['--tab'], ['--tab', '--diff', name, name]
+            ):
                 try:
                     done = subprocess.run(
                         [sys.executable, str(COMMAND), *opening, str(document)],
@@ -699,6 +750,30 @@ def test_a_held_page_is_told_a_file_taken_away_for_good_is_gone():
         stop()
 
 
+def test_a_held_page_is_told_either_version_of_a_comparison_was_written():
+    """A comparison is drawn again when either of its two versions is written.
+
+    git hands a viewer the version in the working tree as the file itself, so
+    a write to the document being compared lands on the comparison, and so
+    does a write to the other side.
+    """
+    root, port, reading, stop = start_reading(compared=True)
+    try:
+        held = start_holding(port)
+        first = heard_down(held)
+        for version in (root.parent / 'blob' / 'start.md', root / 'start.md'):
+            time.sleep(0.05)
+            version.write_text(
+                START_MD + '\nA new paragraph.\n', encoding='utf-8'
+            )
+            later = heard_down(held)
+            assert later['mtime'] > first['mtime'], (version, later, first)
+            first = later
+        held.close()
+    finally:
+        stop()
+
+
 def test_a_held_page_is_told_nothing_while_nothing_moves():
     """A reading speaks as the page takes hold and then holds its tongue.
 
@@ -758,6 +833,32 @@ def test_a_held_page_is_told_whether_vim_is_up():
         reading.editing = False
         assert heard_down(held)['editing'] is False
         held.close()
+    finally:
+        stop()
+
+
+def test_a_link_followed_from_a_comparison_is_read_as_it_stands():
+    """A link out of a comparison reads the document it leads to, read only.
+
+    The comparison belongs to the document it was opened on, so another
+    document is drawn as it stands, and coming back draws the comparison
+    again. No box in either can be pressed, since a reading opened to compare
+    two versions is not one to write into.
+    """
+    root, port, reading, stop = start_reading(compared=True)
+    try:
+        status, doc = fetch_json(
+            port, '/doc?' + urlencode({'path': 'tasks.md'})
+        )
+        assert status == 200, status
+        assert 'diff' not in doc, doc
+        assert doc['blocks'] == render.render_document(
+            TASKS_MD, aimed=True, image_src=served_image
+        )['blocks'], doc['blocks']
+        status, back = fetch_json(
+            port, '/doc?' + urlencode({'path': 'start.md'})
+        )
+        assert back['diff'] is True, back
     finally:
         stop()
 

@@ -45,6 +45,18 @@ back of them.
 
 Only a document named .md or .markdown is read. Anything else is refused in
 one line, whichever way it was asked for.
+
+git difftool -t mdeus shows a change to a document as one page: the older
+version compared with the newer, inserted words on green and deleted ones on
+red. git runs
+
+    mdeus --diff <older> <newer> <document>
+
+once for each document the change touches, and waits for the page to close
+before it runs the next. The switch is git's way in and is left out of --help.
+A comparison is read only: there is no Edit toggle and no box can be pressed.
+It claims nothing, so a document already open in a reading of its own can be
+compared beside it, and it is drawn again whenever either version is written.
 """
 
 import argparse
@@ -93,6 +105,9 @@ def main(argv=None):
     if document.suffix not in MARKDOWN:
         print(f'{NAME}: not a markdown document: {document}', file=sys.stderr)
         return 1
+    if args.diff:
+        read(document, False, args.tab, args.diff)
+        return 0
     if not document.is_file():
         print(f'{NAME}: no such file: {document}', file=sys.stderr)
         return 1
@@ -131,6 +146,7 @@ def parse_args(argv):
     )
     parser.add_argument('document', type=Path, help='markdown file to read')
     opening = parser.add_mutually_exclusive_group()
+    opening.add_argument('--diff', help=argparse.SUPPRESS, nargs=2, type=Path)
     opening.add_argument(
         '--edit',
         action='store_true',
@@ -149,7 +165,7 @@ def parse_args(argv):
     return parser.parse_args(argv)
 
 
-def read(document, edit, tab):
+def read(document, edit, tab, versions=None):
     """Serve one reading and hold it up until it ends.
 
     The server runs on a thread of its own for the whole of a reading, because
@@ -169,10 +185,16 @@ def read(document, edit, tab):
     machine is free again, and vim waits out of sight until it is wanted. It is
     warmed again after each session, since a reading may edit as many times as
     the box is ticked and only the first vim was warmed for free.
+
+    A reading opened on two versions is never edited, so no vim is warmed for
+    it either.
     """
     servername = reading_name(os.getpid())
     app_window = bool(browser_path()) and not tab
-    bound, reading, url = start(document, servername, editable=on_a_desktop())
+    bound, reading, url = start(
+        document, servername, editable=on_a_desktop() and versions is None,
+        versions=versions,
+    )
     print(f'reading {document.name}')
     print(f'  {url}/{servername}')
     print('  ctrl-c to stop, or close the page', flush=True)
@@ -204,7 +226,8 @@ def read(document, edit, tab):
                                waiting=session):
                     return
                 continue
-            if not warmed and app_window and reading.drawn.is_set():
+            if (not warmed and app_window and reading.editable
+                    and reading.drawn.is_set()):
                 warmed = True
                 waiting = window.warm(reading, url)
                 continue

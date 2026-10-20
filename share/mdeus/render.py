@@ -17,13 +17,18 @@ way it reads there: tables, strikethrough, task lists, footnotes, bare
 addresses, emoji shortcodes and the five callouts. Four of those come from the
 parser and its plugins. The callouts are GitHub's own and no plugin draws them,
 so they are put together below.
+
+Two versions of a document can also be drawn as one comparison, the words that
+went and the words that came each marked in the block they belong to.
 """
 
 import re
+from difflib import SequenceMatcher
 from functools import lru_cache
 from urllib.parse import urlsplit
 
 from emoji import EMOJI_DATA, STATUS
+from lxml.html.diff import htmldiff
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
 from markdown_it.tree import SyntaxTreeNode
@@ -167,6 +172,19 @@ def block_span(node):
     return min(span[0] for span in spans), max(span[1] for span in spans)
 
 
+def changed_lines(after, start, end):
+    """Return the lines of the newer version a run of changed blocks stands on.
+
+    A run holding only deleted blocks has no lines of its own in the newer
+    version, so it stands on the line after the block it followed, or on the
+    first line where it led the document.
+    """
+    if start < end:
+        return after[start]['line_start'], after[end - 1]['line_end']
+    line = after[start - 1]['line_end'] + 1 if start else 1
+    return line, line
+
+
 def checkbox(line, checked):
     """Return the markup for one task list box that can be pressed.
 
@@ -258,9 +276,60 @@ def is_relative(target):
     )
 
 
+def joined_html(blocks):
+    """Return a run of blocks as the one piece of HTML they draw."""
+    return ''.join(block['html'] for block in blocks)
+
+
 def render_blocks(source):
     """Split rendered markdown into top-level blocks tagged with source lines."""
     return render_document(source)['blocks']
+
+
+def render_diff(old, new, image_src=None):
+    """Return the blocks of one comparison between two versions of a document.
+
+    Both versions are drawn first and the drawings are compared, rather than
+    the sources, so that a change reads as the page reads: a link or a table
+    row is never cut through the middle of its markup. The blocks are matched
+    whole, and a block the two share is drawn exactly as a reading draws it.
+    A run of blocks that changed is compared word by word, the new words in an
+    ins element and the old ones in a del element, inside the paragraph, item
+    or cell they belong to. That comparison writes its markup out again, so it
+    is spent only where something changed.
+
+    The blocks are matched however often one repeats, since a rule or a blank
+    callout recurring through a long document is still a block of it.
+
+    No outline is reported. A deleted heading is still drawn, so the headings
+    on the page are those of neither version alone.
+    """
+    before = render_document(old, image_src=image_src)['blocks']
+    after = render_document(new, image_src=image_src)['blocks']
+    matcher = SequenceMatcher(
+        None,
+        [block['html'] for block in before],
+        [block['html'] for block in after],
+        autojunk=False,
+    )
+    blocks = []
+    for kind, i1, i2, j1, j2 in matcher.get_opcodes():
+        if kind == 'equal':
+            blocks.extend(after[j1:j2])
+            continue
+        start, end = changed_lines(after, j1, j2)
+        compared = htmldiff(
+            joined_html(before[i1:i2]), joined_html(after[j1:j2])
+        )
+        blocks.append(
+            {
+                'type': 'diff',
+                'line_start': start,
+                'line_end': end,
+                'html': f'<div class="diff">{compared}</div>',
+            }
+        )
+    return {'blocks': blocks, 'outline': []}
 
 
 def render_document(source, aimed=False, image_src=None, tickable=False):

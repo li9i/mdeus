@@ -23,6 +23,9 @@ ever written or read over it.
 
 Only the document a reading opened is claimed. A link followed inside a reading
 leaves the claim where it was.
+
+A comparison of two versions of a document claims nothing. It writes nothing
+and is not the document's reading, so it opens beside one.
 """
 
 import hashlib

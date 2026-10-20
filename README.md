@@ -18,8 +18,8 @@ git clone https://github.com/li9i/mdeus.git ~/mdeus
 ```
 
 - Installable in Ubuntu, or anything close enough to it.
-- The installer links five files into `~/.local` pointing back at the checkout. Nothing is copied anywhere, so `git pull` is the whole of updating it.
-- `~/mdeus/uninstall.sh` takes the five links and the settings a reading stored back out again. It leaves the checkout and the packages where they are.
+- The installer links five files into `~/.local` pointing back at the checkout. Nothing is copied anywhere, so `git pull` is the whole of updating it. It also adds one entry to your git settings, so that `git difftool -t mdeus` works. The tool git opens by default is left as it is.
+- `~/mdeus/uninstall.sh` takes the five links, that git entry and the settings a reading stored back out again. It leaves the checkout and the packages where they are.
 - `~/.local/bin` has to be on your `PATH`. Ubuntu's stock `~/.profile` puts it there at login once the directory exists, so a fresh machine wants one log out and back in.
 
 ## Use
@@ -33,13 +33,15 @@ mdeus --print notes.md    write one self contained HTML file, print its path
 
 Only a document named `.md` or `.markdown` opens. Anything else is refused in one line: `mdeus: not a markdown document: run.py`.
 
+`git difftool -t mdeus` shows what changed in a markdown document as one page: the new words on a green ground, the old ones in dark red on a pale red ground, and everything else as a reading draws it. `git difftool -t mdeus HEAD~3 -- notes.md` compares `notes.md` three commits back with how it reads now. git opens the documents one at a time, the next when you close the page, and mdeus turns away any file that is not markdown. The page is read only and redraws when the file is written, so `git difftool -t mdeus` on its own follows your edits as you save them.
+
 ## What it needs
 
 Python 3, one of Chrome, Chromium, Brave, Vivaldi or Edge for the window with nothing in it but the page, and a vim built with `+clientserver` and a GUI for the `Edit` toggle. Without one of them a reading opens in an ordinary tab instead. On Ubuntu the installer fetches all of it:
 
 ```
 python3-markdown-it  python3-mdit-py-plugins  python3-linkify-it
-python3-emoji  python3-xlib  python3-pil  vim-gtk3
+python3-emoji  python3-lxml  python3-xlib  python3-pil  vim-gtk3
 ```
 
 Everything else is the standard library. Nothing is fetched at runtime, no page loads an external font, script or stylesheet, and the server listens on `127.0.0.1` and nowhere else.

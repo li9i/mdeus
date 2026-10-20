@@ -60,10 +60,16 @@ for dir in "$STATE_DIR" "$CACHE_DIR"; do
   fi
 done
 
+say "4. git difftool"
+if git config --global --get difftool.mdeus.cmd >/dev/null 2>&1; then
+  git config --global --remove-section difftool.mdeus
+  echo "  git difftool -t mdeus is no longer set"
+fi
+
 say "Done"
 echo "The checkout at $REPO is untouched, so delete it yourself when you want"
 echo "it gone. The packages the installer fetched are untouched too, since"
 echo "other things may want them:"
 echo
 echo "  python3-markdown-it  python3-mdit-py-plugins  python3-linkify-it"
-echo "  python3-emoji  python3-xlib  python3-pil  vim-gtk3"
+echo "  python3-emoji  python3-lxml  python3-xlib  python3-pil  vim-gtk3"

@@ -33,6 +33,13 @@ One thing in the page writes to the document: a task list box pressed there is
 that box's own line of the source rewritten, and nothing else in the file is
 touched. While vim is up the press is sent to vim instead, so a document
 somebody is editing is never written round the back of them.
+
+A reading can be opened on two versions of a document instead, which is how
+git hands a viewer a change. The page then draws the older version compared
+with the newer, and draws it again whenever either is written. Such a reading
+is read only: no box in it can be pressed, whatever document a link takes it
+to, and the place the comparison is scrolled to is not kept, since its blocks
+are not the blocks the document is read in.
 """
 
 import json
@@ -50,7 +57,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 import vimlink
-from render import render_document
+from render import render_diff, render_document
 from state import (
     THEMES, as_place, load_place, load_state, save_place, save_state,
 )
@@ -149,9 +156,11 @@ def serve(server, reading):
     reading.asked.set()
 
 
-def start(document, servername, editable=False):
+def start(document, servername, editable=False, versions=None):
     """Bind a reading and return it, its server, and the address it landed on."""
-    reading = Reading(document, servername, editable=editable)
+    reading = Reading(
+        document, servername, editable=editable, versions=versions
+    )
     bound = build_server(reading)
     return bound, reading, f'http://{HOST}:{bound.server_port}'
 
@@ -324,9 +333,14 @@ def watch_pages(server, reading):
 
 
 class Reading:
-    """One document being read, and the tree it may serve files from."""
+    """One document being read, and the tree it may serve files from.
 
-    def __init__(self, document, servername, editable=False):
+    A reading opened on a comparison keeps its two versions under the document
+    they are versions of, so that only that document is drawn as a comparison
+    and a link out of it reads the next document as it stands.
+    """
+
+    def __init__(self, document, servername, editable=False, versions=None):
         self.alone = None
         self.asked = threading.Event()
         self.asks = 0
@@ -347,6 +361,10 @@ class Reading:
         self.servername = servername
         self.share = DEFAULT_SHARE
         self.ticks = threading.Lock()
+        self.versions = (
+            {self.current: tuple(path.resolve() for path in versions)}
+            if versions else {}
+        )
         self.waiting = False
         self.wanted = False
         self.word = ''
@@ -578,9 +596,17 @@ class ReadingHandler(BaseHTTPRequestHandler):
         """Stay quiet, the terminal is the user's."""
 
     def mtime(self):
-        """Return when the current document was last written, or nothing once it is gone."""
+        """Return when the current document was last written, or nothing once it is gone.
+
+        A comparison is written whenever either of its versions is, so it is
+        given the sum of the two times, which moves on a write to either.
+        """
+        current = self.reading.current
         try:
-            return self.reading.current.stat().st_mtime_ns
+            return sum(
+                path.stat().st_mtime_ns
+                for path in self.reading.versions.get(current, (current,))
+            )
         except OSError:
             return None
 
@@ -688,12 +714,23 @@ class ReadingHandler(BaseHTTPRequestHandler):
             'path': self.full_path(),
             'state': load_state(self.reading.current),
         }
+        versions = self.reading.versions.get(self.reading.current)
         try:
-            source = self.reading.current.read_text(encoding='utf-8')
+            sources = [
+                path.read_text(encoding='utf-8')
+                for path in versions or (self.reading.current,)
+            ]
         except (OSError, UnicodeDecodeError):
             return dict(common, gone=True)
+        if versions:
+            rendered = render_diff(*sources, image_src=self.image_src)
+            return dict(
+                common, blocks=rendered['blocks'], diff=True,
+                outline=rendered['outline'],
+            )
         rendered = render_document(
-            source, aimed=True, image_src=self.image_src, tickable=True
+            sources[0], aimed=True, image_src=self.image_src,
+            tickable=not self.reading.versions,
         )
         return dict(
             common,

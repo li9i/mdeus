@@ -2,7 +2,7 @@
 
 const CONTENTS_MINIMUM = 3;
 const COPIED_MS = 1500;
-const DIAGRAM = 'pre > code.language-mermaid';
+const DIAGRAM = 'pre > code.language-mermaid:not(.diff *)';
 const GLIDE_MS_PER_LINE = 30;
 const GLIDES = { j: 1, k: -1 };
 const KEY_HINTS = [
@@ -832,7 +832,7 @@ async function saveDiagram(figure, save) {
 function savePlace() {
   window.clearTimeout(placeTimer);
   const place = placeNow();
-  if (!place) {
+  if (!place || doc.diff) {
     return;
   }
   fetch('/api/place', {

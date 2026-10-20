@@ -8,7 +8,7 @@ COMPLETION_DIR="$HOME/.local/share/bash-completion/completions"
 DESKTOP_DIR="$HOME/.local/share/applications"
 ICON_DIR="$HOME/.local/share/icons/hicolor"
 PACKAGES=(python3-markdown-it python3-mdit-py-plugins python3-linkify-it
-  python3-emoji python3-xlib python3-pil vim-gtk3)
+  python3-emoji python3-lxml python3-xlib python3-pil vim-gtk3)
 
 say() {
   printf '\n==> %s\n' "$1"
@@ -40,7 +40,8 @@ if command -v apt-get >/dev/null 2>&1; then
   fi
 else
   echo "No apt-get here, so install these yourself:"
-  echo "  markdown-it-py, mdit-py-plugins, linkify-it-py, emoji, python-xlib, pillow"
+  echo "  markdown-it-py, mdit-py-plugins, linkify-it-py, emoji, lxml,"
+  echo "  python-xlib, pillow"
   echo "  and a vim built with +clientserver and a GUI"
 fi
 
@@ -58,6 +59,17 @@ if command -v update-desktop-database >/dev/null 2>&1; then
 else
   echo "  update-desktop-database is not here, so the Open With entry waits for"
   echo "  whatever refreshes that cache on this machine"
+fi
+
+say "4. git difftool"
+if command -v git >/dev/null 2>&1; then
+  git config --global difftool.mdeus.cmd \
+    'mdeus --diff "$LOCAL" "$REMOTE" "$MERGED"'
+  echo "  git difftool -t mdeus now shows markdown changes in mdeus"
+  echo "  plain git difftool still opens whatever it opened before"
+else
+  echo "  git is not here, so git difftool -t mdeus waits until it is and the"
+  echo "  installer is run again"
 fi
 
 say "Done"

@@ -73,6 +73,25 @@
   overflow-x: auto;
 }
 
+.browser .diff ins,
+.report .diff ins,
+:where(.github) .diff ins,
+.wikipedia .diff ins,
+.wikipedia-classic .diff ins {
+  background: #d1f8d9;
+  text-decoration: none;
+}
+
+.browser .diff del,
+.report .diff del,
+:where(.github) .diff del,
+.wikipedia .diff del,
+.wikipedia-classic .diff del {
+  background: #ffd7d5;
+  color: #82071e;
+  text-decoration: none;
+}
+
 .browser .copy,
 .report .copy,
 :where(.github) .copy,

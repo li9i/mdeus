@@ -54,6 +54,31 @@ ALERT_FIXTURE = """\
 > An ordinary quote.
 """
 
+COMPARED_AFTER = """\
+# Title
+
+A sentence with the new word in the middle of it.
+
+```
+  kept as it was
+```
+
+* kept
+* added
+"""
+
+COMPARED_BEFORE = """\
+# Title
+
+A sentence with the old word in the middle of it.
+
+```
+  kept as it was
+```
+
+* kept
+"""
+
 AUTOLINK_FIXTURE = """\
 Bare https://example.com/a?b=1 and www.example.org and mail@example.com.
 
@@ -177,6 +202,75 @@ TWO_HEADING_FIXTURE = """\
 
 ## Two
 """
+
+
+def block_lines(rendered):
+    """Return the lines every block of a rendered document stands on."""
+    return [
+        (block['line_start'], block['line_end']) for block in rendered['blocks']
+    ]
+
+
+def deleted_words(html):
+    """Return every word a comparison's HTML marks as deleted."""
+    return ''.join(re.findall(r'<del>(.*?)</del>', html, re.S)).split()
+
+
+def test_a_comparison_marks_the_words_that_changed_where_they_stand():
+    """Changed words are marked in their own block, and the rest is untouched.
+
+    A block the two versions share is drawn exactly as a reading draws it, so a
+    fence keeps the spaces at the head of its first line. A block that changed
+    marks its new words inserted and its old ones deleted, inside the
+    paragraph or the item they belong to, and stands on the lines the newer
+    version has it on.
+    """
+    rendered = render.render_diff(COMPARED_BEFORE, COMPARED_AFTER)
+    plain = render.render_blocks(COMPARED_AFTER)
+    heading, paragraph, fence, items = rendered['blocks']
+    assert heading == plain[0], heading
+    assert '<ins>new</ins>' in paragraph['html'], paragraph
+    assert deleted_words(paragraph['html']) == ['old'], paragraph
+    assert fence == plain[2], fence
+    assert '<li><ins>added</ins></li>' in items['html'], items
+    assert deleted_words(items['html']) == [], items
+    for changed, drawn in ((paragraph, plain[1]), (items, plain[3])):
+        assert changed['type'] == 'diff', changed
+        assert changed['html'].startswith('<div class="diff">'), changed
+        assert (changed['line_start'], changed['line_end']) == (
+            drawn['line_start'], drawn['line_end']
+        ), changed
+    assert rendered['outline'] == [], rendered['outline']
+
+
+def test_a_comparison_puts_a_deleted_block_after_the_one_it_followed():
+    """A block only the older version has stands after its neighbour.
+
+    It has no lines in the newer version to stand on, and the page places every
+    block by the line it starts on, so it takes the first line after the block
+    it followed, or the first line of all where it led the document.
+    """
+    middle = render.render_diff('one\n\ntwo\n\nthree\n', 'one\n\nthree\n')
+    assert block_lines(middle) == [(1, 1), (2, 2), (3, 3)], middle
+    assert deleted_words(middle['blocks'][1]['html']) == ['two'], middle
+    leading = render.render_diff('zero\n\none\n', 'one\n')
+    assert block_lines(leading) == [(1, 1), (1, 1)], leading
+
+
+def test_a_document_compared_with_nothing_is_all_inserted_or_all_deleted():
+    """A new document is all inserted, and a removed one all deleted.
+
+    git names an empty file for the side a document is missing from, so a
+    comparison with nothing on one side is how both of those arrive.
+    """
+    [added] = render.render_diff('', COMPARED_AFTER)['blocks']
+    assert deleted_words(added['html']) == [], added
+    assert '<li><ins>added</ins></li>' in added['html'], added
+    [removed] = render.render_diff(COMPARED_BEFORE, '')['blocks']
+    inserted = re.sub(r'<ins>\s*</ins>', '', removed['html'])
+    assert '<ins>' not in inserted, removed
+    assert 'old' in deleted_words(removed['html']), removed
+    assert (removed['line_start'], removed['line_end']) == (1, 1), removed
 
 
 def test_aimed_parts_carry_the_lines_they_own():

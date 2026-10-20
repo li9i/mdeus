@@ -160,3 +160,16 @@ Run all of it after touching anything to do with the browser, the windows or vim
 ### Documents that are not markdown
 
 95. `mdeus notes.txt`, `mdeus --print notes.txt` and `mdeus --edit notes.txt` are each refused with `mdeus: not a markdown document: notes.txt`, and nothing opens. `mdeus notes.markdown` opens as usual.
+
+
+### Comparing two versions
+
+96. In a repository, change a markdown document in two places and run `git difftool -t mdeus -- doc.md`. One page opens, in the theme the document's readings have, with the new words on a green ground and the old ones in dark red on a pale red ground, each where it stood, with no line through them, and everything that did not change drawn as a reading draws it. A fence that did not change keeps the spaces at the head of its first line. The row of controls carries no `Edit` and no `Contents`, and pressing `e` does nothing. Close the page and the shell comes back.
+97. `git difftool` with no tool named opens the tool it opened before the installer ran, and `git config --global --get diff.tool` says what it said then.
+98. Commit a change that touches a markdown document, a script and a second markdown document, and run `git difftool -t mdeus HEAD~1`. git asks before each file. The first document opens, and closing it brings git back to ask about the next. The script is refused with `mdeus: not a markdown document: run.py` and nothing opens for it. Run it again with `-y` and git stops asking.
+99. Commit a new markdown document and the deletion of another, and run `git difftool -t mdeus HEAD~1`. The new one is drawn all on green and the deleted one all on red.
+100. With `doc.md` open in a reading, run `git difftool -t mdeus -- doc.md`. The comparison opens in a window of its own beside the reading, rather than bringing the reading forward.
+101. Change `doc.md` without staging it and run `git difftool -t mdeus -- doc.md`. Scroll the page down, change the document again from another editor and save. The page redraws with the new change marked and stays at the place you were reading.
+102. Scroll a long comparison a good way down and close it, then open the document with `mdeus doc.md`. It opens where its last reading was left, not where the comparison was. Change the theme in a comparison, close it and open the document: it opens in that theme.
+103. Compare a document holding a task list: no box can be pressed. Follow a link to another document: it reads as it stands, with no marks, and its boxes cannot be pressed either. Go back and the comparison is drawn again.
+104. Compare a document holding two mermaid diagrams, one of them changed. The unchanged one is drawn as a picture. The changed one shows as its source in a code box, the new text on a green ground and the old on a red one, rather than as a picture of the two versions run together.
