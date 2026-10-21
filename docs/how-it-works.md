@@ -142,7 +142,7 @@ The five themes draw all of it. `GitHub` reproduces GitHub's own colours, icons 
 | `page.js` | The theme dropdown, the four toggles beside it, the command line and the two panes a page splits into, the contents list, the copy button on every fence, the file name that copies the full path, the diagrams and the menu that saves one, the box a table scrolls inside, the heading names, the boxes of a task list, the folding of a section, which nothing calls for the moment, the redraw, and the place a document comes back to, which a comparison does not keep. |
 | `sync.css`, `sync.js` | The two marks and the sync with vim. Loaded by every reading, and asleep until vim is up. |
 | `mermaid.min.js` | Mermaid 11.17.2, byte for byte as npm publishes it, which draws a fence written as `mermaid`. Loaded by every reading and by no printed copy. |
-| `test_render.py`, `test_server.py` | The tests. |
+| `test_render.py`, `test_server.py`, `test_vimlink.py`, `test_vimwire.py`, `test_window.py`, `test_claim.py` | The tests. [Checks](checks.md) says how to run them. |
 | `share/icons/hicolor/*/apps/mdeus.png` | What a reading looks like on the panel, in both of its states, and in the "Open With" menu. |
 | `share/applications/mdeus.desktop` | The "Open With" entry. It names the command and the icon, both by name rather than by path, so both resolve through `~/.local`. |
 | `share/bash-completion/completions/mdeus` | The flags and the markdown files, offered on tab. |
