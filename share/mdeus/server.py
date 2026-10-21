@@ -98,6 +98,19 @@ def icon_path(size):
     return ASSET_DIR.parent / 'icons' / 'hicolor' / f'{size}x{size}' / 'apps' / f'{NAME}.png'
 
 
+def open_pane(reading):
+    """Serve a second pane of a reading, and return the address it landed on.
+
+    The pane is a reading of its own, so a link followed in it moves it and
+    nothing else, and it watches its own document. It is served on a port of
+    its own and ends the way any reading does, a moment after its page lets go.
+    """
+    pane = reading.pane()
+    bound = build_server(pane, port=0)
+    threading.Thread(target=serve, args=(bound, pane), daemon=True).start()
+    return f'http://{HOST}:{bound.server_port}/{pane.servername}'
+
+
 def page_html(title, state, head, body_tail=''):
     """Return the empty page. The controls and the document are filled in by page.js.
 
@@ -416,6 +429,20 @@ class Reading:
             if not self.holding:
                 self.alone = time.monotonic()
 
+    def pane(self):
+        """Return a reading of the document this one is on, for a second pane.
+
+        It reads the same tree and draws the same comparisons, so a link lands
+        in either pane where it would in the other. It can never open vim,
+        which belongs to the first pane alone. It answers to the same name,
+        so a box pressed in it is claimed with the vim warmed behind the page
+        exactly as one pressed in the first pane is.
+        """
+        pane = Reading(self.current, self.servername)
+        pane.root = self.root
+        pane.versions = self.versions
+        return pane
+
 
 class ReadingHandler(BaseHTTPRequestHandler):
     """Serve the reading page and the small JSON API behind it.
@@ -489,6 +516,8 @@ class ReadingHandler(BaseHTTPRequestHandler):
             elif self.path == '/api/jump' and self.reading.editing:
                 vimlink.jump(self.reading.servername, *wanted_block(body))
                 self.send_json({'ok': True})
+            elif self.path == '/api/pane':
+                self.send_json({'url': open_pane(self.reading)})
             elif self.path == '/api/place':
                 document, place = wanted_place(self.reading.root, body)
                 save_place(document, place)

@@ -10,6 +10,8 @@
 
 Press `Edit` at the top of the page and vim opens beside it in the same window. Double click anything in the page, a paragraph, an item of a list, a row of a table, and vim goes to the line it came from. Double click a line in vim, or press `enter` on it, and the page comes the other way. `alt` and an arrow moves the keyboard between the two halves, left for the page and right for vim. Press `Edit` again and vim goes, and the page is handed back to the desktop exactly where it was. Leave vim on `:wq` or `:x` instead and the whole reading ends with it, page and all.
 
+Type `:vs` in the page and it splits in two side by side, or `:sp` and it splits in two one above the other, the way vim splits a window. Each half follows its own links, `alt` and an arrow moves the keyboard between them, and either command typed again closes the second half. `Edit` waits while the page is split, so vim only ever comes in beside a page in one piece.
+
 ## Install
 
 ```bash

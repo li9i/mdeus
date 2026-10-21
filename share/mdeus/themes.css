@@ -124,6 +124,111 @@
   text-align: left;
 }
 
+.browser .controls button:disabled,
+.report .controls button:disabled,
+:where(.github) .controls button:disabled,
+.wikipedia .controls button:disabled,
+.wikipedia-classic .controls button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.browser .command,
+.report .command,
+:where(.github) .command,
+.wikipedia .command,
+.wikipedia-classic .command {
+  background: #ffffff;
+  border-top: 1px solid #dcdcdc;
+  bottom: 0;
+  color: #000000;
+  display: flex;
+  font: 14px/1.6 ui-monospace, 'DejaVu Sans Mono', Menlo, monospace;
+  left: 0;
+  padding: 0 0.5em;
+  position: fixed;
+  right: 0;
+  z-index: 2;
+}
+
+.browser .command input,
+.report .command input,
+:where(.github) .command input,
+.wikipedia .command input,
+.wikipedia-classic .command input {
+  background: none;
+  border: 0;
+  color: inherit;
+  flex: 1;
+  font: inherit;
+  outline: none;
+  padding: 0;
+}
+
+.browser[data-panes],
+.report[data-panes],
+:where(.github)[data-panes],
+.wikipedia[data-panes],
+.wikipedia-classic[data-panes] {
+  overflow: hidden;
+}
+
+.browser[data-panes] body > :not(.pane),
+.report[data-panes] body > :not(.pane),
+:where(.github)[data-panes] body > :not(.pane),
+.wikipedia[data-panes] body > :not(.pane),
+.wikipedia-classic[data-panes] body > :not(.pane) {
+  display: none;
+}
+
+.browser .pane,
+.report .pane,
+:where(.github) .pane,
+.wikipedia .pane,
+.wikipedia-classic .pane {
+  border: 0;
+  box-sizing: border-box;
+  height: 100vh;
+  left: 0;
+  position: fixed;
+  top: 0;
+  width: 100vw;
+}
+
+.browser[data-panes='sp'] .pane,
+.report[data-panes='sp'] .pane,
+:where(.github)[data-panes='sp'] .pane,
+.wikipedia[data-panes='sp'] .pane,
+.wikipedia-classic[data-panes='sp'] .pane {
+  height: 50vh;
+}
+
+.browser[data-panes='sp'] .pane + .pane,
+.report[data-panes='sp'] .pane + .pane,
+:where(.github)[data-panes='sp'] .pane + .pane,
+.wikipedia[data-panes='sp'] .pane + .pane,
+.wikipedia-classic[data-panes='sp'] .pane + .pane {
+  border-top: 1px solid #dcdcdc;
+  top: 50vh;
+}
+
+.browser[data-panes='vs'] .pane,
+.report[data-panes='vs'] .pane,
+:where(.github)[data-panes='vs'] .pane,
+.wikipedia[data-panes='vs'] .pane,
+.wikipedia-classic[data-panes='vs'] .pane {
+  width: 50vw;
+}
+
+.browser[data-panes='vs'] .pane + .pane,
+.report[data-panes='vs'] .pane + .pane,
+:where(.github)[data-panes='vs'] .pane + .pane,
+.wikipedia[data-panes='vs'] .pane + .pane,
+.wikipedia-classic[data-panes='vs'] .pane + .pane {
+  border-left: 1px solid #dcdcdc;
+  left: 50vw;
+}
+
 .browser .doc .folded h1::after,
 .report .doc .folded h1::after,
 :where(.github) .doc .folded h1::after,

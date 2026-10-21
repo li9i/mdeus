@@ -342,6 +342,33 @@ def start_holding(port):
     )
 
 
+def start_pane(port):
+    """Open a second pane on a reading, hold it as a frame does, and return it.
+
+    What comes back is the pane's address and a stop call. A pane serves until
+    its page lets go, so stop lets go and then waits for the pane to stop
+    answering, or the run would find the pane's thread still serving.
+    """
+    status, reply = fetch_json(port, '/api/pane', 'POST')
+    assert status == 200, (status, reply)
+    address = urlsplit(reply['url'])
+    held = start_holding(address.port)
+
+    def stop():
+        """Let the pane go and wait until nothing answers at its port."""
+        held.close()
+        deadline = time.monotonic() + TIMEOUT
+        while time.monotonic() < deadline:
+            try:
+                socket.create_connection((server.HOST, address.port)).close()
+            except ConnectionRefusedError:
+                return
+            time.sleep(0.05)
+        raise AssertionError('a pane let go went on serving')
+
+    return address, stop
+
+
 def start_reading(compared=False, editable=False, editing=False):
     """Serve a fixture tree on a free port and return its root, port, reading and a stop call.
 
@@ -1138,6 +1165,75 @@ def test_a_reading_draws_diagrams_with_a_script_it_serves_itself():
         assert 'javascript' in content_type, content_type
         shipped = (server.ASSET_DIR / 'mermaid.min.js').read_bytes()
         assert data == shipped, 'the script was not sent whole'
+    finally:
+        stop()
+
+
+def test_a_second_pane_draws_the_comparison_the_first_draws():
+    """A pane opened beside a comparison is the same comparison, read only."""
+    root, port, reading, stop = start_reading(compared=True)
+    try:
+        address, stop_pane = start_pane(port)
+        try:
+            status, doc = fetch_json(address.port, '/doc')
+            assert status == 200, status
+            assert doc['diff'] is True, doc
+            assert doc['blocks'] == fetch_json(port, '/doc')[1]['blocks']
+        finally:
+            stop_pane()
+    finally:
+        stop()
+
+
+def test_a_second_pane_follows_a_link_and_leaves_the_first_where_it_is():
+    """Each pane reads its own document, from the tree the reading started in.
+
+    The first pane is on a document one directory down when the second opens,
+    so a link from there back up to start.md lands only if the second pane
+    reads the tree the reading started in rather than the directory it opened
+    on.
+    """
+    root, port, reading, stop = start_reading()
+    try:
+        fetch_json(port, '/doc?' + urlencode({'path': 'notes/other.md'}))
+        address, stop_pane = start_pane(port)
+        try:
+            status, doc = fetch_json(
+                address.port, '/doc?' + urlencode({'path': 'start.md'}))
+            assert status == 200, status
+            assert doc['name'] == 'start.md', doc['name']
+            assert fetch_json(port, '/doc')[1]['name'] == 'notes/other.md'
+        finally:
+            stop_pane()
+    finally:
+        stop()
+
+
+def test_a_second_pane_opens_on_the_document_the_first_is_showing():
+    """A pane opens on the document the page is on, and can never open vim.
+
+    The page is on a document a link led to, not the one the reading started
+    at, and the pane opens on that one. The pane's page is served under the
+    reading's own name and carries no Edit toggle, since vim belongs to the
+    first pane alone.
+    """
+    root, port, reading, stop = start_reading(editable=True)
+    try:
+        fetch_json(port, '/doc?' + urlencode({'path': 'notes/other.md'}))
+        address, stop_pane = start_pane(port)
+        try:
+            assert address.path == f'/{SERVERNAME}', address.path
+            status, content_type, page = fetch(address.port, address.path)
+            assert status == 200, status
+            assert content_type.startswith('text/html'), content_type
+            status, doc = fetch_json(address.port, '/doc')
+            assert doc['name'] == 'notes/other.md', doc['name']
+            assert doc['editable'] is False, doc['editable']
+            assert fetch_json(
+                address.port, '/api/edit', 'POST', {'editing': True}
+            )[1] == {'editing': False}
+        finally:
+            stop_pane()
     finally:
         stop()
 

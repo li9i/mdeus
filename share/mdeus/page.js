@@ -13,6 +13,8 @@ const KEY_HINTS = [
 ];
 const LINE_PX = 40;
 const MERMAID = { startOnLoad: false };
+const MOVES = { sp: ['ArrowUp', 'ArrowDown'], vs: ['ArrowLeft', 'ArrowRight'] };
+const NOT_A_COMMAND = 'Not an editor command';
 const PAINT_RGBA = /^rgba\((.*), ([\d.]+)\)$/;
 const PLACE_KEY = 'mdeus:place';
 const PLACE_SETTLE_MS = 500;
@@ -47,13 +49,17 @@ const THEMES = [
   ['report', 'Mono headings'],
 ];
 const TREE = 'file:///tree/';
+const VIM_IS_UP = 'Close vim first';
 const XML_NS = 'http://www.w3.org/XML/1998/namespace';
 
 const controlsNode = document.querySelector('.controls');
 const docNode = document.querySelector('.doc');
 const foldedAt = new Set();
+const framed = window.parent !== window;
 const imageSizes = new Map();
 
+let active = 0;
+let commandLine = null;
 let contentsOpen = false;
 let diagrams = new Map();
 let diagramsDrawn = 0;
@@ -67,10 +73,12 @@ let landings = 0;
 let menu = null;
 let middle = null;
 let mtime = null;
+let panes = null;
 let placeTimer = null;
 let sectionLines = new Set();
 let settling = false;
 let theme = null;
+let titles = [];
 let wide = null;
 
 function anchor() {
@@ -174,6 +182,7 @@ function buildControls() {
   );
   if (doc.editable) {
     controlsNode.append(toggleButton('edit', 'Edit', editing, onEdit));
+    lockEdit(framed);
   }
   const keys = document.createElement('span');
   keys.className = 'keys';
@@ -184,11 +193,29 @@ function buildControls() {
   controlsNode.append(keys);
 }
 
+function closeCommand() {
+  const line = commandLine;
+  commandLine = null;
+  if (line) {
+    line.remove();
+  }
+}
+
 function closeMenu() {
   if (menu) {
     menu.remove();
     menu = null;
   }
+}
+
+function closePanes() {
+  const place = panes[0].contentWindow.placeNow();
+  panes.forEach((pane) => pane.remove());
+  panes = null;
+  delete document.documentElement.dataset.panes;
+  lockEdit(false);
+  nameWindow();
+  landOn(landing(place));
 }
 
 function contentsHtml() {
@@ -310,7 +337,7 @@ function drawDiagrams() {
 }
 
 function drawDocument() {
-  document.title = doc.path;
+  nameWindow();
   keepImageSizes();
   if (doc.gone) {
     docNode.innerHTML = `<p class="gone">${esc(doc.name || 'The file')} is gone.</p>`;
@@ -556,11 +583,25 @@ async function load() {
   restore(mark);
 }
 
+function lockEdit(locked) {
+  const button = document.getElementById('edit');
+  if (button) {
+    button.disabled = locked;
+  }
+}
+
 function measureBar() {
   document.documentElement.style.setProperty(
     '--bar-height',
     `${controlsNode.offsetHeight}px`
   );
+}
+
+function nameWindow() {
+  document.title = panes ? titles[active] : doc.path;
+  if (framed) {
+    parent.postMessage({ focused: document.hasFocus(), title: doc.path }, '*');
+  }
 }
 
 function onClick(event) {
@@ -591,6 +632,11 @@ function onEdit() {
 }
 
 function onKey(event) {
+  if (framed && event.altKey && event.key.startsWith('Arrow')) {
+    event.preventDefault();
+    parent.postMessage({ move: event.key }, '*');
+    return;
+  }
   if (event.altKey || event.ctrlKey || event.metaKey) {
     return;
   }
@@ -598,6 +644,7 @@ function onKey(event) {
     return;
   }
   if (event.key === 'Escape') {
+    closeCommand();
     closeMenu();
     return;
   }
@@ -606,6 +653,12 @@ function onKey(event) {
   }
   const waited = gWaiting;
   gWaiting = false;
+  closeCommand();
+  if (event.key === ':') {
+    event.preventDefault();
+    openCommand();
+    return;
+  }
   if (event.key in GLIDES) {
     event.preventDefault();
     if (!event.repeat) {
@@ -680,6 +733,31 @@ function onMiddle(event) {
   saveState();
 }
 
+function onPaneMessage(event) {
+  const from = panes
+    ? panes.findIndex((pane) => pane.contentWindow === event.source)
+    : -1;
+  if (from < 0) {
+    return;
+  }
+  const said = event.data;
+  if (said.close) {
+    closePanes();
+  } else if (said.move) {
+    const way = MOVES[document.documentElement.dataset.panes];
+    const to = way.indexOf(said.move);
+    if (to >= 0) {
+      panes[to].focus();
+    }
+  } else {
+    titles[from] = said.title;
+    if (said.focused) {
+      active = from;
+    }
+    nameWindow();
+  }
+}
+
 function onPointerDown(event) {
   if (menu && !menu.contains(event.target)) {
     closeMenu();
@@ -736,8 +814,44 @@ function onWide(event) {
   saveState();
 }
 
+function openCommand() {
+  const input = document.createElement('input');
+  commandLine = document.createElement('form');
+  commandLine.className = 'command';
+  commandLine.append(':', input);
+  commandLine.addEventListener('submit', (event) => {
+    event.preventDefault();
+    closeCommand();
+    run(input.value.trim());
+  });
+  input.addEventListener('blur', closeCommand);
+  document.body.append(commandLine);
+  input.focus();
+}
+
+async function openPanes(way) {
+  await savePlace();
+  const response = await fetch('/api/pane', { method: 'POST' });
+  if (!response.ok) {
+    return;
+  }
+  const second = (await response.json()).url;
+  panes = [location.href, second].map((address) => {
+    const pane = document.createElement('iframe');
+    pane.className = 'pane';
+    pane.src = address;
+    return pane;
+  });
+  active = 1;
+  titles = [doc.path, doc.path];
+  document.documentElement.dataset.panes = way;
+  document.body.append(...panes);
+  lockEdit(true);
+  panes[1].focus();
+}
+
 function placeNow() {
-  const mark = doc && !doc.gone && !settling ? anchor() : null;
+  const mark = doc && !doc.gone && !settling && !panes ? anchor() : null;
   return mark ? { name: doc.name, start: mark.start, top: mark.top } : null;
 }
 
@@ -811,6 +925,20 @@ function restore(mark) {
   }
 }
 
+function run(said) {
+  if (!Object.hasOwn(MOVES, said)) {
+    say(`${NOT_A_COMMAND}: ${said}`);
+  } else if (framed) {
+    parent.postMessage({ close: true }, '*');
+  } else if (panes) {
+    closePanes();
+  } else if (editing) {
+    say(VIM_IS_UP);
+  } else {
+    openPanes(said);
+  }
+}
+
 async function saveDiagram(figure, save) {
   const stem = doc.name.split('/').pop().replace(/\.md$/, '');
   const number = [...docNode.querySelectorAll('.diagram')].indexOf(figure) + 1;
@@ -835,7 +963,7 @@ function savePlace() {
   if (!place || doc.diff) {
     return;
   }
-  fetch('/api/place', {
+  return fetch('/api/place', {
     body: JSON.stringify(place),
     headers: { 'Content-Type': 'application/json' },
     keepalive: true,
@@ -849,6 +977,13 @@ function saveState() {
     headers: { 'Content-Type': 'application/json' },
     method: 'POST',
   }).catch(() => {});
+}
+
+function say(text) {
+  commandLine = document.createElement('div');
+  commandLine.className = 'command';
+  commandLine.textContent = text;
+  document.body.append(commandLine);
 }
 
 function scrollStep(key) {
@@ -893,9 +1028,13 @@ async function start() {
   hold();
   await load();
   landOn(landing(keptPlace() || doc.place));
-  window.addEventListener('pagehide', keepPlace);
+  if (!framed) {
+    window.addEventListener('pagehide', keepPlace);
+  }
   window.addEventListener('pagehide', savePlace);
   window.addEventListener('scroll', onScroll);
+  window.addEventListener('focus', nameWindow);
+  window.addEventListener('message', onPaneMessage);
   history.replaceState({ path: doc.name }, '');
   docNode.addEventListener('click', onClick);
   docNode.addEventListener('change', onTick);
