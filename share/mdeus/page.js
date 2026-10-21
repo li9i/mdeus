@@ -926,6 +926,9 @@ function restore(mark) {
 }
 
 function run(said) {
+  if (!said) {
+    return;
+  }
   if (!Object.hasOwn(MOVES, said)) {
     say(`${NOT_A_COMMAND}: ${said}`);
   } else if (framed) {
