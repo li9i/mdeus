@@ -12,6 +12,9 @@ const KEY_HINTS = [
   ['gg/G', 'ends'],
 ];
 const LINE_PX = 40;
+const MARK_KEYS = ["'", '`', 'm'];
+const MARK_LETTER = /^[a-z]$/;
+const MARK_NOT_SET = 'Mark not set';
 const MERMAID = { startOnLoad: false };
 const MOVES = { sp: ['ArrowUp', 'ArrowDown'], vs: ['ArrowLeft', 'ArrowRight'] };
 const NOT_A_COMMAND = 'Not an editor command';
@@ -24,7 +27,7 @@ const SAVES = [
   { extension: 'svg', label: 'Save as SVG', type: 'image/svg+xml' },
   { extension: 'png', label: 'Save as PNG', type: 'image/png' },
 ];
-const SHORTCUTS = { c: 'contents', e: 'edit', m: 'middle', w: 'wide' };
+const SHORTCUTS = { c: 'contents', e: 'edit', i: 'middle', w: 'wide' };
 const SVG_STYLES = [
   'dominant-baseline',
   'fill',
@@ -71,6 +74,7 @@ let glide = null;
 let gWaiting = false;
 let headingIds = [];
 let landings = 0;
+let markKey = null;
 let menu = null;
 let middle = null;
 let mtime = null;
@@ -504,6 +508,16 @@ function isSection(block) {
   return sectionLines.has(Number(block.dataset.start));
 }
 
+async function jumpToMark(letter) {
+  const query = new URLSearchParams({ letter, name: doc.name });
+  const response = await fetch(`/api/mark?${query}`);
+  if (!response.ok) {
+    say(MARK_NOT_SET);
+    return;
+  }
+  landOn(landing(await response.json()));
+}
+
 function keepImageSizes() {
   docNode.querySelectorAll('img').forEach((image) => {
     if (image.naturalWidth) {
@@ -657,7 +671,19 @@ function onKey(event) {
   }
   const waited = gWaiting;
   gWaiting = false;
+  const marking = markKey;
+  markKey = null;
   closeCommand();
+  if (marking && MARK_LETTER.test(event.key)) {
+    event.preventDefault();
+    (marking === 'm' ? setMark : jumpToMark)(event.key);
+    return;
+  }
+  if (MARK_KEYS.includes(event.key)) {
+    event.preventDefault();
+    markKey = event.key;
+    return;
+  }
   if (event.key === ':') {
     event.preventDefault();
     openCommand();
@@ -1018,6 +1044,14 @@ function scrollStep(key) {
   const half = window.innerHeight / 2;
   const page = window.innerHeight - controlsNode.offsetHeight - LINE_PX;
   return { b: -page, d: half, f: page, u: -half }[key];
+}
+
+function setMark(letter) {
+  fetch('/api/mark', {
+    body: JSON.stringify({ ...placeNow(), letter }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  }).catch(() => {});
 }
 
 function setPressed(button, on) {

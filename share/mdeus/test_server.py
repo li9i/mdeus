@@ -992,6 +992,67 @@ def test_a_link_is_followed_in_vim_while_vim_is_up():
         stop()
 
 
+def test_a_mark_is_kept_for_its_document_alone_and_never_on_the_disk():
+    """A mark comes back on the document it was set on, under its own letter.
+
+    Marks last only as long as the reading, so nothing about them is written
+    to the state file.
+    """
+    root, port, reading, stop = start_reading()
+    try:
+        mark = {'letter': 'a', 'name': 'start.md', 'start': 5, 'top': 40.0}
+        status, reply = fetch_json(port, '/api/mark', 'POST', mark)
+        assert status == 200, (status, reply)
+        for name, letter, wanted in (
+            ('start.md', 'a', (200, {'start': 5, 'top': 40.0})),
+            ('start.md', 'b', (404, {'error': 'no mark'})),
+            ('notes/other.md', 'a', (404, {'error': 'no mark'})),
+        ):
+            query = urlencode({'letter': letter, 'name': name})
+            got = fetch_json(port, f'/api/mark?{query}')
+            assert got == wanted, (name, letter, got)
+        assert not state.STATE_PATH.exists(), state.STATE_PATH
+    finally:
+        stop()
+
+
+def test_a_mark_set_in_one_pane_is_found_in_the_other():
+    """Both panes of a split page share their marks, as two vim windows do."""
+    root, port, reading, stop = start_reading()
+    try:
+        address, stop_pane = start_pane(port)
+        try:
+            mark = {'letter': 'q', 'name': 'start.md', 'start': 7, 'top': 0}
+            assert fetch_json(address.port, '/api/mark', 'POST', mark)[0] == 200
+            query = urlencode({'letter': 'q', 'name': 'start.md'})
+            status, place = fetch_json(port, f'/api/mark?{query}')
+            assert (status, place) == (200, {'start': 7, 'top': 0}), place
+        finally:
+            stop_pane()
+    finally:
+        stop()
+
+
+def test_a_mark_the_page_could_not_have_set_is_refused():
+    """A mark needs a letter from a to z and a place in a document."""
+    root, port, reading, stop = start_reading()
+    try:
+        good = {'letter': 'a', 'name': 'start.md', 'start': 3, 'top': 20}
+        for body in (
+            dict(good, letter='A'),
+            dict(good, letter='ab'),
+            dict(good, letter=''),
+            dict(good, letter=['a']),
+            {'name': 'start.md', 'start': 3, 'top': 20},
+            dict(good, name='../outside/secret.md'),
+            dict(good, top=None),
+        ):
+            status, reply = fetch_json(port, '/api/mark', 'POST', body)
+            assert status == 400, (body, status, reply)
+    finally:
+        stop()
+
+
 def test_a_page_letting_go_does_not_end_a_reading_vim_is_holding():
     """A reading with vim up is held by vim, whatever became of the page beside it.
 

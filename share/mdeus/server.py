@@ -47,6 +47,7 @@ import mimetypes
 import os
 import re
 import select
+import string
 import sys
 import threading
 import time
@@ -70,6 +71,7 @@ GONE_GRACE = 0.5
 HOST = '127.0.0.1'
 ICON_ROUTE = '/icon.png'
 ICON_SIZE = 128
+MARKS = tuple(string.ascii_lowercase)
 MAX_BODY = 256 * 1024
 NAME = 'mdeus'
 RETURN_GRACE = 1
@@ -235,6 +237,17 @@ def wanted_block(body):
         raise ValueError('no block') from error
 
 
+def wanted_letter(body):
+    """Return the letter a mark is set under, or raise ValueError.
+
+    Marks are the letters a to z, as vim's marks within one file are.
+    """
+    letter = body.get('letter')
+    if letter not in MARKS:
+        raise ValueError('no such mark')
+    return letter
+
+
 def wanted_line(body):
     """Return the source line a request names, or raise ValueError."""
     try:
@@ -369,6 +382,7 @@ class Reading:
         self.holds = threading.Lock()
         self.heard, self.said = os.pipe()
         os.set_blocking(self.said, False)
+        self.marks = {}
         self.over = threading.Event()
         self.root = self.current.parent
         self.servername = servername
@@ -433,12 +447,14 @@ class Reading:
         """Return a reading of the document this one is on, for a second pane.
 
         It reads the same tree and draws the same comparisons, so a link lands
-        in either pane where it would in the other. It can never open vim,
+        in either pane where it would in the other, and it shares the marks,
+        as two vim windows on one file do. It can never open vim,
         which belongs to the first pane alone. It answers to the same name,
         so a box pressed in it is claimed with the vim warmed behind the page
         exactly as one pressed in the first pane is.
         """
         pane = Reading(self.current, self.servername)
+        pane.marks = self.marks
         pane.root = self.root
         pane.versions = self.versions
         return pane
@@ -480,6 +496,8 @@ class ReadingHandler(BaseHTTPRequestHandler):
                 'share': self.reading.share,
                 'word': self.reading.word,
             })
+        elif path == '/api/mark':
+            self.send_mark(parse_qs(parts.query))
         elif path.startswith('/assets/'):
             self.send_from(ASSET_DIR, unquote(path[len('/assets/') :]))
         elif path == '/doc':
@@ -516,6 +534,10 @@ class ReadingHandler(BaseHTTPRequestHandler):
             elif self.path == '/api/jump' and self.reading.editing:
                 vimlink.jump(self.reading.servername, *wanted_block(body))
                 self.send_json({'ok': True})
+            elif self.path == '/api/mark':
+                document, place = wanted_place(self.reading.root, body)
+                self.reading.marks[document, wanted_letter(body)] = place
+                self.send_json(place)
             elif self.path == '/api/pane':
                 self.send_json({'url': open_pane(self.reading)})
             elif self.path == '/api/place':
@@ -719,6 +741,17 @@ class ReadingHandler(BaseHTTPRequestHandler):
     def send_json(self, payload, code=200):
         """Send a JSON response."""
         self.send_bytes(json.dumps(payload).encode('utf-8'), 'application/json', code)
+
+    def send_mark(self, query):
+        """Send the place a mark was set at, or say there is no such mark."""
+        name = query.get('name', [''])[0]
+        letter = query.get('letter', [''])[0]
+        document = resolve_inside(self.reading.root, name)
+        place = self.reading.marks.get((document, letter))
+        if place is None:
+            self.send_json({'error': 'no mark'}, code=404)
+        else:
+            self.send_json(place)
 
     def send_page(self):
         """Send the empty page, linking the stylesheets and the scripts it draws with."""
