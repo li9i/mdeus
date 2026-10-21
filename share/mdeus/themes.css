@@ -173,11 +173,11 @@
   overflow: hidden;
 }
 
-.browser[data-panes] body > :not(.pane),
-.report[data-panes] body > :not(.pane),
-:where(.github)[data-panes] body > :not(.pane),
-.wikipedia[data-panes] body > :not(.pane),
-.wikipedia-classic[data-panes] body > :not(.pane) {
+.browser[data-panes] body > :not(.pane, .seam),
+.report[data-panes] body > :not(.pane, .seam),
+:where(.github)[data-panes] body > :not(.pane, .seam),
+.wikipedia[data-panes] body > :not(.pane, .seam),
+.wikipedia-classic[data-panes] body > :not(.pane, .seam) {
   display: none;
 }
 
@@ -188,11 +188,11 @@
 .wikipedia-classic .pane {
   border: 0;
   box-sizing: border-box;
-  height: 100vh;
+  height: 100%;
   left: 0;
   position: fixed;
   top: 0;
-  width: 100vw;
+  width: 100%;
 }
 
 .browser[data-panes='sp'] .pane,
@@ -200,7 +200,7 @@
 :where(.github)[data-panes='sp'] .pane,
 .wikipedia[data-panes='sp'] .pane,
 .wikipedia-classic[data-panes='sp'] .pane {
-  height: 50vh;
+  height: var(--pane-share);
 }
 
 .browser[data-panes='sp'] .pane + .pane,
@@ -209,7 +209,8 @@
 .wikipedia[data-panes='sp'] .pane + .pane,
 .wikipedia-classic[data-panes='sp'] .pane + .pane {
   border-top: 1px solid #dcdcdc;
-  top: 50vh;
+  height: calc(100% - var(--pane-share));
+  top: var(--pane-share);
 }
 
 .browser[data-panes='vs'] .pane,
@@ -217,7 +218,7 @@
 :where(.github)[data-panes='vs'] .pane,
 .wikipedia[data-panes='vs'] .pane,
 .wikipedia-classic[data-panes='vs'] .pane {
-  width: 50vw;
+  width: var(--pane-share);
 }
 
 .browser[data-panes='vs'] .pane + .pane,
@@ -226,7 +227,41 @@
 .wikipedia[data-panes='vs'] .pane + .pane,
 .wikipedia-classic[data-panes='vs'] .pane + .pane {
   border-left: 1px solid #dcdcdc;
-  left: 50vw;
+  left: var(--pane-share);
+  width: calc(100% - var(--pane-share));
+}
+
+.browser .seam,
+.report .seam,
+:where(.github) .seam,
+.wikipedia .seam,
+.wikipedia-classic .seam {
+  position: fixed;
+  z-index: 1;
+}
+
+.browser[data-panes='sp'] .seam,
+.report[data-panes='sp'] .seam,
+:where(.github)[data-panes='sp'] .seam,
+.wikipedia[data-panes='sp'] .seam,
+.wikipedia-classic[data-panes='sp'] .seam {
+  cursor: row-resize;
+  height: 6px;
+  left: 0;
+  top: calc(var(--pane-share) - 3px);
+  width: 100%;
+}
+
+.browser[data-panes='vs'] .seam,
+.report[data-panes='vs'] .seam,
+:where(.github)[data-panes='vs'] .seam,
+.wikipedia[data-panes='vs'] .seam,
+.wikipedia-classic[data-panes='vs'] .seam {
+  cursor: col-resize;
+  height: 100%;
+  left: calc(var(--pane-share) - 3px);
+  top: 0;
+  width: 6px;
 }
 
 .browser .doc .folded h1::after,

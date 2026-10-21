@@ -16,6 +16,7 @@ const MERMAID = { startOnLoad: false };
 const MOVES = { sp: ['ArrowUp', 'ArrowDown'], vs: ['ArrowLeft', 'ArrowRight'] };
 const NOT_A_COMMAND = 'Not an editor command';
 const PAINT_RGBA = /^rgba\((.*), ([\d.]+)\)$/;
+const PANE_SHARE = 0.5;
 const PLACE_KEY = 'mdeus:place';
 const PLACE_SETTLE_MS = 500;
 const PNG_SCALE = 2;
@@ -75,6 +76,7 @@ let middle = null;
 let mtime = null;
 let panes = null;
 let placeTimer = null;
+let seam = null;
 let sectionLines = new Set();
 let settling = false;
 let theme = null;
@@ -212,6 +214,8 @@ function closePanes() {
   const place = panes[0].contentWindow.placeNow();
   panes.forEach((pane) => pane.remove());
   panes = null;
+  seam.remove();
+  seam = null;
   delete document.documentElement.dataset.panes;
   lockEdit(false);
   nameWindow();
@@ -770,6 +774,21 @@ function onPop(event) {
   }
 }
 
+function onSeamDown(event) {
+  seam.setPointerCapture(event.pointerId);
+}
+
+function onSeamMove(event) {
+  if (!seam.hasPointerCapture(event.pointerId)) {
+    return;
+  }
+  sharePanes(
+    document.documentElement.dataset.panes === 'vs'
+      ? event.clientX / window.innerWidth
+      : event.clientY / window.innerHeight
+  );
+}
+
 function onScroll() {
   window.clearTimeout(placeTimer);
   placeTimer = window.setTimeout(savePlace, PLACE_SETTLE_MS);
@@ -842,10 +861,16 @@ async function openPanes(way) {
     pane.src = address;
     return pane;
   });
+  seam = document.createElement('div');
+  seam.className = 'seam';
+  seam.addEventListener('pointerdown', onSeamDown);
+  seam.addEventListener('pointermove', onSeamMove);
+  seam.addEventListener('lostpointercapture', () => panes[active].focus());
   active = 1;
   titles = [doc.path, doc.path];
   document.documentElement.dataset.panes = way;
-  document.body.append(...panes);
+  sharePanes(PANE_SHARE);
+  document.body.append(...panes, seam);
   lockEdit(true);
   panes[1].focus();
 }
@@ -997,6 +1022,10 @@ function scrollStep(key) {
 
 function setPressed(button, on) {
   button.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+
+function sharePanes(share) {
+  document.documentElement.style.setProperty('--pane-share', `${share * 100}%`);
 }
 
 function sizeImages() {
