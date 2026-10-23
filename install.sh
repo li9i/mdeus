@@ -8,7 +8,7 @@ COMPLETION_DIR="$HOME/.local/share/bash-completion/completions"
 DESKTOP_DIR="$HOME/.local/share/applications"
 ICON_DIR="$HOME/.local/share/icons/hicolor"
 PACKAGES=(python3-markdown-it python3-mdit-py-plugins python3-linkify-it
-  python3-emoji python3-lxml python3-xlib python3-pil vim-gtk3)
+  python3-emoji python3-lxml python3-xlib python3-pil vim-gtk3 gh)
 
 say() {
   printf '\n==> %s\n' "$1"
@@ -43,6 +43,7 @@ else
   echo "  markdown-it-py, mdit-py-plugins, linkify-it-py, emoji, lxml,"
   echo "  python-xlib, pillow"
   echo "  and a vim built with +clientserver and a GUI"
+  echo "  and gh, to compare with a pull request"
 fi
 
 say "2. Links"

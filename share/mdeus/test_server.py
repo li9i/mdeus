@@ -683,6 +683,68 @@ def test_a_click_in_vim_is_counted_and_a_move_is_not():
         stop()
 
 
+def test_a_comparison_fetches_a_pull_request_named_by_its_link():
+    """A pull request is compared by its description, which gh fetches.
+
+    The page goes under the link where the pull request is the newer side,
+    and under the file where it is the older. A pull request gh cannot fetch
+    opens nothing, and a link to anything other than a pull request is not
+    markdown. gh is stood in for by a script that knows one pull request and
+    writes its description the way GitHub does, so nothing here reaches the
+    network. The fetched description is written under the fixture, since the
+    command is stopped rather than left to clean up after itself.
+    """
+    tree = Path(tempfile.mkdtemp(prefix='mdeus-test-pull-'))
+    link = 'https://github.com/org/repo/pull/12'
+    friday = '# Plan\n\nShip on Friday.\n'
+    monday = '# Plan\n\nShip on Monday.\n'
+    described = monday.replace('\n', '\\r\\n')
+    was = dict(os.environ)
+    try:
+        (tree / 'bin').mkdir()
+        gh = tree / 'bin' / 'gh'
+        gh.write_text(
+            '#!/bin/sh\n'
+            f'case " $* " in *" {link} "*) ;; *) exit 1 ;; esac\n'
+            f"printf '{described}'\n",
+            encoding='utf-8',
+        )
+        gh.chmod(0o755)
+        os.environ.update(
+            PATH=f'{tree / "bin"}{os.pathsep}{was["PATH"]}', TMPDIR=str(tree)
+        )
+        local = tree / 'plan.md'
+        local.write_text(friday, encoding='utf-8')
+        newer = served_comparison([str(local), link], tree)
+        assert newer['path'] == link, newer['path']
+        assert newer['blocks'] == render.render_diff(
+            friday, monday, image_src=served_image
+        )['blocks'], newer['blocks']
+        older = served_comparison([link, str(local)], tree)
+        assert older['path'] == str(local.resolve()), older['path']
+        assert older['blocks'] == render.render_diff(
+            monday, friday, image_src=served_image
+        )['blocks'], older['blocks']
+        issue = 'https://github.com/org/repo/issues/12'
+        for other, said in (
+            ('https://github.com/org/repo/pull/13', ''),
+            (issue, f'mdeus: not a markdown document: {issue}\n'),
+        ):
+            done = subprocess.run(
+                [sys.executable, str(COMMAND), '--tab', '--diff',
+                 str(local), other],
+                capture_output=True, env=quiet_environment(tree), text=True,
+                timeout=TIMEOUT,
+            )
+            assert done.returncode == 1, (other, done.returncode)
+            assert done.stderr == said, (other, done.stderr)
+            assert done.stdout == '', (other, done.stdout)
+    finally:
+        os.environ.clear()
+        os.environ.update(was)
+        shutil.rmtree(tree, ignore_errors=True)
+
+
 def test_a_comparison_is_drawn_read_only_and_keeps_no_place():
     """A reading opened on two versions draws the older compared with the newer.
 

@@ -171,10 +171,11 @@ def serve(server, reading):
     reading.asked.set()
 
 
-def start(document, servername, editable=False, versions=None):
+def start(document, servername, editable=False, versions=None, title=None):
     """Bind a reading and return it, its server, and the address it landed on."""
     reading = Reading(
-        document, servername, editable=editable, versions=versions
+        document, servername, editable=editable, versions=versions,
+        title=title,
     )
     bound = build_server(reading)
     return bound, reading, f'http://{HOST}:{bound.server_port}'
@@ -363,10 +364,13 @@ class Reading:
 
     A reading opened on a comparison keeps its two versions under the document
     they are versions of, so that only that document is drawn as a comparison
-    and a link out of it reads the next document as it stands.
+    and a link out of it reads the next document as it stands. A document
+    fetched from somewhere else keeps the address it came from in the same
+    way, and goes under that address rather than under its path.
     """
 
-    def __init__(self, document, servername, editable=False, versions=None):
+    def __init__(self, document, servername, editable=False, versions=None,
+                 title=None):
         self.alone = None
         self.asked = threading.Event()
         self.asks = 0
@@ -388,6 +392,7 @@ class Reading:
         self.servername = servername
         self.share = DEFAULT_SHARE
         self.ticks = threading.Lock()
+        self.titles = {self.current: title} if title else {}
         self.versions = (
             {self.current: tuple(path.resolve() for path in versions)}
             if versions else {}
@@ -456,6 +461,7 @@ class Reading:
         pane = Reading(self.current, self.servername)
         pane.marks = self.marks
         pane.root = self.root
+        pane.titles = self.titles
         pane.versions = self.versions
         return pane
 
@@ -557,7 +563,8 @@ class ReadingHandler(BaseHTTPRequestHandler):
 
     def full_path(self):
         """Return the current document's full path, for the window title."""
-        return str(self.reading.current)
+        current = self.reading.current
+        return self.reading.titles.get(current, str(current))
 
     def hold_open(self):
         """Answer the page's headers, then hold its connection and say what moves down it.

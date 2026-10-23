@@ -51,8 +51,8 @@ one line, whichever way it was asked for.
 
 --diff shows the older document compared with the newer as one page,
 inserted words on green and deleted ones on red, under the newer one's name.
-Both have to be markdown. git difftool -t mdeus shows a change to a document
-the same way, and git runs
+Both have to be markdown, or a pull request as below. git difftool -t mdeus
+shows a change to a document the same way, and git runs
 
     mdeus --diff <older> <newer> <document>
 
@@ -65,12 +65,23 @@ a third name is given it alone says whether the document is markdown.
 A comparison is read only: there is no Edit toggle and no box can be pressed.
 It claims nothing, so a document already open in a reading of its own can be
 compared beside it, and it is drawn again whenever either version is written.
+
+Either name may be the link to a pull request on GitHub instead,
+https://github.com/<org>/<repo>/pull/<number>, and its description is compared
+as though it were a document on the disk. gh fetches it once, as the page
+opens, so an edit to the description on GitHub is not drawn until the command
+is run again. Where the pull request is the newer side, the page goes under
+its link.
 """
 
 import argparse
+import contextlib
 import os
+import re
 import signal
+import subprocess
 import sys
+import tempfile
 import threading
 from pathlib import Path
 
@@ -84,7 +95,59 @@ from export import write_export
 from server import NAME, reading_name, serve, start
 
 MARKDOWN = ('.markdown', '.md')
+PULL = re.compile(r'https://github\.com/([^/]+)/([^/]+)/pull/(\d+)')
 WAKE = 1
+
+
+def compare(names, document, tab):
+    """Serve a comparison, fetching any pull request in it to a file first.
+
+    The descriptions are written into a directory that lasts as long as the
+    reading does, and that is made only where there is a pull request to put
+    in it. The page goes under the link where the pull request is the newer
+    side and no document was named for it.
+    """
+    fetching = (
+        tempfile.TemporaryDirectory(prefix=f'{NAME}-')
+        if any(PULL.fullmatch(name) for name in names)
+        else contextlib.nullcontext()
+    )
+    with fetching as directory:
+        versions = []
+        for name in names:
+            version = (
+                fetch_pull(name, directory) if PULL.fullmatch(name)
+                else Path(name)
+            )
+            if version is None:
+                return 1
+            versions.append(version)
+        title = (
+            names[1] if document is None and PULL.fullmatch(names[1])
+            else None
+        )
+        read(document or versions[1], False, tab, versions, title)
+    return 0
+
+
+def fetch_pull(link, directory):
+    """Write a pull request's description into a directory, and return it.
+
+    gh does the fetching, so a private repository is read as whoever gh is
+    logged in as. Where it fails it has said why, and nothing is returned.
+    The file is named after the repository and the number, so the two sides
+    of a comparison between two pull requests never land on the same file.
+    """
+    org, repo, number = PULL.fullmatch(link).groups()
+    fetched = subprocess.run(
+        ['gh', 'pr', 'view', link, '--json', 'body', '--jq', '.body'],
+        stdout=subprocess.PIPE, text=True,
+    )
+    if fetched.returncode:
+        return None
+    path = Path(directory) / f'{org}-{repo}-pull-{number}.md'
+    path.write_text(fetched.stdout, encoding='utf-8')
+    return path
 
 
 def interrupt(reading, ending):
@@ -109,14 +172,13 @@ def interrupt(reading, ending):
 def main(argv=None):
     """Run the command line entry point."""
     args = parse_args(argv)
-    document = args.document or args.diff[1]
+    document = args.document
     for name in [args.document] if args.document else args.diff:
-        if name.suffix not in MARKDOWN:
+        if not PULL.fullmatch(str(name)) and Path(name).suffix not in MARKDOWN:
             print(f'{NAME}: not a markdown document: {name}', file=sys.stderr)
             return 1
     if args.diff:
-        read(document, False, args.tab, args.diff)
-        return 0
+        return compare(args.diff, document, args.tab)
     if not document.is_file():
         print(f'{NAME}: no such file: {document}', file=sys.stderr)
         return 1
@@ -162,10 +224,10 @@ def parse_args(argv):
     opening = parser.add_mutually_exclusive_group()
     opening.add_argument(
         '--diff',
-        help='show what changed from OLDER to NEWER on one page',
+        help='show what changed from OLDER to NEWER on one page, either of '
+        'which may be a GitHub pull request link',
         metavar=('OLDER', 'NEWER'),
         nargs=2,
-        type=Path,
     )
     opening.add_argument(
         '--edit',
@@ -188,7 +250,7 @@ def parse_args(argv):
     return args
 
 
-def read(document, edit, tab, versions=None):
+def read(document, edit, tab, versions=None, title=None):
     """Serve one reading and hold it up until it ends.
 
     The server runs on a thread of its own for the whole of a reading, because
@@ -210,13 +272,14 @@ def read(document, edit, tab, versions=None):
     the box is ticked and only the first vim was warmed for free.
 
     A reading opened on two versions is never edited, so no vim is warmed for
-    it either.
+    it either. The title is what the page goes under where that is not the
+    document's path.
     """
     servername = reading_name(os.getpid())
     app_window = bool(browser_path()) and not tab
     bound, reading, url = start(
         document, servername, editable=on_a_desktop() and versions is None,
-        versions=versions,
+        versions=versions, title=title,
     )
     print(f'reading {document.name}')
     print(f'  {url}/{servername}')

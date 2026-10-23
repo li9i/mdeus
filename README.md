@@ -38,16 +38,18 @@ Only a document named `.md` or `.markdown` opens. Anything else is refused in on
 
 `mdeus --diff old.md new.md` shows what changed from one document to the other as one page: the new words on a green ground, the old ones in dark red on a pale red ground, and everything else as a reading draws it. `git difftool -t mdeus` does the same for a change git knows about. `git difftool -t mdeus HEAD~3 -- notes.md` compares `notes.md` three commits back with how it reads now. git opens the documents one at a time, the next when you close the page, and mdeus turns away any file that is not markdown. The page is read only and redraws when the file is written, so `git difftool -t mdeus` on its own follows your edits as you save them.
 
+Either side of `--diff` can be a pull request on GitHub instead of a file. `mdeus --diff notes.md https://github.com/org/repo/pull/12` compares `notes.md` with the description of pull request 12, and the page goes under the link. `gh` fetches the description once, as the page opens, so a private repository is read as whoever `gh` is logged in as, and an edit made on GitHub shows only when you run the command again. `notes.md` still redraws each time you save it. A link to anything but a pull request is refused: `mdeus: not a markdown document: https://github.com/org/repo/issues/12`.
+
 ## What it needs
 
-Python 3, one of Chrome, Chromium, Brave, Vivaldi or Edge for the window with nothing in it but the page, and a vim built with `+clientserver` and a GUI for the `Edit` toggle. Without one of them a reading opens in an ordinary tab instead. On Ubuntu the installer fetches all of it:
+Python 3, one of Chrome, Chromium, Brave, Vivaldi or Edge for the window with nothing in it but the page, and a vim built with `+clientserver` and a GUI for the `Edit` toggle. Without one of them a reading opens in an ordinary tab instead. Comparing with a pull request needs `gh`, logged in to GitHub with `gh auth login`. On Ubuntu the installer fetches all of it:
 
 ```
 python3-markdown-it  python3-mdit-py-plugins  python3-linkify-it
-python3-emoji  python3-lxml  python3-xlib  python3-pil  vim-gtk3
+python3-emoji  python3-lxml  python3-xlib  python3-pil  vim-gtk3  gh
 ```
 
-Everything else is the standard library. Nothing is fetched at runtime, no page loads an external font, script or stylesheet, and the server listens on `127.0.0.1` and nowhere else.
+Everything else is the standard library. Nothing is fetched at runtime except the description of a pull request named to `--diff`, no page loads an external font, script or stylesheet, and the server listens on `127.0.0.1` and nowhere else.
 
 ## More
 
