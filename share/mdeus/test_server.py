@@ -690,7 +690,10 @@ def test_a_comparison_fetches_a_pull_request_named_by_its_link():
     """A pull request is compared by its description, which gh fetches.
 
     The page goes under the link where the pull request is the newer side,
-    and under the file where it is the older. A pull request gh cannot fetch
+    and under the file where it is the older. A link that carries more after
+    the number, such as a tab or a comment of the pull request, names the
+    same pull request, and the page goes under the link without it. gh is
+    asked for the link without it too. A pull request gh cannot fetch
     opens nothing, and a link to anything other than a pull request is not
     markdown. gh is stood in for by a script that knows one pull request and
     writes its description the way GitHub does, so nothing here reaches the
@@ -723,6 +726,9 @@ def test_a_comparison_fetches_a_pull_request_named_by_its_link():
         assert newer['blocks'] == render.render_diff(
             friday, monday, image_src=served_image
         )['blocks'], newer['blocks']
+        for tail in ('/files', '#issuecomment-1', '?w=1', '/'):
+            tailed = served_comparison([str(local), link + tail], tree)
+            assert tailed['path'] == link, (tail, tailed['path'])
         older = served_comparison([link, str(local)], tree)
         assert older['path'] == str(local.resolve()), older['path']
         assert older['blocks'] == render.render_diff(
@@ -732,6 +738,7 @@ def test_a_comparison_fetches_a_pull_request_named_by_its_link():
         for other, said in (
             ('https://github.com/org/repo/pull/13', ''),
             (issue, f'mdeus: not a markdown document: {issue}\n'),
+            (f'{link}0a', f'mdeus: not a markdown document: {link}0a\n'),
         ):
             done = subprocess.run(
                 [sys.executable, str(COMMAND), '--tab', '--diff',

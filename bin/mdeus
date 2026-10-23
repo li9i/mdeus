@@ -68,7 +68,8 @@ compared beside it, and it is drawn again whenever either version is written.
 
 Either name may be the link to a pull request on GitHub instead,
 https://github.com/<org>/<repo>/pull/<number>, and its description is compared
-as though it were a document on the disk. gh fetches it once, as the page
+as though it were a document on the disk. A link copied from a tab or a
+comment of the pull request names it as well. gh fetches it once, as the page
 opens, so an edit to the description on GitHub is not drawn until the command
 is run again. Where the pull request is the newer side, the page goes under
 its link.
@@ -95,7 +96,7 @@ from export import write_export
 from server import NAME, reading_name, serve, start
 
 MARKDOWN = ('.markdown', '.md')
-PULL = re.compile(r'https://github\.com/([^/]+)/([^/]+)/pull/(\d+)')
+PULL = re.compile(r'https://github\.com/([^/]+)/([^/]+)/pull/(\d+)(?=[/#?]|$)')
 WAKE = 1
 
 
@@ -105,27 +106,26 @@ def compare(names, document, tab):
     The descriptions are written into a directory that lasts as long as the
     reading does, and that is made only where there is a pull request to put
     in it. The page goes under the link where the pull request is the newer
-    side and no document was named for it.
+    side and no document was named for it, without anything the link carries
+    after the number.
     """
     fetching = (
         tempfile.TemporaryDirectory(prefix=f'{NAME}-')
-        if any(PULL.fullmatch(name) for name in names)
+        if any(PULL.match(name) for name in names)
         else contextlib.nullcontext()
     )
     with fetching as directory:
         versions = []
         for name in names:
             version = (
-                fetch_pull(name, directory) if PULL.fullmatch(name)
+                fetch_pull(name, directory) if PULL.match(name)
                 else Path(name)
             )
             if version is None:
                 return 1
             versions.append(version)
-        title = (
-            names[1] if document is None and PULL.fullmatch(names[1])
-            else None
-        )
+        pull = PULL.match(names[1])
+        title = pull.group(0) if document is None and pull else None
         read(document or versions[1], False, tab, versions, title)
     return 0
 
@@ -137,10 +137,14 @@ def fetch_pull(link, directory):
     logged in as. Where it fails it has said why, and nothing is returned.
     The file is named after the repository and the number, so the two sides
     of a comparison between two pull requests never land on the same file.
+    Anything after the number, such as a tab or a comment of the pull
+    request, is left off, since the description is the same whichever of
+    them the link was copied from.
     """
-    org, repo, number = PULL.fullmatch(link).groups()
+    pull = PULL.match(link)
+    org, repo, number = pull.groups()
     fetched = subprocess.run(
-        ['gh', 'pr', 'view', link, '--json', 'body', '--jq', '.body'],
+        ['gh', 'pr', 'view', pull.group(0), '--json', 'body', '--jq', '.body'],
         stdout=subprocess.PIPE, text=True,
     )
     if fetched.returncode:
@@ -174,7 +178,7 @@ def main(argv=None):
     args = parse_args(argv)
     document = args.document
     for name in [args.document] if args.document else args.diff:
-        if not PULL.fullmatch(str(name)) and Path(name).suffix not in MARKDOWN:
+        if not PULL.match(str(name)) and Path(name).suffix not in MARKDOWN:
             print(f'{NAME}: not a markdown document: {name}', file=sys.stderr)
             return 1
     if args.diff:
