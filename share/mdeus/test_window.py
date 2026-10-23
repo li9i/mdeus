@@ -1146,6 +1146,19 @@ def test_the_panel_names_a_page_by_its_file_and_follows_it_from_link_to_link():
     assert not page.written & {'WM_NAME', '_NET_WM_NAME'}, page.written
 
 
+def test_the_panel_names_a_page_under_a_link_by_its_last_two_parts():
+    """A page that goes under a link is on the panel by its last two parts.
+
+    The last part of a pull request's link is a bare number, which says
+    nothing on a panel, so the part before it is kept as well.
+    """
+    link = 'https://github.com/org/repo/pull/12'
+    desktop = Renaming([f'{server.HOST}:8766/{SERVERNAME}', link])
+    page = desktop.page
+    window.follow_name(desktop, page)
+    assert page.panel == ['pull/12'], page.panel
+
+
 def test_an_editing_reading_is_named_by_its_file_on_the_panel_alone():
     """While vim is up, the title bar carries the full path, the panel the file.
 

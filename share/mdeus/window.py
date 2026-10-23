@@ -1348,10 +1348,17 @@ def set_panel_name(d, window, title):
     little more. The panel reads a window's icon name where it has one, so the
     title bar keeps the full path and only the panel is shortened.
 
+    A title that is a web address, which is what a page fetched from a pull
+    request goes under, keeps its last two parts, `pull/12`, since its last
+    part alone is a bare number.
+
     The modern name and the old one both, since which of the two a desktop
     reads is the desktop's business and the two are meant to agree.
     """
-    name = os.path.basename(title)
+    name = (
+        '/'.join(title.split('/')[-2:]) if '://' in title
+        else os.path.basename(title)
+    )
     write_names(d, window, ('WM_ICON_NAME', '_NET_WM_ICON_NAME'), name)
 
 
