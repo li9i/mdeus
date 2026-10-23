@@ -813,6 +813,34 @@ def test_a_comparison_opens_from_two_names_or_from_git_s_three():
         shutil.rmtree(tree, ignore_errors=True)
 
 
+def test_a_comparison_with_a_pull_request_says_so_where_gh_is_missing():
+    """A pull request is fetched with gh, and its absence is said in one line.
+
+    The command is run where nothing it looks for on the path is found, so
+    no browser is found either, and nothing would open even where the
+    comparison went ahead.
+    """
+    tree = Path(tempfile.mkdtemp(prefix='mdeus-test-nogh-'))
+    try:
+        (tree / 'empty').mkdir()
+        local = tree / 'plan.md'
+        local.write_text('# Plan\n', encoding='utf-8')
+        done = subprocess.run(
+            [sys.executable, str(COMMAND), '--tab', '--diff', str(local),
+             'https://github.com/org/repo/pull/12'],
+            capture_output=True,
+            env=dict(quiet_environment(tree), PATH=str(tree / 'empty')),
+            text=True, timeout=TIMEOUT,
+        )
+        assert done.returncode == 1, done.returncode
+        assert done.stderr == (
+            'mdeus: comparing with a pull request needs gh\n'
+        ), done.stderr
+        assert done.stdout == '', done.stdout
+    finally:
+        shutil.rmtree(tree, ignore_errors=True)
+
+
 def test_a_cursor_report_carries_how_far_down_its_window_the_cursor_sits():
     """The page needs where vim is holding the line, not only which line it is.
 

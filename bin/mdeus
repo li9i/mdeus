@@ -135,6 +135,7 @@ def fetch_pull(link, directory):
 
     gh does the fetching, so a private repository is read as whoever gh is
     logged in as. Where it fails it has said why, and nothing is returned.
+    Where it is not on the machine at all, that is said in one line.
     The file is named after the repository and the number, so the two sides
     of a comparison between two pull requests never land on the same file.
     Anything after the number, such as a tab or a comment of the pull
@@ -143,10 +144,16 @@ def fetch_pull(link, directory):
     """
     pull = PULL.match(link)
     org, repo, number = pull.groups()
-    fetched = subprocess.run(
-        ['gh', 'pr', 'view', pull.group(0), '--json', 'body', '--jq', '.body'],
-        stdout=subprocess.PIPE, text=True,
-    )
+    try:
+        fetched = subprocess.run(
+            ['gh', 'pr', 'view', pull.group(0), '--json', 'body', '--jq',
+             '.body'],
+            stdout=subprocess.PIPE, text=True,
+        )
+    except FileNotFoundError:
+        print(f'{NAME}: comparing with a pull request needs gh',
+              file=sys.stderr)
+        return None
     if fetched.returncode:
         return None
     path = Path(directory) / f'{org}-{repo}-pull-{number}.md'

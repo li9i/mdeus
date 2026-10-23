@@ -42,7 +42,7 @@ Either side of `--diff` can be a pull request on GitHub instead of a file. `mdeu
 
 ## What it needs
 
-Python 3, one of Chrome, Chromium, Brave, Vivaldi or Edge for the window with nothing in it but the page, and a vim built with `+clientserver` and a GUI for the `Edit` toggle. Without one of them a reading opens in an ordinary tab instead. Comparing with a pull request needs `gh`, logged in to GitHub with `gh auth login`. On Ubuntu the installer fetches all of it:
+Python 3, one of Chrome, Chromium, Brave, Vivaldi or Edge for the window with nothing in it but the page, and a vim built with `+clientserver` and a GUI for the `Edit` toggle. Without one of them a reading opens in an ordinary tab instead. Comparing with a pull request needs `gh`, logged in to GitHub with `gh auth login`. Without it the comparison stops with `mdeus: comparing with a pull request needs gh`. On Ubuntu the installer fetches all of it:
 
 ```
 python3-markdown-it  python3-mdit-py-plugins  python3-linkify-it
