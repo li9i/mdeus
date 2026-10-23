@@ -369,7 +369,7 @@ def start_pane(port):
     return address, stop
 
 
-def start_reading(compared=False, editable=False, editing=False):
+def start_reading(compared=False, editable=False, editing=False, title=None):
     """Serve a fixture tree on a free port and return its root, port, reading and a stop call.
 
     The state path is redirected here rather than in each test, so that no test
@@ -381,6 +381,8 @@ def start_reading(compared=False, editable=False, editing=False):
 
     A reading opened on a comparison compares start.md with an older version of
     it kept outside the tree, where git keeps the versions it hands a viewer.
+    A title is what start.md goes under, as a document fetched from a link
+    does.
     """
     base = Path(tempfile.mkdtemp(prefix='mdeus-test-')).resolve()
     state.STATE_PATH = base / 'state.json'
@@ -401,7 +403,8 @@ def start_reading(compared=False, editable=False, editing=False):
     older.write_text(START_BEFORE_MD, encoding='utf-8')
     versions = (older, root / 'start.md') if compared else None
     reading = server.Reading(
-        root / 'start.md', SERVERNAME, editable=editable, versions=versions
+        root / 'start.md', SERVERNAME, editable=editable, versions=versions,
+        title=title,
     )
     reading.editing = editing
     bound = server.build_server(reading, port=0)
@@ -1234,6 +1237,28 @@ def test_a_page_that_says_nothing_keeps_the_reading():
     finally:
         stop()
         watching.join(timeout=TIMEOUT)
+
+
+def test_a_page_under_a_link_keeps_its_look_under_the_link():
+    """A document fetched from a link keeps its look under the link.
+
+    The file it was fetched to goes when the reading ends, and the next fetch
+    of the same link lands on another path, so a look kept under the path
+    would be kept where nothing reads it again.
+    """
+    link = 'https://github.com/org/repo/pull/12'
+    root, port, reading, stop = start_reading(compared=True, title=link)
+    try:
+        fetch_json(port, '/api/state', 'POST', {'theme': 'report'})
+        kept = state.stored_documents()
+        assert list(kept) == [link], kept
+        assert kept[link]['theme'] == 'report', kept
+        status, doc = fetch_json(port, '/doc')
+        assert doc['state']['theme'] == 'report', doc['state']
+        status, kind, page = fetch(port, '/')
+        assert b'class="report reader' in page, page
+    finally:
+        stop()
 
 
 def test_a_place_the_page_could_not_have_kept_is_refused():

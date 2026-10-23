@@ -552,7 +552,7 @@ class ReadingHandler(BaseHTTPRequestHandler):
                 self.send_json(place)
             elif self.path == '/api/state':
                 state = wanted_state(body)
-                save_state(self.reading.current, state)
+                save_state(self.full_path(), state)
                 self.send_json(state)
             elif self.path == '/api/tick':
                 self.send_json({'ticked': self.tick(*wanted_tick(body))})
@@ -562,7 +562,12 @@ class ReadingHandler(BaseHTTPRequestHandler):
             self.send_json({'error': str(error)}, code=400)
 
     def full_path(self):
-        """Return the current document's full path, for the window title."""
+        """Return the current document's full path, for the window title.
+
+        It is also what the document's look is kept under, so a document
+        fetched from a link keeps its look under the link rather than under
+        a file that goes when the reading does.
+        """
         current = self.reading.current
         return self.reading.titles.get(current, str(current))
 
@@ -770,7 +775,7 @@ class ReadingHandler(BaseHTTPRequestHandler):
             '    <script src="/assets/page.js" defer></script>',
             '    <script src="/assets/sync.js" defer></script>',
         ]
-        page = page_html(self.full_path(), load_state(self.reading.current), '\n'.join(head))
+        page = page_html(self.full_path(), load_state(self.full_path()), '\n'.join(head))
         self.send_bytes(page.encode('utf-8'), 'text/html')
 
     def snapshot(self):
@@ -781,7 +786,7 @@ class ReadingHandler(BaseHTTPRequestHandler):
             'mtime': self.mtime(),
             'name': self.name(),
             'path': self.full_path(),
-            'state': load_state(self.reading.current),
+            'state': load_state(self.full_path()),
         }
         versions = self.reading.versions.get(self.reading.current)
         try:
