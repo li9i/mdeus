@@ -10,7 +10,10 @@ const KEY_HINTS = [
   ['d/u', 'half'],
   ['f/b', 'page'],
   ['gg/G', 'ends'],
+  ['h', 'highlight'],
 ];
+const HIGHLIGHT_KEY = 'h';
+const HIGHLIGHT_SKIPPED = 'button, svg, .diagram';
 const LINE_PX = 40;
 const MARK_KEYS = ["'", '`', 'm'];
 const MARK_LETTER = /^[a-z]$/;
@@ -126,6 +129,28 @@ function applyFolds() {
   });
 }
 
+function applyHighlights() {
+  clearHighlights();
+  if (doc.diff) {
+    return;
+  }
+  doc.highlights = doc.highlights.flatMap((highlight) => {
+    const found = findHighlight(highlight);
+    if (!found) {
+      return [];
+    }
+    wrapText(found.block, found.from, found.from + highlight.text.length);
+    return [
+      {
+        from: found.from,
+        start: Number(found.block.dataset.start),
+        text: highlight.text,
+        to: found.from + highlight.text.length,
+      },
+    ];
+  });
+}
+
 function applyMiddle() {
   document.documentElement.classList.toggle('middle', middle);
 }
@@ -197,6 +222,20 @@ function buildControls() {
   );
   keys.innerHTML = `${hints.join('')}`;
   controlsNode.append(keys);
+}
+
+function blockText(block) {
+  return textNodes(block)
+    .map((node) => node.data)
+    .join('');
+}
+
+function clearHighlights() {
+  docNode.querySelectorAll('mark.highlight').forEach((mark) => {
+    const parent = mark.parentNode;
+    mark.replaceWith(...mark.childNodes);
+    parent.normalize();
+  });
 }
 
 function closeCommand() {
@@ -373,6 +412,7 @@ function drawDocument() {
   drawPathButton();
   drawTableBlocks();
   applyFolds();
+  applyHighlights();
 }
 
 function drawPathButton() {
@@ -406,6 +446,23 @@ function drawn() {
 function esc(text) {
   const replacements = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
   return String(text).replace(/[&<>"]/g, (character) => replacements[character]);
+}
+
+function findHighlight(highlight) {
+  const blocks = [...docNode.querySelectorAll('.block')];
+  const own = blocks.filter(
+    (block) => Number(block.dataset.start) === highlight.start
+  );
+  for (const block of own.concat(blocks)) {
+    const text = blockText(block);
+    const from = text.startsWith(highlight.text, highlight.from)
+      ? highlight.from
+      : text.indexOf(highlight.text);
+    if (from >= 0) {
+      return { block, from };
+    }
+  }
+  return null;
 }
 
 function foldSection(heading, folded) {
@@ -649,6 +706,27 @@ function onEdit() {
   }).catch(() => {});
 }
 
+function onHighlight() {
+  const selection = window.getSelection();
+  if (doc.gone || doc.diff || selection.isCollapsed) {
+    return;
+  }
+  const pieces = selectedPieces(selection.getRangeAt(0));
+  const crossed = (kept) =>
+    pieces.some(
+      (piece) =>
+        piece.start === kept.start &&
+        piece.from < kept.to &&
+        kept.from < piece.to
+    );
+  doc.highlights = doc.highlights.some(crossed)
+    ? doc.highlights.filter((kept) => !crossed(kept))
+    : doc.highlights.concat(pieces);
+  selection.removeAllRanges();
+  applyHighlights();
+  saveHighlights();
+}
+
 function onKey(event) {
   if (framed && event.altKey && event.key.startsWith('Arrow')) {
     event.preventDefault();
@@ -687,6 +765,11 @@ function onKey(event) {
   if (event.key === ':') {
     event.preventDefault();
     openCommand();
+    return;
+  }
+  if (event.key === HIGHLIGHT_KEY) {
+    event.preventDefault();
+    onHighlight();
     return;
   }
   if (event.key in GLIDES) {
@@ -1011,6 +1094,14 @@ async function saveDiagram(figure, save) {
   await writable.close();
 }
 
+function saveHighlights() {
+  return fetch('/api/highlights', {
+    body: JSON.stringify({ highlights: doc.highlights, name: doc.name }),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  }).catch(() => {});
+}
+
 function savePlace() {
   window.clearTimeout(placeTimer);
   const place = placeNow();
@@ -1044,6 +1135,45 @@ function scrollStep(key) {
   const half = window.innerHeight / 2;
   const page = window.innerHeight - controlsNode.offsetHeight - LINE_PX;
   return { b: -page, d: half, f: page, u: -half }[key];
+}
+
+function selectedPieces(range) {
+  const pieces = [];
+  for (const block of docNode.querySelectorAll('.block')) {
+    if (block.hidden || !range.intersectsNode(block)) {
+      continue;
+    }
+    let offset = 0;
+    let begin = null;
+    let end = null;
+    for (const node of textNodes(block)) {
+      const length = node.data.length;
+      if (range.intersectsNode(node)) {
+        const lo = node === range.startContainer ? range.startOffset : 0;
+        const hi = node === range.endContainer ? range.endOffset : length;
+        if (lo < hi) {
+          begin = begin === null ? offset + lo : begin;
+          end = offset + hi;
+        }
+      }
+      offset += length;
+    }
+    if (begin === null) {
+      continue;
+    }
+    const text = blockText(block).slice(begin, end);
+    const trimmed = text.trim();
+    if (trimmed) {
+      const from = begin + text.indexOf(trimmed);
+      pieces.push({
+        from,
+        start: Number(block.dataset.start),
+        text: trimmed,
+        to: from + trimmed.length,
+      });
+    }
+  }
+  return pieces;
 }
 
 function setMark(letter) {
@@ -1117,6 +1247,17 @@ function svgText(svg) {
   return new XMLSerializer().serializeToString(svg);
 }
 
+function textNodes(block) {
+  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!node.parentElement.closest(HIGHLIGHT_SKIPPED)) {
+      nodes.push(node);
+    }
+  }
+  return nodes;
+}
+
 function toggleButton(id, text, pressed, handler) {
   const button = document.createElement('button');
   const letter = Object.keys(SHORTCUTS).find((key) => SHORTCUTS[key] === id);
@@ -1142,6 +1283,28 @@ async function told(said) {
   }
   mtime = said.mtime;
   await load();
+}
+
+function wrapText(block, from, to) {
+  let offset = 0;
+  const spans = [];
+  for (const node of textNodes(block)) {
+    const length = node.data.length;
+    const lo = Math.max(from - offset, 0);
+    const hi = Math.min(to - offset, length);
+    if (lo < hi && node.data.slice(lo, hi).trim()) {
+      spans.push([node, lo, hi]);
+    }
+    offset += length;
+  }
+  spans.forEach(([node, lo, hi]) => {
+    const inside = node.splitText(lo);
+    inside.splitText(hi - lo);
+    const mark = document.createElement('mark');
+    mark.className = 'highlight';
+    inside.replaceWith(mark);
+    mark.append(inside);
+  });
 }
 
 start();

@@ -466,7 +466,8 @@ def test_a_body_the_page_could_not_have_sent_is_refused():
     """
     root, port, reading, stop = start_reading(editable=True)
     try:
-        for path in ('/api/edit', '/api/place', '/api/state', '/api/tick'):
+        for path in ('/api/edit', '/api/highlights', '/api/place',
+                     '/api/state', '/api/tick'):
             for body in (b'[1, 2, 3]', b'"words"', b'3', b'true', b'null',
                          b'[' * 2000 + b']' * 2000):
                 status, _, _ = fetch(port, path, 'POST', body)
@@ -1633,6 +1634,80 @@ def test_each_document_keeps_its_own_place():
         assert place == {'start': 9, 'top': 40.0}, place
         place = fetch_json(port, to_other)[1]['place']
         assert place == {'start': 1, 'top': 30.0}, place
+    finally:
+        stop()
+
+
+def test_highlights_are_kept_per_document_and_read_back():
+    """Highlights a reader made are served again, and only for their document.
+
+    A highlight is the words picked out, the first source line of the block
+    they stand in, and where in that block's text they begin and end. The
+    page names the document, as it does with a place, and the highlights sit
+    beside the look and the place without putting either out.
+    """
+    root, port, reading, stop = start_reading()
+    to_other = '/doc?' + urlencode({'path': 'notes/other.md'})
+    pick = {'start': 3, 'from': 4, 'to': 9, 'text': 'quick'}
+
+    def keep(name, highlights):
+        """Keep highlights the way the page keeps them, and return the reply."""
+        body = {'name': name, 'highlights': highlights}
+        return fetch_json(port, '/api/highlights', 'POST', body)
+
+    try:
+        assert fetch_json(port, '/doc')[1]['highlights'] == []
+        fetch_json(port, '/api/state', 'POST', {'theme': 'github'})
+        fetch_json(port, '/api/place', 'POST',
+                   {'name': 'start.md', 'start': 7, 'top': 5})
+        status, reply = keep('start.md', [pick])
+        assert (status, reply) == (200, [pick]), (status, reply)
+        status, doc = fetch_json(port, '/doc')
+        assert doc['highlights'] == [pick], doc['highlights']
+        assert doc['state']['theme'] == 'github', doc['state']
+        assert doc['place'] == {'start': 7, 'top': 5.0}, doc['place']
+        assert fetch_json(port, to_other)[1]['highlights'] == []
+        keep('start.md', [])
+        assert fetch_json(port, '/doc')[1]['highlights'] == []
+    finally:
+        stop()
+
+
+def test_highlights_the_page_could_not_have_made_are_refused():
+    """A highlight naming no document in the tree, or no words, is not stored.
+
+    Highlights read back from the file are held to the same terms, so a
+    hand written entry that could not be drawn is left out of the reply
+    rather than breaking the page, and the ones beside it are kept.
+    """
+    root, port, reading, stop = start_reading()
+    good = {'start': 3, 'from': 4, 'to': 9, 'text': 'quick'}
+    try:
+        for body in (
+            {'name': 'escape.md', 'highlights': [good]},
+            {'name': 'missing.md', 'highlights': [good]},
+            {'highlights': [good]},
+            {'name': 'start.md'},
+            {'name': 'start.md', 'highlights': 'quick'},
+            {'name': 'start.md', 'highlights': [dict(good, start='three')]},
+            {'name': 'start.md', 'highlights': [dict(good, to=4)]},
+            {'name': 'start.md', 'highlights': [dict(good, **{'from': -1})]},
+            {'name': 'start.md', 'highlights': [dict(good, text='')]},
+            {'name': 'start.md', 'highlights': [dict(good, text=None)]},
+        ):
+            status, reply = fetch_json(port, '/api/highlights', 'POST', body)
+            assert status == 400, (body, status)
+        assert not state.STATE_PATH.exists(), state.STATE_PATH
+        entry = '{"documents": {"%s": {"highlights": %%s}}}' % (
+            root / 'start.md')
+        for stored in ('"quick"', '[3]', '[{"start": 3}]',
+                       '[{"start": 3, "from": 5, "to": 2, "text": "x"}]'):
+            state.STATE_PATH.write_text(entry % stored, encoding='utf-8')
+            status, doc = fetch_json(port, '/doc')
+            assert (status, doc['highlights']) == (200, []), (stored, doc)
+        mixed = '[3, {"start": 3, "from": 4, "to": 9, "text": "quick"}]'
+        state.STATE_PATH.write_text(entry % mixed, encoding='utf-8')
+        assert fetch_json(port, '/doc')[1]['highlights'] == [good]
     finally:
         stop()
 

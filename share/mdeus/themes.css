@@ -73,6 +73,11 @@
   overflow-x: auto;
 }
 
+.doc mark.highlight {
+  background: #fff176;
+  color: #000;
+}
+
 .browser .diff ins,
 .report .diff ins,
 :where(.github) .diff ins,

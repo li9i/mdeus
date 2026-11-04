@@ -33,7 +33,7 @@ from urllib.parse import unquote
 
 from render import render_document
 from server import ASSET_DIR, page_html, resolve_inside
-from state import load_state
+from state import load_highlights, load_state
 
 CACHE_DIR = Path.home() / '.cache' / 'mdeus'
 STUB = """\
@@ -124,6 +124,7 @@ def write_export(source):
     )
     document = {
         'blocks': rendered['blocks'],
+        'highlights': load_highlights(source),
         'mtime': 0,
         'name': source.name,
         'outline': rendered['outline'],

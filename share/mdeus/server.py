@@ -60,7 +60,8 @@ from urllib.parse import parse_qs, quote, unquote, urlsplit
 import vimlink
 from render import render_diff, render_document
 from state import (
-    THEMES, as_place, load_place, load_state, save_place, save_state,
+    THEMES, as_highlight, as_place, load_highlights, load_place, load_state,
+    save_highlights, save_place, save_state,
 )
 
 ASSET_DIR = Path(__file__).resolve().parent
@@ -236,6 +237,23 @@ def wanted_block(body):
         )
     except (KeyError, TypeError) as error:
         raise ValueError('no block') from error
+
+
+def wanted_highlights(root, body):
+    """Return the document highlights are for, and the highlights, or raise ValueError.
+
+    The page names the document along with its highlights, for the reason it
+    does with a place. One highlight that could not be drawn refuses them all,
+    since the page only ever sends back what it drew.
+    """
+    document = resolve_inside(root, str(body.get('name', '')))
+    sent = body.get('highlights')
+    if document is None or not isinstance(sent, list):
+        raise ValueError('no highlights')
+    highlights = [as_highlight(raw) for raw in sent]
+    if not all(highlights):
+        raise ValueError('no highlight')
+    return document, highlights
 
 
 def wanted_letter(body):
@@ -537,6 +555,11 @@ class ReadingHandler(BaseHTTPRequestHandler):
             elif self.path == '/api/ending' and self.reading.editing:
                 self.reading.ends = True
                 self.send_json({'ok': True})
+            elif self.path == '/api/highlights':
+                document, highlights = wanted_highlights(
+                    self.reading.root, body)
+                save_highlights(document, highlights)
+                self.send_json(highlights)
             elif self.path == '/api/jump' and self.reading.editing:
                 vimlink.jump(self.reading.servername, *wanted_block(body))
                 self.send_json({'ok': True})
@@ -800,7 +823,7 @@ class ReadingHandler(BaseHTTPRequestHandler):
             rendered = render_diff(*sources, image_src=self.image_src)
             return dict(
                 common, blocks=rendered['blocks'], diff=True,
-                outline=rendered['outline'],
+                highlights=[], outline=rendered['outline'],
             )
         rendered = render_document(
             sources[0], aimed=True, image_src=self.image_src,
@@ -809,6 +832,7 @@ class ReadingHandler(BaseHTTPRequestHandler):
         return dict(
             common,
             blocks=rendered['blocks'],
+            highlights=load_highlights(self.reading.current),
             outline=rendered['outline'],
             place=load_place(self.reading.current),
         )

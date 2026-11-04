@@ -6,7 +6,7 @@ document that has any, each under its own path: the theme, whether the contents
 list was open, whether a theme that will run its lines the full width of the
 pane is left to, whether a theme that will stand its lines in the middle of the
 pane is left to, where the divider between the browser and vim was left, and
-where the page was last scrolled to. A document nothing was ever set on opens
+where the page was last scrolled to, and the words picked out in yellow. A document nothing was ever set on opens
 the way the very first reading did, so what one document is left in never
 reaches another.
 
@@ -45,6 +45,23 @@ def as_place(raw):
     return {'start': start, 'top': top} if math.isfinite(top) else None
 
 
+def as_highlight(raw):
+    """Return a highlight as the page keeps one, or nothing where raw is not one.
+
+    A highlight is the words picked out, the first source line of the block
+    they stand in, and where in that block's text they begin and end. The
+    words have to be there, and the end has to come after the start.
+    """
+    try:
+        start, begin, end = int(raw['start']), int(raw['from']), int(raw['to'])
+        text = raw['text']
+    except (KeyError, OverflowError, TypeError, ValueError):
+        return None
+    if not isinstance(text, str) or not text or not 0 <= begin < end:
+        return None
+    return {'from': begin, 'start': start, 'text': text, 'to': end}
+
+
 def document_state(document):
     """Return what the file holds for one document, or nothing usable.
 
@@ -55,6 +72,18 @@ def document_state(document):
     """
     stored = stored_documents().get(str(document))
     return stored if isinstance(stored, dict) else {}
+
+
+def load_highlights(document):
+    """Return the highlights kept for a document, leaving out any unusable one.
+
+    Nothing kept, or a field that is not a list, reads as no highlights, the
+    way a first reading opens.
+    """
+    stored = document_state(document).get('highlights')
+    if not isinstance(stored, list):
+        return []
+    return [kept for kept in map(as_highlight, stored) if kept]
 
 
 def load_place(document):
@@ -100,6 +129,11 @@ def load_state(document):
             'wide': bool(stored.get('wide')),
         }
     return {'contents': False, 'middle': False, 'theme': 'browser', 'wide': False}
+
+
+def save_highlights(document, highlights):
+    """Store the highlights of a document, for its next reading to draw."""
+    save_state(document, {'highlights': highlights})
 
 
 def save_place(document, place):
