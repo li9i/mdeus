@@ -451,6 +451,16 @@ def test_only_images_beside_the_document_are_retargeted():
     assert 'href="notes/other.md"' in html, html
 
 
+def test_an_svg_carried_in_the_document_is_drawn_only_as_an_image():
+    """An SVG written into the document shows as a picture, never as a link."""
+    svg = 'data:image/svg+xml;base64,PHN2Zy8+'
+    html = render.joined_html(
+        render.render_blocks(f'![drawing]({svg})\n\n[open]({svg})\n')
+    )
+    assert f'<img src="{svg}" alt="drawing" />' in html, html
+    assert 'href=' not in html, html
+
+
 def test_alert_markers_become_callouts():
     """A quote opening on one of GitHub's five markers is drawn as a callout."""
     blocks = render.render_blocks(ALERT_FIXTURE)

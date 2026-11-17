@@ -38,6 +38,8 @@ from lxml.html.diff import (
     tokenize,
 )
 from markdown_it import MarkdownIt
+from markdown_it.common.normalize_url import validateLink
+from markdown_it.rules_inline.image import image
 from markdown_it.token import Token
 from markdown_it.tree import SyntaxTreeNode
 from mdit_py_plugins.footnote import footnote_plugin
@@ -64,6 +66,7 @@ LIKENESS = 0.5
 PARTS = ('code_block', 'fence', 'heading', 'hr', 'paragraph', 'tr')
 PUNCTUATION = re.compile(r'(\W*)(.*?)(\W*)', re.S)
 SHORTCODE = re.compile(r':[a-z0-9_+-]+:')
+SVG_DATA = re.compile(r'data:image/svg\+xml;', re.I)
 WORD = re.compile(r'\w+')
 
 
@@ -410,6 +413,31 @@ def diff_tokens(html):
     return tokens
 
 
+def drawable(url):
+    """Say whether an image target may be drawn.
+
+    The parser takes a picture written into the document only as PNG, JPEG,
+    GIF or WebP, since an SVG can carry a script. A browser never runs the
+    script of an SVG it draws as a picture, so for an image an SVG is let in
+    too.
+    """
+    return bool(SVG_DATA.match(url.strip())) or validateLink(url)
+
+
+def drawn_image(state, silent):
+    """Read one image, with an SVG written into the document let in.
+
+    Only the image rule is given the wider check. A link to the same SVG is
+    still held to the parser's own, and stays text.
+    """
+    plain = state.md.validateLink
+    state.md.validateLink = drawable
+    try:
+        return image(state, silent)
+    finally:
+        state.md.validateLink = plain
+
+
 @lru_cache(maxsize=None)
 def emoji_names():
     """Return every shortcode GitHub answers to, mapped to the character it draws.
@@ -584,6 +612,7 @@ def render_document(source, aimed=False, image_src=None, tickable=False):
         .use(footnote_plugin)
         .use(tasklists_plugin)
     )
+    md.inline.ruler.at('image', drawn_image)
     md.core.ruler.after('block', 'alerts', alerts)
     md.core.ruler.push('emoji', emojis)
     if tickable:
